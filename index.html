@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STRAFE.ZONE — CS-style shooter with a built-in cheat menu</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <canvas id="hud"></canvas>
+
+  <!-- Main menu -->
+  <div id="main-menu" class="screen show">
+    <div class="mm-bg"></div>
+    <div class="mm-wrap">
+      <div class="mm-title">
+        <div class="logo">STRAFE<span>.ZONE</span></div>
+        <div class="tag">Контра с Source-мувментом, ботами и встроенным читом. Читерить тут можно — это твоя игра.</div>
+      </div>
+      <div class="mm-grid">
+        <div class="mm-left">
+          <div class="mm-h">Карта</div>
+          <div id="map-list" class="map-list"></div>
+          <div class="mm-h">Матч</div>
+          <div class="mm-opts">
+            <label>Ник <input id="opt-name" maxlength="16" value="Player"></label>
+            <label>Противники <input id="opt-bots" type="range" min="1" max="10" value="6"><b id="opt-bots-v">6</b></label>
+            <label>Союзники <input id="opt-team" type="range" min="0" max="6" value="2"><b id="opt-team-v">2</b></label>
+            <label>Сложность ботов
+              <select id="opt-diff"><option>Easy</option><option selected>Normal</option><option>Hard</option><option>Expert</option></select>
+            </label>
+            <label>Основное оружие
+              <select id="opt-primary"><option value="ak47">AK-47</option><option value="m4a4">M4A4</option><option value="awp">AWP</option><option value="ssg08">SSG 08</option></select>
+            </label>
+            <label>Сенса <input id="opt-sens" type="number" min="0.1" max="10" step="0.05" value="2"></label>
+          </div>
+          <button id="btn-play" class="btn-play">ИГРАТЬ</button>
+          <div id="lock-warn" class="lock-warn"></div>
+        </div>
+        <div class="mm-right">
+          <div class="mm-h">Управление</div>
+          <div class="keys">
+            <div><b>WASD</b> движение · <b>Пробел / колесо</b> прыжок</div>
+            <div><b>Ctrl / C</b> присесть · <b>Shift</b> шаг</div>
+            <div><b>ЛКМ</b> огонь · <b>ПКМ</b> прицел / удар ножом</div>
+            <div><b>1 2 3</b> оружие · <b>Q</b> прошлое · <b>R</b> перезарядка</div>
+            <div><b>B</b> выбор оружия · <b>F</b> осмотр · <b>Tab</b> счёт</div>
+            <div class="hl"><b>INSERT</b> (или <b>HOME</b>) — ЧИТ-МЕНЮ</div>
+            <div><b>V</b> третье лицо · <b>X</b> инверт десинка · <b>Стрелки</b> ручной AA</div>
+            <div><b>Esc</b> пауза</div>
+          </div>
+          <div class="mm-h">Мувмент как в CS</div>
+          <div class="keys small">
+            Физика портирована с Source: трение 5.2, sv_accelerate 5.5, sv_airaccelerate 12, кап 30 ед. в воздухе, 64 тика.
+            Нельзя мгновенно менять направление — есть разгон и торможение. Скорость в воздухе набирается только стрейфами
+            (A/D синхронно с мышью). Бхоп — прыжок точно в тик приземления (колесо мыши помогает), либо чит «Бхоп».
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause -->
+  <div id="pause" class="screen">
+    <div class="pause-box">
+      <div class="logo small">STRAFE<span>.ZONE</span></div>
+      <button id="btn-resume">Продолжить</button>
+      <button id="btn-cheats">Чит-меню (Insert)</button>
+      <button id="btn-quit">Главное меню</button>
+      <div class="hint">Кликни по игре, чтобы захватить мышь</div>
+    </div>
+  </div>
+
+  <!-- Buy menu -->
+  <div id="buy-menu" class="screen">
+    <div class="buy-box">
+      <div class="buy-title">Выбор оружия <span>(B — закрыть)</span></div>
+      <div class="buy-grid">
+        <button data-w="ak47"><b>1</b> AK-47<small>36 урона · ваншот в голову</small></button>
+        <button data-w="m4a4"><b>2</b> M4A4<small>33 урона · меньше отдача</small></button>
+        <button data-w="awp"><b>3</b> AWP<small>115 урона · ваншот в тело</small></button>
+        <button data-w="ssg08"><b>4</b> SSG 08<small>скаут · точен в пике прыжка</small></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="click-to-play" class="ctp">Кликни, чтобы играть</div>
+  <div id="cheat-menu"></div>
+  <div id="loading" class="screen"><div class="loading-txt">Компиляция карты…</div></div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
