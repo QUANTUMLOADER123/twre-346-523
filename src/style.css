@@ -1,0 +1,1716 @@
+:root {
+  --skeet-green: #95b806;
+  --skeet-green-dark: #688205;
+  --ct-blue: #69a4dc;
+  --t-gold: #e6b85c;
+  --csgo-green: #2ebd59;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+html,
+body,
+#game-root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #070a0f;
+  font-family: Tahoma, Verdana, 'Segoe UI', sans-serif;
+  color: #e2e8f0;
+}
+
+#game-canvas,
+#esp-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#esp-canvas {
+  pointer-events: none;
+  z-index: 5;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ==========================================================================
+   SNIPER SCOPE OVERLAY
+   ========================================================================== */
+#scope-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+.scope-line-h {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.92);
+}
+.scope-line-v {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.92);
+}
+.scope-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, transparent 34%, rgba(0, 0, 0, 0.94) 68%);
+}
+
+/* ==========================================================================
+   AUTHENTIC CS:GO PANORAMA IN-GAME HUD
+   ========================================================================== */
+#hud-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* --- TOP-LEFT: CS:GO CIRCULAR RADAR + MONEY + EVENT LOGS --- */
+#csgo-top-left {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.csgo-radar-wrap {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65), inset 0 0 12px rgba(0, 0, 0, 0.8);
+  background: rgba(10, 14, 18, 0.85);
+}
+
+#csgo-radar-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+}
+
+.csgo-radar-north {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #141a22;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #cbd5e1;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.csgo-location-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#hud-map-badge {
+  background: rgba(12, 16, 22, 0.78);
+  border-left: 3px solid var(--t-gold);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #f1f5f9;
+}
+
+.csgo-net-pill {
+  background: rgba(12, 16, 22, 0.72);
+  padding: 3px 7px;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.csgo-money-box {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  background: linear-gradient(90deg, rgba(12, 18, 24, 0.82) 0%, rgba(12, 18, 24, 0) 100%);
+  padding: 3px 12px 3px 8px;
+  border-left: 3px solid #65d654;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-weight: 800;
+  font-size: 19px;
+  color: #65d654;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+#event-logs {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: Verdana, Tahoma, sans-serif;
+  font-size: 11px;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+}
+.event-log-item {
+  color: #e5e5e5;
+}
+.log-tag {
+  color: var(--skeet-green);
+  font-weight: 700;
+}
+.log-hs {
+  color: #ff4757;
+  font-weight: 700;
+}
+
+/* --- TOP-CENTER: CS:GO ROUND TIMER, SCORES & AVATARS --- */
+#csgo-top-center {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.csgo-avatars-side {
+  display: flex;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.csgo-mini-avatar {
+  width: 34px;
+  height: 36px;
+  background: rgba(14, 18, 24, 0.84);
+  border-top: 2px solid #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+.csgo-mini-avatar.ct {
+  border-top-color: var(--ct-blue);
+  color: var(--ct-blue);
+}
+.csgo-mini-avatar.t {
+  border-top-color: var(--t-gold);
+  color: var(--t-gold);
+}
+.csgo-mini-avatar.dead {
+  opacity: 0.42;
+  filter: grayscale(0.8);
+}
+.csgo-mini-avatar .mini-hp {
+  width: 100%;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.7);
+}
+.csgo-mini-avatar .mini-hp > div {
+  height: 100%;
+  background: #ef4444;
+}
+.csgo-mini-avatar.ct .mini-hp > div {
+  background: #38bdf8;
+}
+
+.csgo-score-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(12, 16, 22, 0.86);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 4px 10px 5px;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+
+.csgo-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.csgo-team-score {
+  font-size: 20px;
+  font-weight: 900;
+  min-width: 26px;
+  text-align: center;
+}
+.csgo-team-score.ct {
+  color: var(--ct-blue);
+}
+.csgo-team-score.t {
+  color: var(--t-gold);
+}
+
+.csgo-round-clock {
+  font-size: 21px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 1px;
+  padding: 0 6px;
+}
+
+.csgo-alive-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 1px;
+}
+
+.csgo-alive-box {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+.csgo-alive-box.ct {
+  background: rgba(105, 164, 220, 0.18);
+  color: var(--ct-blue);
+}
+.csgo-alive-box.t {
+  background: rgba(230, 184, 92, 0.18);
+  color: var(--t-gold);
+}
+
+.csgo-mode-label {
+  font-size: 10px;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+/* --- TOP-RIGHT: WATERMARK, CS:GO KILLFEED & KEYBINDS --- */
+#csgo-top-right {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+#watermark {
+  background: #111111;
+  border: 1px solid #0a0a0a;
+  box-shadow: inset 0 0 0 1px #282828, 0 4px 12px rgba(0, 0, 0, 0.65);
+  border-top: 2px solid var(--skeet-green);
+  padding: 4px 9px;
+  font-family: Verdana, Tahoma, sans-serif;
+  font-size: 11px;
+  color: #d8d8d8;
+}
+
+#killfeed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.killfeed-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(15, 19, 25, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* Authentic CS:GO crimson border when local player gets the kill */
+.killfeed-item.local-kill {
+  background: rgba(68, 14, 18, 0.86);
+  border: 1px solid #e12d39;
+}
+
+.kf-killer.ct-color,
+.kf-victim.ct-color {
+  color: var(--ct-blue);
+}
+.kf-killer.t-color,
+.kf-victim.t-color {
+  color: var(--t-gold);
+}
+.kf-badge {
+  color: #f8fafc;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+}
+.kf-hs {
+  color: #ef4444;
+}
+.kf-wb {
+  color: #fbbf24;
+}
+
+#keybinds-widget {
+  width: 175px;
+  background: rgba(17, 17, 17, 0.9);
+  border: 1px solid #0c0c0c;
+  box-shadow: inset 0 0 0 1px #282828;
+  border-top: 2px solid var(--skeet-green);
+  font-family: Verdana, Tahoma, sans-serif;
+  font-size: 11px;
+}
+.kb-header {
+  text-align: center;
+  padding: 3px 0;
+  font-weight: 700;
+  color: #dcdcdc;
+  border-bottom: 1px solid #262626;
+}
+#keybinds-list {
+  padding: 4px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kb-row {
+  display: flex;
+  justify-content: space-between;
+  color: #cccccc;
+}
+.kb-state {
+  color: var(--skeet-green);
+}
+
+/* --- BOTTOM-LEFT: AUTHENTIC CS:GO HEALTH & ARMOR --- */
+#csgo-bottom-left {
+  position: absolute;
+  left: 20px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#hvh-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 360px;
+  font-size: 12px;
+  text-shadow: 1px 1px 2px #000;
+}
+.chat-author {
+  color: var(--t-gold);
+  font-weight: 700;
+}
+
+.csgo-vitals-panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(90deg, rgba(12, 16, 22, 0.86) 0%, rgba(12, 16, 22, 0.62) 100%);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.22);
+  padding: 8px 18px;
+  border-radius: 2px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+}
+
+.csgo-vital-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.csgo-vital-icon {
+  font-size: 19px;
+  color: #e2e8f0;
+  opacity: 0.9;
+}
+
+.csgo-vital-num {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-size: 32px;
+  font-weight: 900;
+  line-height: 1;
+  color: #ffffff;
+  min-width: 56px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.csgo-vital-bar {
+  width: 64px;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+.csgo-vital-bar > div {
+  height: 100%;
+  background: #ffffff;
+  transition: width 0.12s ease;
+}
+
+.csgo-vital-block.low-hp .csgo-vital-icon,
+.csgo-vital-block.low-hp .csgo-vital-num {
+  color: #ff3b3b;
+}
+.csgo-vital-block.low-hp .csgo-vital-bar > div {
+  background: #ff3b3b;
+}
+
+/* --- BOTTOM-CENTER: SUBTLE HOTKEY STRIP --- */
+#csgo-bottom-center {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.csgo-controls-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(12, 16, 22, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 4px 12px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.csgo-controls-strip kbd {
+  background: rgba(255, 255, 255, 0.14);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-family: Tahoma, sans-serif;
+  font-size: 10px;
+  color: #fff;
+}
+
+.hud-quick-btn {
+  background: rgba(149, 184, 6, 0.22);
+  border: 1px solid var(--skeet-green);
+  color: #e2e8f0;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.hud-quick-btn:hover {
+  background: rgba(149, 184, 6, 0.4);
+}
+
+/* --- BOTTOM-RIGHT: CS:GO WEAPON STACK + AMMO COUNTER --- */
+#csgo-bottom-right {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+#csgo-weapon-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.csgo-slot-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 155px;
+  padding: 4px 10px;
+  background: linear-gradient(270deg, rgba(12, 16, 22, 0.72) 0%, rgba(12, 16, 22, 0) 100%);
+  border-right: 3px solid transparent;
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.csgo-slot-item.active {
+  background: linear-gradient(270deg, rgba(18, 24, 34, 0.92) 0%, rgba(18, 24, 34, 0.15) 100%);
+  border-right-color: #ffffff;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.csgo-slot-item .slot-key {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.csgo-ammo-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(270deg, rgba(12, 16, 22, 0.88) 0%, rgba(12, 16, 22, 0.62) 100%);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.22);
+  padding: 8px 18px;
+  border-radius: 2px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+}
+
+.csgo-ammo-current-wep {
+  font-size: 10px;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.6px;
+}
+
+.csgo-ammo-numbers {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.csgo-bullet-ticks {
+  display: flex;
+  gap: 2px;
+}
+.csgo-bullet-ticks span {
+  width: 3px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 1px;
+}
+
+#round-banner {
+  position: absolute;
+  top: 95px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(12, 16, 22, 0.92);
+  border-top: 2px solid var(--t-gold);
+  border-bottom: 2px solid var(--t-gold);
+  padding: 10px 28px;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   1:1 PIXEL-ACCURATE GAMESENSE.PUB / SKEET.CC CHEAT MENU (IMAGE-1.PNG)
+   ========================================================================== */
+#skeet-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  pointer-events: auto;
+}
+
+.skeet-window {
+  position: absolute;
+  width: 660px;
+  height: 560px;
+  font-family: Verdana, Tahoma, sans-serif;
+  font-size: 11px;
+  color: #cdcdcd;
+  filter: drop-shadow(0 20px 50px rgba(0, 0, 0, 0.85));
+}
+
+/* Exact Multi-Layer Dark Steel Bevel Frame from image-1.png */
+.skeet-bevel-frame {
+  width: 100%;
+  height: 100%;
+  background: #282828;
+  border: 1px solid #0c0c0c;
+  box-shadow: inset 0 0 0 1px #3c3c3c;
+  padding: 4px;
+}
+
+.skeet-inner-frame {
+  width: 100%;
+  height: 100%;
+  background: #111111;
+  border: 1px solid #0c0c0c;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top 2px Gamesense Rainbow Gradient Bar */
+.skeet-rainbow-line {
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(90deg, #37b1da 0%, #9948ac 35%, #ce427b 68%, #d2a83c 100%);
+  border-bottom: 1px solid #0c0c0c;
+  cursor: move;
+  flex-shrink: 0;
+}
+
+.skeet-main-area {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* Left Vertical Icon Sidebar (74px wide, solid #0c0c0c) */
+.skeet-sidebar {
+  width: 74px;
+  background: #0c0c0c;
+  border-right: 1px solid #282828;
+  display: flex;
+  flex-direction: column;
+  padding-top: 10px;
+  flex-shrink: 0;
+}
+
+.skeet-tab-btn {
+  width: 100%;
+  height: 74px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  color: #505050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.skeet-tab-btn:hover {
+  color: #969696;
+}
+
+/* Active Sidebar Tab seamlessly merges into the #111111 carbon-weave body */
+.skeet-tab-btn.active {
+  color: #d8d8d8;
+  background-color: #111111;
+  background-image: radial-gradient(#191919 1px, transparent 0);
+  background-size: 4px 4px;
+  border-top: 1px solid #282828;
+  border-bottom: 1px solid #282828;
+  width: calc(100% + 1px);
+  margin-right: -1px;
+  z-index: 2;
+}
+
+/* Main Content Area with subtle Skeet Carbon-Weave Dot Pattern */
+.skeet-body {
+  flex: 1;
+  background-color: #111111;
+  background-image: radial-gradient(#191919 1px, transparent 0);
+  background-size: 4px 4px;
+  padding: 18px 18px 16px 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  overflow: hidden;
+}
+
+.skeet-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+/* Groupbox with Title Overlapping Top Border */
+.skeet-groupbox {
+  position: relative;
+  background: #171717;
+  border: 1px solid #282828;
+  box-shadow: inset 0 0 0 1px #0c0c0c;
+  padding: 14px 14px 12px 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.skeet-groupbox-full {
+  flex: 1;
+}
+
+.skeet-groupbox-grow {
+  flex: 1;
+}
+
+.skeet-group-title {
+  position: absolute;
+  top: -7px;
+  left: 10px;
+  background: #171717;
+  padding: 0 4px;
+  font-family: Verdana, Tahoma, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #d2d2d2;
+  line-height: 1;
+}
+
+.skeet-group-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  max-height: 100%;
+  padding-right: 4px;
+}
+
+.skeet-group-inner::-webkit-scrollbar {
+  width: 4px;
+}
+.skeet-group-inner::-webkit-scrollbar-thumb {
+  background: #2e2e2e;
+}
+
+/* 8x8 Square Checkboxes on the Left Margin + Text Indented at 21px */
+.skeet-check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 15px;
+}
+
+.skeet-check-left {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.skeet-checkbox {
+  width: 8px;
+  height: 8px;
+  background: linear-gradient(180deg, #3c3c3c 0%, #292929 100%);
+  border: 1px solid #0c0c0c;
+  margin-right: 13px;
+  flex-shrink: 0;
+}
+
+.skeet-checkbox.checked {
+  background: linear-gradient(180deg, var(--skeet-green) 0%, var(--skeet-green-dark) 100%);
+}
+
+.skeet-check-label {
+  color: #cdcdcd;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.skeet-check-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Right-aligned Keybind Tag [-] or [KEY] */
+.skeet-keybind {
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 9px;
+  color: #666666;
+  cursor: pointer;
+}
+.skeet-keybind:hover {
+  color: #b5b5b5;
+}
+
+/* Color Swatch (Right-aligned 16x8px rectangle like "Menu color" in image-1.png) */
+.skeet-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 21px;
+  min-height: 15px;
+}
+
+.skeet-indented-label {
+  color: #cdcdcd;
+  font-size: 11px;
+}
+
+.skeet-color-swatch {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 9px;
+  border: 1px solid #0c0c0c;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+.skeet-color-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.skeet-color-swatch::-webkit-color-swatch {
+  border: none;
+}
+
+/* Indented Control Blocks (Sliders, Dropdowns, Buttons align at 21px left indent!) */
+.skeet-control-block {
+  padding-left: 21px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 1px;
+}
+
+.skeet-control-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 155px;
+}
+
+.skeet-control-label {
+  color: #cdcdcd;
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+/* 155px Wide x 7px Tall Horizontal Slider Track with Centered Bold Value */
+.skeet-slider-track {
+  position: relative;
+  width: 155px;
+  height: 7px;
+  background: linear-gradient(180deg, #292929 0%, #353535 100%);
+  border: 1px solid #0c0c0c;
+  cursor: ew-resize;
+}
+
+.skeet-slider-fill {
+  height: 100%;
+  background: linear-gradient(180deg, var(--skeet-green) 0%, var(--skeet-green-dark) 100%);
+}
+
+.skeet-slider-value {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* 155px Wide x 19px Tall Dropdown Select */
+.skeet-select-wrap {
+  position: relative;
+  width: 155px;
+}
+
+.skeet-select {
+  width: 155px;
+  height: 19px;
+  background: linear-gradient(180deg, #242424 0%, #1d1d1d 100%);
+  border: 1px solid #0c0c0c;
+  box-shadow: inset 0 0 0 1px #2c2c2c;
+  color: #b8b8b8;
+  font-family: Verdana, Tahoma, sans-serif;
+  font-size: 11px;
+  padding: 0 18px 0 6px;
+  outline: none;
+  cursor: pointer;
+}
+
+.skeet-select option {
+  background: #1c1c1c;
+  color: #d2d2d2;
+}
+
+/* 155px Wide x 20px Tall Dark Gradient Button */
+.skeet-button {
+  width: 155px;
+  height: 20px;
+  background: linear-gradient(180deg, #262626 0%, #1c1c1c 100%);
+  border: 1px solid #0c0c0c;
+  box-shadow: inset 0 0 0 1px #2e2e2e;
+  color: #cdcdcd;
+  font-family: Verdana, Tahoma, sans-serif;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+}
+.skeet-button:hover {
+  background: linear-gradient(180deg, #2e2e2e 0%, #222222 100%);
+  color: #ffffff;
+}
+.skeet-button:active {
+  background: #171717;
+}
+
+/* Players List inside Tab 6 */
+.skeet-player-list {
+  width: 195px;
+  height: 210px;
+  background: #121212;
+  border: 1px solid #0c0c0c;
+  box-shadow: inset 0 0 0 1px #282828;
+  overflow-y: auto;
+}
+.skeet-player-row {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #bdbdbd;
+  cursor: pointer;
+  border-bottom: 1px solid #1b1b1b;
+}
+.skeet-player-row.active {
+  background: #242424;
+  color: var(--skeet-green);
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   AUTHENTIC CS:GO PANORAMA UI MAIN MENU
+   ========================================================================== */
+#main-menu-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: radial-gradient(circle at 50% 40%, rgba(16, 24, 38, 0.38) 0%, rgba(7, 11, 18, 0.86) 100%);
+  backdrop-filter: blur(3px);
+}
+
+.csgo-panorama {
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+/* Left Vertical CS:GO Icon Navigation Rail */
+.csgo-left-rail {
+  width: 66px;
+  height: 100%;
+  background: rgba(12, 16, 22, 0.88);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 0;
+  gap: 8px;
+}
+
+.csgo-rail-logo {
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.csgo-rail-btn {
+  width: 48px;
+  height: 48px;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.csgo-rail-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+.csgo-rail-btn.active {
+  color: #ffffff;
+  border-left-color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.csgo-rail-spacer {
+  flex: 1;
+}
+
+.csgo-rail-skeet {
+  border: 1px solid rgba(168, 207, 10, 0.45);
+  border-radius: 4px;
+}
+
+/* Center CS:GO Stage */
+.csgo-center-stage {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 26px;
+  overflow: hidden;
+}
+
+.csgo-play-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(12, 17, 25, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  padding: 18px 22px;
+  min-height: 0;
+}
+
+.csgo-play-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding-bottom: 12px;
+}
+
+.csgo-play-title-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.csgo-play-main-title {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  color: #ffffff;
+}
+
+.csgo-play-top-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.csgo-top-tab {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+}
+.csgo-top-tab.active,
+.csgo-top-tab:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-color: #ffffff;
+}
+
+.csgo-play-subbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.csgo-submodes {
+  display: flex;
+  gap: 6px;
+}
+
+.csgo-mode-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #94a3b8;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.csgo-mode-tab.active {
+  color: #ffffff;
+  border-bottom-color: var(--t-gold);
+}
+
+.csgo-bot-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.csgo-pano-select {
+  background: rgba(15, 23, 34, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f1f5f9;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  outline: none;
+  cursor: pointer;
+}
+
+.csgo-botcount-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  background: rgba(15, 23, 34, 0.85);
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+/* Tall Vertical CS:GO Panorama Map Cards */
+.csgo-map-cards-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 16px 0;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.csgo-map-tall-card {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #0f1722;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 12px 14px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+  min-height: 155px;
+}
+
+.csgo-map-tall-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.csgo-map-tall-card.selected {
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 22px rgba(245, 158, 11, 0.28);
+}
+
+.csgo-map-card-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.csgo-map-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #000;
+  font-weight: 900;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.csgo-map-emblem {
+  position: relative;
+  z-index: 1;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(10, 14, 22, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #ffffff;
+  margin-top: 8px;
+}
+
+.csgo-map-card-footer {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.csgo-map-card-name {
+  font-size: 14px;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 0.6px;
+}
+
+.csgo-map-card-sub {
+  font-size: 10px;
+  color: #cbd5e1;
+  margin-top: 2px;
+}
+
+/* Bottom CS:GO Panorama Action Bar with Green GO ("НАЧАТЬ") Button */
+.csgo-play-bottombar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  padding-top: 12px;
+}
+
+.csgo-bottom-options {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.csgo-pano-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.csgo-bottom-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.csgo-go-btn {
+  background: linear-gradient(180deg, #37c962 0%, #219643 100%);
+  border: 1px solid #68e38b;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  padding: 11px 36px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(46, 189, 89, 0.38);
+}
+.csgo-go-btn:hover {
+  filter: brightness(1.08);
+}
+
+.csgo-resume-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 11px 18px;
+  cursor: pointer;
+}
+
+/* Right-Side CS:GO Player Profile & Friends Column */
+.csgo-right-profile {
+  width: 270px;
+  height: 100%;
+  background: rgba(12, 16, 22, 0.88);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 16px;
+  gap: 16px;
+}
+
+.csgo-profile-card {
+  background: rgba(20, 27, 38, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.csgo-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.csgo-avatar-box {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+  border: 2px solid var(--ct-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 15px;
+}
+
+.csgo-player-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.csgo-prime-tag {
+  font-size: 10px;
+  color: #4ade80;
+  font-weight: 700;
+}
+
+.csgo-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(10, 14, 20, 0.65);
+  padding: 7px 9px;
+}
+
+.csgo-rank-icon,
+.csgo-ge-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.csgo-rank-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: #f1f5f9;
+}
+.csgo-rank-sub {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.csgo-xp-bar {
+  width: 140px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  margin-top: 4px;
+}
+.csgo-xp-fill {
+  width: 82%;
+  height: 100%;
+  background: #38bdf8;
+}
+
+.csgo-friends-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.csgo-friends-header {
+  font-size: 11px;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.6px;
+}
+.csgo-friends-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.csgo-friend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(20, 27, 38, 0.6);
+  padding: 8px 10px;
+  border-left: 2px solid #4ade80;
+}
+.csgo-friend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+}
+.csgo-friend-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.csgo-friend-status {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.csgo-skeet-launch-btn {
+  width: 100%;
+  padding: 10px;
+  background: rgba(149, 184, 6, 0.18);
+  border: 1px solid var(--skeet-green);
+  color: #d9f99d;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.csgo-skeet-launch-btn:hover {
+  background: rgba(149, 184, 6, 0.32);
+}
+
+/* Home, Loadout & Settings Subviews inside Panorama */
+.csgo-home-view {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  padding: 24px;
+}
+.csgo-news-panel {
+  max-width: 540px;
+  background: rgba(12, 17, 25, 0.86);
+  border-left: 4px solid #f59e0b;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.csgo-news-tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: #f59e0b;
+}
+.csgo-home-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.csgo-inventory-body,
+.csgo-settings-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-top: 14px;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.mm-weapons-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.mm-weapon-card {
+  background: rgba(18, 26, 38, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+.mm-weapon-card:hover {
+  border-color: #f59e0b;
+}
+.mm-wep-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #94a3b8;
+}
+.mm-wep-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+}
+.mm-wep-stats {
+  font-size: 11px;
+  color: #cbd5e1;
+}
+.mm-equip-btn {
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.csgo-skin-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mm-field {
+  background: rgba(18, 26, 38, 0.75);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.mm-field-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.mm-field input[type='range'] {
+  width: 100%;
+}
+
+/* ==========================================================================
+   PAUSE BANNER, SCOREBOARD & SOURCE DEVELOPER CONSOLE
+   ========================================================================== */
+#lock-banner,
+#scoreboard-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 10, 16, 0.65);
+}
+
+.ctp-card {
+  background: rgba(14, 19, 28, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 24px 30px;
+  max-width: 480px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ctp-badge {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--t-gold);
+}
+.ctp-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.ctp-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ctp-btn.primary {
+  background: #2ebd59;
+  border-color: #68e38b;
+}
+
+.sb-card {
+  width: 680px;
+  background: rgba(12, 16, 22, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 16px;
+}
+.sb-header {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--t-gold);
+  margin-bottom: 10px;
+}
+.sb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.sb-table th,
+.sb-table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.sb-clan {
+  color: var(--skeet-green);
+  font-weight: 700;
+}
+
+#dev-console {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 620px;
+  height: 320px;
+  background: rgba(18, 20, 24, 0.96);
+  border: 1px solid #3f3f46;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+.con-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #27272a;
+  font-weight: 700;
+}
+.con-header button {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+.con-output {
+  flex: 1;
+  padding: 8px 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.con-form {
+  display: flex;
+  border-top: 1px solid #3f3f46;
+}
+.con-form input {
+  flex: 1;
+  background: #121316;
+  border: none;
+  color: #fff;
+  padding: 7px 10px;
+  outline: none;
+}
+.con-form button {
+  background: #3f3f46;
+  border: none;
+  color: #fff;
+  padding: 0 14px;
+  cursor: pointer;
+}

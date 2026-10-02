@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CS:GO 3D — GAMESENSE.PUB (SKEET.CC) EDITION</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="game-root">
+      <!-- 3D WebGL Canvas -->
+      <canvas id="game-canvas"></canvas>
+
+      <!-- 2D ESP & Skeet Indicators Canvas -->
+      <canvas id="esp-canvas"></canvas>
+
+      <!-- Sniper Scope Overlay -->
+      <div id="scope-overlay" class="hidden">
+        <div class="scope-line-h"></div>
+        <div class="scope-line-v"></div>
+        <div class="scope-vignette"></div>
+      </div>
+
+      <!-- AUTHENTIC CS:GO PANORAMA IN-GAME HUD -->
+      <div id="hud-layer">
+        <!-- TOP-LEFT: CS:GO Circular Rotating Radar + Location + Money + Event Logs -->
+        <div id="csgo-top-left">
+          <div class="csgo-radar-wrap">
+            <canvas id="csgo-radar-canvas" width="168" height="168"></canvas>
+            <div class="csgo-radar-north">N</div>
+          </div>
+          <div class="csgo-location-row">
+            <span id="hud-map-badge">DE_MIRAGE</span>
+            <span id="hud-fps-pill" class="csgo-net-pill">144 FPS • 64 TICK</span>
+          </div>
+          <div class="csgo-money-box">
+            <span class="csgo-dollar">$</span>
+            <span id="hud-money">16000</span>
+          </div>
+          <!-- Gamesense Top-Left Event Logs -->
+          <div id="event-logs"></div>
+        </div>
+
+        <!-- TOP-CENTER: CS:GO Round Timer, CT/T Scores & Alive Player Avatars -->
+        <div id="csgo-top-center">
+          <div class="csgo-avatars-side ct-side" id="hud-ct-avatars">
+            <div class="csgo-mini-avatar ct alive">
+              <span>CT</span>
+              <div class="mini-hp"><div id="hud-mini-ct-hp" style="width:100%"></div></div>
+            </div>
+          </div>
+
+          <div class="csgo-score-center">
+            <div class="csgo-timer-row">
+              <div class="csgo-team-score ct" id="score-ct">0</div>
+              <div class="csgo-round-clock" id="round-clock">1:55</div>
+              <div class="csgo-team-score t" id="score-t">0</div>
+            </div>
+            <div class="csgo-alive-row">
+              <div class="csgo-alive-box ct" id="hud-alive-ct">1 ЖИВ</div>
+              <div class="csgo-mode-label" id="hud-score">0 / 0 / 0</div>
+              <div class="csgo-alive-box t" id="hud-alive-t">5 ЖИВЫ</div>
+            </div>
+          </div>
+
+          <div class="csgo-avatars-side t-side" id="hud-t-avatars"></div>
+        </div>
+
+        <!-- TOP-RIGHT: Authentic CS:GO Killfeed + Skeet Watermark + Keybind Widget -->
+        <div id="csgo-top-right">
+          <div id="watermark">
+            <span id="watermark-text">gamesense.pub | de_mirage | 64tick | [INSERT] menu</span>
+          </div>
+          <div id="killfeed"></div>
+          <div id="keybinds-widget">
+            <div class="kb-header">keybinds</div>
+            <div id="keybinds-list"></div>
+          </div>
+        </div>
+
+        <!-- CENTER ROUND BANNER -->
+        <div id="round-banner" class="hidden">РАУНД НАЧАЛСЯ</div>
+
+        <!-- BOTTOM-LEFT: Authentic CS:GO Health & Armor + Chat -->
+        <div id="csgo-bottom-left">
+          <div id="hvh-chat"></div>
+          <div class="csgo-vitals-panel">
+            <div class="csgo-vital-block" id="csgo-hp-block">
+              <span class="csgo-vital-icon">✚</span>
+              <span class="csgo-vital-num" id="hud-hp">100</span>
+              <div class="csgo-vital-bar"><div id="hud-hp-fill" style="width:100%"></div></div>
+            </div>
+            <div class="csgo-vital-block">
+              <span class="csgo-vital-icon">🛡</span>
+              <span class="csgo-vital-num" id="hud-armor">100</span>
+              <div class="csgo-vital-bar"><div id="hud-armor-fill" style="width:100%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTTOM-CENTER: Subtle Controls Bar -->
+        <div id="csgo-bottom-center">
+          <div class="csgo-controls-strip">
+            <button id="open-menu-btn" class="hud-quick-btn">SKEET MENU [INSERT]</button>
+            <button id="open-lobby-btn" class="hud-quick-btn">CS:GO МЕНЮ</button>
+            <span><kbd>1</kbd>–<kbd>9</kbd> Оружие</span>
+            <span><kbd>V</kbd> 3-е лицо</span>
+            <span><kbd>H</kbd> Auto-Peek</span>
+            <span><kbd>K</kbd> Дым</span>
+            <span><kbd>~</kbd> Консоль</span>
+          </div>
+        </div>
+
+        <!-- BOTTOM-RIGHT: Authentic CS:GO Vertical Weapon Inventory Stack + Ammo Panel -->
+        <div id="csgo-bottom-right">
+          <div id="csgo-weapon-stack">
+            <div class="csgo-slot-item wep-slot active" data-slot="ssg08">
+              <span class="slot-wep-name">SSG 08 (Scout)</span>
+              <span class="slot-key">1</span>
+            </div>
+            <div class="csgo-slot-item wep-slot" data-slot="scar20">
+              <span class="slot-wep-name">SCAR-20 Auto</span>
+              <span class="slot-key">2</span>
+            </div>
+            <div class="csgo-slot-item wep-slot" data-slot="awp">
+              <span class="slot-wep-name">AWP</span>
+              <span class="slot-key">3</span>
+            </div>
+            <div class="csgo-slot-item wep-slot" data-slot="ak47">
+              <span class="slot-wep-name">AK-47</span>
+              <span class="slot-key">4</span>
+            </div>
+            <div class="csgo-slot-item wep-slot" data-slot="deagle">
+              <span class="slot-wep-name">Desert Eagle</span>
+              <span class="slot-key">6</span>
+            </div>
+            <div class="csgo-slot-item wep-slot" data-slot="knife">
+              <span class="slot-wep-name" id="hud-knife-slot-name">★ Karambit</span>
+              <span class="slot-key">9</span>
+            </div>
+          </div>
+
+          <div class="csgo-ammo-panel">
+            <div class="csgo-ammo-current-wep" id="hud-wep-name">SSG 08 (SCOUT)</div>
+            <div class="csgo-ammo-numbers" id="hud-ammo">10 / 90</div>
+            <div class="csgo-bullet-ticks">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pointer Lock Pause / Click-to-Play Banner -->
+      <div id="lock-banner" class="hidden">
+        <div class="ctp-card">
+          <div class="ctp-badge">ПАУЗА • COUNTER-STRIKE: GLOBAL OFFENSIVE</div>
+          <h2>НАЖМИТЕ ДЛЯ ВОЗВРАТА В ИГРУ</h2>
+          <p>
+            Нажмите <kbd>INSERT</kbd> чтобы открыть точное меню чита <b>Gamesense.pub (Skeet.cc)</b>.
+          </p>
+          <div class="ctp-actions">
+            <button id="start-play-btn" class="ctp-btn primary">ПРОДОЛЖИТЬ ИГРУ (ЛКМ)</button>
+            <button id="banner-menu-btn" class="ctp-btn">МЕНЮ ЧИТА SKEET [INSERT]</button>
+            <button id="banner-lobby-btn" class="ctp-btn">ГЛАВНОЕ МЕНЮ CS:GO</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB Scoreboard -->
+      <div id="scoreboard-overlay" class="hidden">
+        <div class="sb-card">
+          <div class="sb-header" id="sb-server-title">COUNTER-STRIKE: GLOBAL OFFENSIVE SERVER</div>
+          <table class="sb-table">
+            <thead>
+              <tr>
+                <th>Клан</th>
+                <th>Игрок</th>
+                <th>Оружие</th>
+                <th>Убийств</th>
+                <th>Смертей</th>
+                <th>Звание ММ</th>
+              </tr>
+            </thead>
+            <tbody id="sb-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Source Engine Developer Console (~) -->
+      <div id="dev-console" class="hidden">
+        <div class="con-header">
+          <span>SOURCE ENGINE DEVELOPER CONSOLE (~)</span>
+          <button id="dev-console-close">✕</button>
+        </div>
+        <div id="dev-console-log" class="con-output">
+          <div>Counter-Strike: Global Offensive Source Console initialized. Type <b>help</b> for commands.</div>
+        </div>
+        <form id="dev-console-form" class="con-form">
+          <input type="text" id="dev-console-input" placeholder="sv_airaccelerate 100, map de_nuke_outside, bot_add, thirdperson..." autocomplete="off" />
+          <button type="submit">SUBMIT</button>
+        </form>
+      </div>
+
+      <!-- FULL-SCREEN CS:GO PANORAMA MAIN MENU -->
+      <div id="main-menu-screen"></div>
+
+      <!-- GAMESENSE / SKEET.CC CHEAT MENU OVERLAY (Toggled with INSERT) -->
+      <div id="skeet-overlay" class="hidden"></div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
