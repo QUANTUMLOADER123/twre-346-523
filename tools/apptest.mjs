@@ -35,7 +35,7 @@ globalThis.performance = performance;
 Object.defineProperty(globalThis, 'navigator', { value: { clipboard: { writeText: async () => {}, readText: async () => '{}' } }, configurable: true });
 globalThis.FakeRenderer = class { constructor() { this.shadowMap = {}; this.domElement = fakeEl('canvas'); } setPixelRatio() {} setSize() {} clear() {} clearDepth() {} render(scene, cam) { scene.updateMatrixWorld?.(); } setClearColor() {} getPixelRatio() { return 1; } setScissorTest() {} setViewport() {} };
 let src = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
-src = src.replace('new THREE.WebGLRenderer(', 'new globalThis.FakeRenderer(').replace('window.app = new App();', 'export { App };');
+src = src.replace('new THREE.WebGLRenderer(', 'new globalThis.FakeRenderer(').replace('window.app = new App();', 'window.app = null;') + '\nexport { App };\n';
 fs.writeFileSync(new URL('../src/_apptest_main.mjs', import.meta.url), src);
 try {
   const { App } = await import('../src/_apptest_main.mjs');

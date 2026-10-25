@@ -326,4 +326,14 @@ class App {
   }
 }
 
-window.app = new App();
+try {
+  window.app = new App();
+  document.getElementById('boot-msg')?.remove();
+} catch (err) {
+  const noGL = /webgl|context/i.test(String(err && err.message));
+  const msg = noGL
+    ? 'Не удалось создать WebGL-контекст. Включи аппаратное ускорение в настройках браузера (chrome://settings/system) или попробуй другой браузер.\n' + err.message
+    : 'Ошибка запуска: ' + (err && (err.stack || err.message) || err);
+  (window.__bootShow || console.error)(msg);
+  const bm = document.getElementById('boot-msg'); if (bm) bm.textContent = noGL ? 'WebGL недоступен' : 'Ошибка запуска (подробности внизу)';
+}

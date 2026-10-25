@@ -4,9 +4,25 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>STRAFE.ZONE — CS-style shooter with a built-in cheat menu</title>
+  <style>html,body{background:#000;color:#ddd;margin:0}#boot-msg{position:fixed;left:0;right:0;top:45%;text-align:center;font:14px Verdana,sans-serif;color:#9ee35d;z-index:0}#boot-err{display:none;position:fixed;left:10px;right:10px;bottom:10px;z-index:9999;background:#2a0000;border:1px solid #f44;color:#fff;font:12px monospace;padding:10px;white-space:pre-wrap;max-height:45vh;overflow:auto}</style>
+  <script>
+    // показываем любые ошибки прямо на экране, чтобы было что прислать на скриншоте
+    (function () {
+      function show(msg) {
+        var el = document.getElementById('boot-err');
+        if (!el) { document.addEventListener('DOMContentLoaded', function () { show(msg); }); return; }
+        el.style.display = 'block'; el.textContent += msg + '\n';
+      }
+      window.addEventListener('error', function (e) { show('Ошибка: ' + (e.message || e) + (e.filename ? '\n  ' + e.filename + ':' + e.lineno : '') + (e.error && e.error.stack ? '\n' + e.error.stack : '')); });
+      window.addEventListener('unhandledrejection', function (e) { var r = e.reason; show('Ошибка (promise): ' + (r && (r.stack || r.message) || r)); });
+      window.__bootShow = show;
+    })();
+  </script>
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
+  <div id="boot-msg">Загрузка strafe.zone…</div>
+  <div id="boot-err"></div>
   <canvas id="gl"></canvas>
   <canvas id="hud"></canvas>
 
