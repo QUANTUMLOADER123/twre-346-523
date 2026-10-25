@@ -11,8 +11,11 @@
 #include "../shared/gameevents.hpp"
 #include "../shared/mapinfo.hpp"
 #include "../shared/soundemitter.hpp"
+#include "../server/nav_mesh.hpp"
+#include "../../engine/hlfs.hpp"
 #include "rlgl.h"
 #include <deque>
+#include <sstream>
 #include <cmath>
 #include <algorithm>
 
@@ -83,10 +86,70 @@ static void OnEvent(const IGameEvent& e) {
   }
 }
 
+// radar image <-> world: world = s_radarW0 + u * s_radarDU + v * s_radarDV  (u, v in texture pixels)
+static Vector s_radarW0, s_radarDU, s_radarDV;
+
+// CS 1.6 overview (overviews/<map>.txt + .bmp from the player's install), HL1 spectator overview layout
+static bool LoadOverviewRadar(const CMapInfo& m) {
+  std::vector<uint8_t> txt; if (!hlfs::Read("overviews/" + m.name + ".txt", txt)) return false;
+  std::string t(txt.begin(), txt.end());
+  float zoom = 1.f, ox = 0, oy = 0; int rotated = 0; std::string image = "overviews/" + m.name + ".bmp";
+  std::istringstream in(t); std::string tok;
+  while (in >> tok) {
+    std::string lt = hlfs::Lower(tok);
+    if (lt == "zoom") in >> zoom;
+    else if (lt == "origin") { float oz; in >> ox >> oy >> oz; }
+    else if (lt == "rotated") in >> rotated;
+    else if (lt == "image") { in >> image; if (image.size() >= 2 && image.front() == '"') image = image.substr(1, image.size() - 2); }
+  }
+  std::string path = hlfs::Find(image); if (path.empty()) return false;
+  Image img = LoadImage(path.c_str()); if (!img.data) return false;
+  ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+  // background colour (corner pixel) becomes transparent
+  Color* px = (Color*)img.data; Color bg = px[0];
+  for (int i = 0; i < img.width * img.height; i++) {
+    Color& c = px[i];
+    if (std::abs(c.r - bg.r) + std::abs(c.g - bg.g) + std::abs(c.b - bg.b) < 24) c = { 0, 0, 0, 0 }; else c.a = 235;
+  }
+  if (zoom <= 0) zoom = 1;
+  float upp = 8192.f / zoom / (float)(rotated ? img.width : img.width);   // world units per image pixel (1024 px = 8192 / zoom)
+  float halfW = img.width * 0.5f * upp, halfH = img.height * 0.5f * upp;
+  if (rotated) { s_radarW0 = Vector(ox - halfW, oy + halfH, 0); s_radarDU = Vector(upp, 0, 0); s_radarDV = Vector(0, -upp, 0); }
+  else { s_radarW0 = Vector(ox + halfH, oy + halfW, 0); s_radarDU = Vector(0, -upp, 0); s_radarDV = Vector(-upp, 0, 0); }
+  s_radarTex = LoadTextureFromImage(img); SetTextureFilter(s_radarTex, TEXTURE_FILTER_BILINEAR);
+  UnloadImage(img);
+  Msg("Radar: %s (zoom %.2f%s)\n", image.c_str(), zoom, rotated ? ", rotated" : "");
+  return true;
+}
+
+// original maps without an overview: top-down image of the nav columns (height shaded)
+static void BuildNavRadar() {
+  float x0, y0, cell; int w, h; g_NavMesh.GetGrid(x0, y0, cell, w, h);
+  if (w <= 0 || h <= 0) return;
+  const int S = 2;
+  Image img = GenImageColor(w * S, h * S, { 0, 0, 0, 0 });
+  float zmin = 1e9f, zmax = -1e9f;
+  for (int i = 0; i < g_NavMesh.NumAreas(); i++) { const CNavArea* a = g_NavMesh.GetArea(i); if (a->reachable) { zmin = std::min(zmin, a->z); zmax = std::max(zmax, a->z); } }
+  for (int cy = 0; cy < h; cy++) for (int cx = 0; cx < w; cx++) {
+    float top = -1e9f;
+    for (int i : g_NavMesh.Column(cy * w + cx)) { const CNavArea* a = g_NavMesh.GetArea(i); if (a->reachable) top = std::max(top, a->z); }
+    if (top < -1e8f) continue;
+    float k = zmax > zmin ? (top - zmin) / (zmax - zmin) : 0.5f;
+    unsigned char v = (unsigned char)(110 + 110 * k);
+    ImageDrawRectangle(&img, cx * S, (h - 1 - cy) * S, S, S, { v, (unsigned char)(v * 0.95f), (unsigned char)(v * 0.82f), 230 });
+  }
+  s_radarW0 = Vector(x0, y0 + h * cell, 0); s_radarDU = Vector(cell / S, 0, 0); s_radarDV = Vector(0, -cell / S, 0);
+  s_radarTex = LoadTextureFromImage(img); SetTextureFilter(s_radarTex, TEXTURE_FILTER_BILINEAR);
+  UnloadImage(img);
+}
+
 static void BuildRadarTexture() {
   if (s_radarTex.id) { UnloadTexture(s_radarTex); s_radarTex = {}; }
-  const CMapInfo& m = g_MapInfo; if (m.gw <= 0) return;
+  const CMapInfo& m = g_MapInfo;
+  if (m.isBsp) { if (!LoadOverviewRadar(m)) BuildNavRadar(); return; }
+  if (m.gw <= 0) return;
   const int S = 4; // pixels per cell
+  s_radarW0 = Vector(m.gridOrigin.x, m.gridOrigin.y, 0); s_radarDU = Vector(m.cell / S, 0, 0); s_radarDV = Vector(0, -m.cell / S, 0);
   Image img = GenImageColor(m.gw * S, m.gh * S, { 0, 0, 0, 0 });
   float zmin = 1e9f, zmax = -1e9f;
   for (int i = 0; i < m.gw * m.gh; i++) if (!std::isnan(m.floorZ[i]) && (m.cellType[i] == 1 || m.cellType[i] == 3)) { zmin = std::min(zmin, m.floorZ[i]); zmax = std::max(zmax, m.floorZ[i]); }
@@ -331,18 +394,24 @@ static void DrawRadar(CCSPlayer* lp, float sc) {
   float unitsPerPx = 1.f / (cl_radar_scale.GetFloat() * 0.14f) * (1.f / sc);   // ~ world units per screen px
   surface()->DrawFilledRect(x0, y0, size, size, { 0, 0, 0, 110 });
   surface()->PushClip((int)x0, (int)y0, (int)size, (int)size);
-  // map texture: world -> texture pixel = (x - ox)/cell*4, (oy - y)/cell*4
-  float pxPerUnitTex = 4.f / m.cell;
-  float scale = 1.f / unitsPerPx / pxPerUnitTex;        // screen px per texture px
-  float tx = (center.x - m.gridOrigin.x) * pxPerUnitTex, ty = (m.gridOrigin.y - center.y) * pxPerUnitTex;
-  float rot = yaw - 90.f;                                // forward = up on screen (raylib rotates clockwise on screen)
   float cx = x0 + size / 2, cy = y0 + size / 2;
-  DrawTexturePro(s_radarTex, { 0, 0, (float)s_radarTex.width, (float)s_radarTex.height }, { cx, cy, s_radarTex.width * scale, s_radarTex.height * scale }, { tx * scale, ty * scale }, rot, { 255, 255, 255, 220 });
   auto toRadar = [&](const Vector& p, Vector2& out) {
     Vector d = p - center; float a = DEG2RADF(yaw - 90.f);
     float rx = d.x * std::cos(a) + d.y * std::sin(a), ry = -d.x * std::sin(a) + d.y * std::cos(a);
     out = { cx + rx / unitsPerPx, cy - ry / unitsPerPx };
   };
+  { // map image: its four corners through the same world -> radar transform (any overview orientation)
+    float W = (float)s_radarTex.width, H = (float)s_radarTex.height;
+    const float uv[4][2] = { { 0, 0 }, { 0, 1 }, { 1, 1 }, { 1, 0 } };
+    Vector2 sp[4];
+    for (int k = 0; k < 4; k++) toRadar(s_radarW0 + s_radarDU * (uv[k][0] * W) + s_radarDV * (uv[k][1] * H), sp[k]);
+    rlSetTexture(s_radarTex.id);
+    rlBegin(RL_QUADS);
+    rlColor4ub(255, 255, 255, 220);
+    for (int k = 0; k < 4; k++) { rlTexCoord2f(uv[k][0], uv[k][1]); rlVertex2f(sp[k].x, sp[k].y); }
+    rlEnd();
+    rlSetTexture(0);
+  }
   // players
   for (CCSPlayer* p : UTIL_GetPlayers(true)) {
     if (p == cl.viewEntity) continue;

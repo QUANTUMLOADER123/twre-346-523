@@ -97,8 +97,11 @@
     <ClCompile Include="..\src\cheat\misc.cpp" />
     <ClCompile Include="..\src\cheat\ragebot.cpp" />
     <ClCompile Include="..\src\cheat\visuals.cpp" />
+    <ClCompile Include="..\src\engine\bsp.cpp" />
+    <ClCompile Include="..\src\engine\bsprender.cpp" />
     <ClCompile Include="..\src\engine\convar.cpp" />
     <ClCompile Include="..\src\engine\enginetrace.cpp" />
+    <ClCompile Include="..\src\engine\hlfs.cpp" />
     <ClCompile Include="..\src\engine\host.cpp" />
     <ClCompile Include="..\src\engine\materialsystem.cpp" />
     <ClCompile Include="..\src\engine\studio.cpp" />
@@ -132,9 +135,11 @@
   <ItemGroup>
     <ClInclude Include="..\src\cheat\cheat.hpp" />
     <ClInclude Include="..\src\cheat\cheat_internal.hpp" />
+    <ClInclude Include="..\src\engine\bsp.hpp" />
     <ClInclude Include="..\src\engine\convar.hpp" />
     <ClInclude Include="..\src\engine\enginetrace.hpp" />
     <ClInclude Include="..\src\engine\globals.hpp" />
+    <ClInclude Include="..\src\engine\hlfs.hpp" />
     <ClInclude Include="..\src\engine\host.hpp" />
     <ClInclude Include="..\src\engine\materialsystem.hpp" />
     <ClInclude Include="..\src\engine\mathlib.hpp" />

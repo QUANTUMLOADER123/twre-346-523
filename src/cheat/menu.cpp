@@ -107,7 +107,18 @@ static void RegisterVars() {
     { "Slow motion", &a.slowWalkKey }, { "Thirdperson", &s.thirdpersonKey }, { "Edge jump", &m.edgeJumpKey } };
 }
 
-static std::string ConfigPath(const std::string& n) { return "cfg/hvhsense_" + n + ".cfg"; }
+static std::string ConfigPath(const std::string& n) { return "cfg/aimwhere_" + n + ".cfg"; }
+// configs from before the rename (cfg/hvhsense_*.cfg) are renamed once
+static void MigrateOldConfigs() {
+  static bool done = false; if (done) return; done = true;
+  std::error_code ec;
+  for (auto& de : std::filesystem::directory_iterator("cfg", ec)) {
+    std::string fn = de.path().filename().string();
+    if (fn.rfind("hvhsense_", 0) != 0) continue;
+    std::filesystem::path to = de.path().parent_path() / ("aimwhere_" + fn.substr(9));
+    if (!std::filesystem::exists(to, ec)) std::filesystem::rename(de.path(), to, ec);
+  }
+}
 void Config_Save(const std::string& name) {
   std::error_code ec; std::filesystem::create_directories("cfg", ec);
   std::ofstream f(ConfigPath(name));
@@ -125,6 +136,7 @@ void Config_Save(const std::string& name) {
   Log(v.misc.accent, "Saved config \"%s\"", name.c_str());
 }
 bool Config_Load(const std::string& name) {
+  MigrateOldConfigs();
   std::ifstream f(ConfigPath(name));
   if (!f) return false;
   std::map<std::string, VarEntry*> idx; for (auto& e : s_registry) idx[e.name] = &e;
@@ -144,11 +156,12 @@ bool Config_Load(const std::string& name) {
   return true;
 }
 std::vector<std::string> Config_List() {
-  std::vector<std::string> out = { "default", "rage", "hvh 1", "hvh 2", "legit", "secret" };
+  MigrateOldConfigs();
+  std::vector<std::string> out = { "default", "rage", "hvh 1", "hvh 2", "secret" };
   std::error_code ec;
   for (auto& de : std::filesystem::directory_iterator("cfg", ec)) {
     std::string fn = de.path().filename().string();
-    if (fn.rfind("hvhsense_", 0) == 0 && fn.size() > 13 && fn.substr(fn.size() - 4) == ".cfg") {
+    if (fn.rfind("aimwhere_", 0) == 0 && fn.size() > 13 && fn.substr(fn.size() - 4) == ".cfg") {
       std::string n = fn.substr(9, fn.size() - 13);
       if (std::find(out.begin(), out.end(), n) == out.end()) out.push_back(n);
     }
@@ -164,7 +177,7 @@ void Log(Col c, const char* fmt, ...) {
   char buf[512]; va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof(buf), fmt, ap); va_end(ap);
   s_logs.push_back({ buf, c, (float)GetTime() });
   while (s_logs.size() > 10) s_logs.pop_front();
-  ConColorMsg(Color32{ c.r, c.g, c.b, 255 }, "[hvhsense] ");
+  ConColorMsg(Color32{ c.r, c.g, c.b, 255 }, "[aimwhere] ");
   ConColorMsg(Color32{ 220, 220, 220, 255 }, "%s\n", buf);
 }
 void DrawLogs() {
@@ -174,8 +187,8 @@ void DrawLogs() {
     if (age > 6.f) { it = s_logs.erase(it); continue; }
     float a = age > 5.5f ? (6.f - age) / 0.5f : 1.f;
     float x = 6 - (age > 5.5f ? (1 - a) * 30 : 0);
-    surface()->DrawTextOutline(FONT_CHEAT, "[hvhsense]", x, y, it->col.Alpha((int)(255 * a)), { 0, 0, 0, (unsigned char)(200 * a) });
-    surface()->DrawTextOutline(FONT_CHEAT, it->text.c_str(), x + surface()->GetTextSize(FONT_CHEAT, "[hvhsense] ").x, y, { 230, 230, 230, (unsigned char)(255 * a) }, { 0, 0, 0, (unsigned char)(200 * a) });
+    surface()->DrawTextOutline(FONT_CHEAT, "[aimwhere]", x, y, it->col.Alpha((int)(255 * a)), { 0, 0, 0, (unsigned char)(200 * a) });
+    surface()->DrawTextOutline(FONT_CHEAT, it->text.c_str(), x + surface()->GetTextSize(FONT_CHEAT, "[aimwhere] ").x, y, { 230, 230, 230, (unsigned char)(255 * a) }, { 0, 0, 0, (unsigned char)(200 * a) });
     y += 13; ++it;
   }
 }
@@ -782,10 +795,10 @@ static void PaintConfig(float x, float y, float w, float h) {
   if (ButtonW("Reset")) { Vars def; v = def; Log(v.misc.accent, "Reset to default settings"); }
   if (ButtonW("Import from clipboard")) {
     const char* clip = GetClipboardText();
-    if (clip) { std::error_code ec; std::filesystem::create_directories("cfg", ec); std::ofstream("cfg/hvhsense__clip.cfg") << clip; Config_Load("_clip"); Log(v.misc.accent, "Imported config from clipboard"); }
+    if (clip) { std::error_code ec; std::filesystem::create_directories("cfg", ec); std::ofstream("cfg/aimwhere__clip.cfg") << clip; Config_Load("_clip"); Log(v.misc.accent, "Imported config from clipboard"); }
   }
-  if (ButtonW("Export to clipboard")) { Config_Save("_clip"); std::ifstream f("cfg/hvhsense__clip.cfg"); std::stringstream ss; ss << f.rdbuf(); SetClipboardText(ss.str().c_str()); }
-  LabelW("Configs are stored in cfg/hvhsense_<name>.cfg", TextDim());
+  if (ButtonW("Export to clipboard")) { Config_Save("_clip"); std::ifstream f("cfg/aimwhere__clip.cfg"); std::stringstream ss; ss << f.rdbuf(); SetClipboardText(ss.str().c_str()); }
+  LabelW("Configs are stored in cfg/aimwhere_<name>.cfg", TextDim());
   EndGroup();
 }
 
@@ -823,9 +836,10 @@ void Menu_Paint() {
   GradV(x + 1, y + 1, W - 2, titleH - 1, shade(red, 1.15f), shade(red, 0.7f));
   float fw = 250 * S;
   Rect(x + 1, y + 2 * S, fw, titleH - 5 * S, MkCol(255, 255, 255));
-  Text(x + 8 * S, y + 6 * S, "hvh", MkCol(20, 20, 20), FONT_CHEAT_BOLD);
-  Text(x + 8 * S + TextW("hvh", FONT_CHEAT_BOLD), y + 6 * S, "sense", red, FONT_CHEAT_BOLD);
-  Text(x + 8 * S + TextW("hvhsense  ", FONT_CHEAT_BOLD), y + 6 * S, "counter-strike: hvh", MkCol(130, 130, 130));
+  Text(x + 8 * S, y + 6 * S, "AIM", MkCol(20, 20, 20), FONT_CHEAT_BOLD);
+  Text(x + 8 * S + TextW("AIM", FONT_CHEAT_BOLD), y + 6 * S, "WHERE", red, FONT_CHEAT_BOLD);
+  Text(x + 8 * S + TextW("AIMWHERE", FONT_CHEAT_BOLD), y + 6 * S, ".net", MkCol(130, 130, 130), FONT_CHEAT_BOLD);
+  Text(x + 8 * S + TextW("AIMWHERE.net   ", FONT_CHEAT_BOLD), y + 6 * S, "counter-strike: hvh", MkCol(150, 150, 150));
   {
     const char* r = TextFormat("%s | %s", g_pLocalPlayer ? g_pLocalPlayer->GetPlayerName() : "user", "v4");
     Text(x + W - 10 * S - TextW(r), y + 6 * S, r, MkCol(255, 230, 230));

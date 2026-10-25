@@ -19,7 +19,7 @@ ConVar sv_cheats("sv_cheats", "1", FCVAR_NOTIFY | FCVAR_REPLICATED, "Allow cheat
 ConVar host_timescale("host_timescale", "1.0", FCVAR_CHEAT | FCVAR_REPLICATED, "Prescale the clock by this amount.", true, 0.05f, true, 10);
 ConVar host_framerate("host_framerate", "0", FCVAR_CHEAT, "Set to lock per-frame time elapse.");
 ConVar name("name", "Player", FCVAR_ARCHIVE, "Current user name");
-ConVar sv_maxdtshift("sv_maxdtshift", "14", FCVAR_REPLICATED, "Maximum number of ticks a client can shift its tickbase (doubletap)", true, 0, true, 16);
+ConVar sv_maxdtshift("sv_maxdtshift", "15", FCVAR_REPLICATED, "Maximum number of ticks a client can shift its tickbase (doubletap)", true, 0, true, 16);
 extern ConVar bot_quota;
 extern ConVar sv_maxusrcmdprocessticks;
 
@@ -42,7 +42,7 @@ CCSPlayer* Host_CreateLocalPlayer() {
 
 bool Host_NewGame(const std::string& map) {
   Host_Disconnect();
-  std::string path = "assets/maps/" + map + ".map";
+  std::string path = ResolveMapFile(map);
   if (!g_MapInfo.Load(path)) { Warning("map load failed: %s\n", path.c_str()); return false; }
   g_EngineTrace.entities = &g_EntityList.traceList;
   gpGlobals->tickcount = 0; gpGlobals->curtime = 0;
@@ -100,14 +100,16 @@ void Host_RunTick() {
     cmd.tick_count = gpGlobals->tickcount;
     cmd.random_seed = MD5_PseudoRandom(cmd.command_number) & 0x7fffffff;
     CL_CreateMove(cmd);
-    int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 2);
+    int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 1);
     if (cmd.tickbaseShift < 0 && lp->IsAlive() && lp->m_nTickbaseShift < maxShift) {
-      // recharge: the command is held back (tickbase doesn't advance, the player stands still)
+      // recharge: the command is held back - the server doesn't simulate us at all, so we freeze in place
+      // (even mid-air) while the tickbase "owes" us ticks
       lp->m_nTickbaseShift++;
       lp->m_LastCmd = cmd;
     } else {
       RunPlayerCommand(lp, cmd);
       if (cmd.tickbaseShift > 0 && lp->IsAlive()) {
+        // release: all owed ticks are simulated at once with the current input -> we teleport n ticks ahead
         int n = std::min(cmd.tickbaseShift, lp->m_nTickbaseShift);
         CUserCmd extra = cmd;
         extra.buttons &= ~(IN_ATTACK | IN_ATTACK2);

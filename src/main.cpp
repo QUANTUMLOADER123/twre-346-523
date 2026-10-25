@@ -47,7 +47,7 @@ static void SaveScreen(const std::string& path) {
 static void LoadMenuBackground() {
   if (g_Host.active) return;
   std::string map = sv_menu_background.GetString();
-  if (g_MapInfo.Load("assets/maps/" + map + ".map")) { g_WorldRender.Unload(); g_WorldRender.Build(g_MapInfo); }
+  if (g_MapInfo.Load(ResolveMapFile(map))) { g_WorldRender.Unload(); g_WorldRender.Build(g_MapInfo); }
 }
 
 // keyboard routing: console > GameUI dialogs > cheat menu > HUD menus (team/buy/chat) > game binds

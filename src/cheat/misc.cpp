@@ -91,7 +91,7 @@ static void DoAutoBuy() {
   }
 }
 
-static const char* s_killsay[] = { "1", "sit", "nice resolver", "uid issue", "hvhsense > all", "hs", "by hvhsense", "owned by $kitty", "ez", "what's your cfg?", "refund", "ты где ресольвер потерял?" };
+static const char* s_killsay[] = { "1", "sit", "nice resolver", "uid issue", "aimwhere > all", "hs", "by aimwhere.net", "owned by $kitty", "ez", "what's your cfg?", "refund", "ты где ресольвер потерял?" };
 
 void Misc_OnEvent(const IGameEvent& ev) {
   CCSPlayer* lp = g_pLocalPlayer; if (!lp) return;

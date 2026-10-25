@@ -1,4 +1,5 @@
 #include "worldrender.hpp"
+#include "bsp.hpp"
 #include "enginetrace.hpp"
 #include "materialsystem.hpp"
 #include "convar.hpp"
@@ -137,6 +138,7 @@ Vector CWorldRenderer::ComputeLightAt(const Vector& pIn, const Vector& n, int ao
 void CWorldRenderer::Build(const CMapInfo& M) {
   Unload();
   map = &M;
+  if (M.isBsp && g_Bsp.loaded) { BuildBsp(); built = true; return; }
   auto t0 = std::chrono::steady_clock::now();
   CEngineTrace& et = g_EngineTrace;
   m_maxTop = M.wallHeight;
@@ -257,10 +259,12 @@ void CWorldRenderer::Build(const CMapInfo& M) {
 void CWorldRenderer::Unload() {
   for (auto& c : m_chunks) { UnloadMesh(c.mesh); MemFree(c.material.maps); }
   m_chunks.clear(); m_probeCache.clear(); built = false;
+  UnloadBsp();
 }
 
 void CWorldRenderer::DrawSky(const CViewSetup& v, float time) {
   if (!map || !r_drawsky.GetBool()) return;
+  if (bsp && m_hasSky) { DrawBspSky(v); return; }
   rlDisableDepthMask(); rlDisableDepthTest(); rlDisableBackfaceCulling();
   const Vector& o = v.origin; const float R = 6000.f;
   auto col = [&](float elev) { // elev -1..1
@@ -320,6 +324,7 @@ void CWorldRenderer::DrawSky(const CViewSetup& v, float time) {
 void CWorldRenderer::DrawWorld(const CViewSetup& v) {
   drawnChunks = 0;
   if (!built || !r_drawworld.GetBool()) return;
+  if (bsp) { DrawBsp(v); return; }
   Frustum fr; fr.FromMatrix(v.viewProj);
   for (auto& c : m_chunks) {
     if (fr.CullBox(c.mins, c.maxs)) continue;
@@ -329,6 +334,7 @@ void CWorldRenderer::DrawWorld(const CViewSetup& v) {
 }
 
 LightSample CWorldRenderer::SampleLight(const Vector& pos) {
+  if (bsp) return SampleLightBsp(pos);
   LightSample s; if (!map) { s.ambient = { 0.6f, 0.6f, 0.6f }; s.direct = { 0.5f, 0.5f, 0.5f }; s.dir = { 0, 0, 1 }; return s; }
   long long key = QKey(Vector(std::floor(pos.x / 24.f) * 24.f, std::floor(pos.y / 24.f) * 24.f, std::floor(pos.z / 24.f) * 24.f), Vector(0, 0, 1));
   auto it = m_probeCache.find(key); if (it != m_probeCache.end()) return it->second;

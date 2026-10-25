@@ -357,7 +357,7 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
   ProcessPendingShot();
   C_WeaponCSBase* w = lp->GetActiveCSWeapon();
   // double tap charge management
-  int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 2);
+  int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 1);
   bool dtOn = v.rage.doubletap && v.rage.doubletapKey.Active() && !g.fakeducking;
   g.doubletapping = dtOn;
   g.hideshots = v.rage.hideshots && v.rage.hideshotsKey.Active() && !dtOn;

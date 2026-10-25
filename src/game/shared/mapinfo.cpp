@@ -14,6 +14,10 @@
 #include "../../engine/enginetrace.hpp"
 #include "../../engine/materialsystem.hpp"
 #include "../../engine/convar.hpp"
+#include "../../engine/bsp.hpp"
+#include "../../engine/hlfs.hpp"
+#include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <map>
@@ -54,6 +58,8 @@ const char* CMapInfo::GetPlaceName(const Vector& p) const {
 }
 
 bool CMapInfo::Load(const std::string& path) {
+  if (path.size() > 4 && hlfs::Lower(path.substr(path.size() - 4)) == ".bsp") return LoadBsp(path);
+  g_Bsp.Unload();
   std::ifstream f(path);
   if (!f) { Warning("Map %s not found\n", path.c_str()); return false; }
   *this = CMapInfo();
@@ -295,6 +301,79 @@ bool CMapInfo::Load(const std::string& path) {
   return true;
 }
 
+// ------------------------------------------------------------------------------------------------
+// original CS 1.6 maps
+std::string ResolveMapFile(const std::string& name) {
+  if (name.size() > 4 && hlfs::Lower(name.substr(name.size() - 4)) == ".bsp") return name;
+  std::string local = "assets/maps/" + name + ".map";
+  if (hl_content.GetBool()) {
+    std::string p = hlfs::Find("maps/" + name + ".bsp");
+    if (!p.empty()) return p;
+  }
+  return local;
+}
+
+bool CMapInfo::LoadBsp(const std::string& path) {
+  *this = CMapInfo();
+  file = path; isBsp = true;
+  name = hlfs::Lower(std::filesystem::path(path).stem().string()); title = name;
+  g_EngineTrace.Clear();
+  if (!g_Bsp.Load(path, name)) { Warning("BSP %s failed to load\n", path.c_str()); return false; }
+  const CBspWorld& W = g_Bsp;
+  mins = W.worldMins; maxs = W.worldMaxs;
+  g_EngineTrace.worldMins = mins; g_EngineTrace.worldMaxs = maxs;
+  sunDir = W.sunDir; sunColor = W.sunColor;
+  wallHeight = maxs.z - mins.z;
+  bool hasBomb = false, hasHostages = false;
+  int site = 0;
+  // GoldSrc spawn origins are hull centers: drop them onto the floor (feet position)
+  auto dropToFloor = [&](Vector o) {
+    BspTrace tr; g_Bsp.Trace(1, o, o - Vector(0, 0, 256), tr, true);
+    if (!tr.startsolid && tr.fraction < 1.f) return tr.endpos - Vector(0, 0, 36);
+    return o - Vector(0, 0, 36);
+  };
+  for (const BspEntity& e : W.entities) {
+    std::string cls = e.Class();
+    if (cls == "info_player_start" || cls == "info_player_deathmatch") {
+      MapSpawn s; s.team = cls == "info_player_start" ? 3 /*CT*/ : 2 /*T*/;
+      s.origin = dropToFloor(e.GetVector("origin"));
+      s.yaw = e.Has("angles") ? e.GetVector("angles").y : e.GetFloat("angle");
+      spawns.push_back(s);
+    } else if (cls == "func_bomb_target" || cls == "info_bomb_target") {
+      hasBomb = true;
+      MapZone z; z.type = site++ == 0 ? ZONE_BOMBSITE_A : ZONE_BOMBSITE_B;
+      int mi = e.ModelIndex();
+      if (mi > 0 && mi < (int)W.models.size()) { z.mins = W.models[mi].mins; z.maxs = W.models[mi].maxs; }
+      else { Vector o = e.GetVector("origin"); z.mins = o - Vector(128, 128, 64); z.maxs = o + Vector(128, 128, 128); }
+      if (site <= 2) zones.push_back(z);
+    } else if (cls == "func_buyzone") {
+      int mi = e.ModelIndex(); if (mi <= 0 || mi >= (int)W.models.size()) continue;
+      int team = e.GetInt("team", 0);
+      MapZone z; z.mins = W.models[mi].mins; z.maxs = W.models[mi].maxs;
+      if (team == 0 || team == 1) { z.type = ZONE_BUY_T; zones.push_back(z); }
+      if (team == 0 || team == 2) { z.type = ZONE_BUY_CT; zones.push_back(z); }
+    } else if (cls == "hostage_entity" || cls == "func_hostage_rescue" || cls == "info_hostage_rescue") hasHostages = true;
+    else if (cls == "light_environment") {
+      Vector c = e.GetVector("_light", Vector(255, 255, 230));
+      sunColor = Vector(c.x, c.y, c.z) / 255.f;
+    }
+  }
+  // maps without buy zones: CS 1.6 puts one around each team's spawn points
+  for (int team = 2; team <= 3; team++) {
+    int type = team == 2 ? ZONE_BUY_T : ZONE_BUY_CT;
+    if (FindZone(type)) continue;
+    MapZone z; z.type = type; z.mins = Vector(1e9f, 1e9f, 1e9f); z.maxs = Vector(-1e9f, -1e9f, -1e9f); bool any = false;
+    for (auto& s : spawns) if (s.team == team) { z.mins = VecMin(z.mins, s.origin); z.maxs = VecMax(z.maxs, s.origin); any = true; }
+    if (!any) continue;
+    z.mins -= Vector(200, 200, 64); z.maxs += Vector(200, 200, 128);
+    zones.push_back(z);
+  }
+  mode = hasBomb ? "bomb" : (hasHostages ? "hostage" : "elimination");
+  desc = "CS 1.6";
+  Msg("Map %s (CS 1.6 BSP): %d spawns, %d zones, %d brush entities, %d textures missing\n", name.c_str(), (int)spawns.size(), (int)zones.size(), (int)W.brushEnts.size(), W.texturesMissing);
+  return true;
+}
+
 std::vector<MapListEntry> ListMaps() {
   std::vector<MapListEntry> out;
   std::error_code ec;
@@ -310,6 +389,16 @@ std::vector<MapListEntry> ListMaps() {
       if (t[0] == "desc" && t.size() > 1) m.desc = t[1];
     }
     out.push_back(m);
+  }
+  // original maps from the CS 1.6 install replace the built-in remakes of the same name
+  if (hl_content.GetBool()) {
+    for (const std::string& n : hlfs::List("maps", ".bsp")) {
+      std::string file = hlfs::Find("maps/" + n + ".bsp"); if (file.empty()) continue;
+      auto it = std::find_if(out.begin(), out.end(), [&](const MapListEntry& m) { return m.name == n; });
+      MapListEntry m; m.name = n; m.title = n; m.file = file; m.desc = "CS 1.6";
+      m.mode = n.rfind("de_", 0) == 0 ? "bomb" : (n.rfind("cs_", 0) == 0 ? "hostage" : "elimination");
+      if (it != out.end()) { m.title = it->title; *it = m; } else out.push_back(m);
+    }
   }
   std::sort(out.begin(), out.end(), [](auto& a, auto& b) { return a.name < b.name; });
   return out;

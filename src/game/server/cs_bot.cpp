@@ -35,6 +35,14 @@ const char* BotStateName(int s) {
   return (s >= 0 && s <= BOT_RETREAT) ? n[s] : "?";
 }
 
+static ConCommand cmd_bot_status("bot_status", [](const CCommand&) {
+  for (auto& [p, b] : s_bots) {
+    int area = g_NavMesh.GetAreaIndex(p->m_vecOrigin);
+    Msg("%-10s team %d hp %3d  pos %6.0f %6.0f %5.0f  state %-10s path %3d  nav %d\n", p->GetPlayerName(), p->m_iTeamNum, p->m_iHealth,
+        p->m_vecOrigin.x, p->m_vecOrigin.y, p->m_vecOrigin.z, BotStateName(b->m_iState), (int)b->m_Path.size(), area);
+  }
+}, "Print bot positions, states and paths");
+
 static const char* s_botNames[] = { "Albert", "Allen", "Bert", "Bob", "Cecil", "Clarence", "Elliot", "Elmer", "Ernie", "Eugene", "Fergus", "Ferris", "Frank", "Frasier", "Fred", "George", "Graham", "Harvey", "Irwin", "Lester", "Marvin", "Neil", "Niles", "Oliver", "Opie", "Ringo", "Rock", "Ulric", "Vladimir", "Wade", "Yanni", "Zach" };
 static const char* s_hvhNames[] = { "gamesense.pub", "neverlose.cc", "onetap.su", "fatality.win", "aimware.net", "nixware", "primordial", "skeet.cc", "pandora", "ev0lve", "rifk7", "ot v4 crack", "spirthack", "legendware", "airflow", "weave.su" };
 

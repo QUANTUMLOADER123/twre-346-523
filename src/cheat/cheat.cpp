@@ -65,9 +65,16 @@ void CreateMove(CUserCmd& cmd) {
   bool shooting = IsShooting(cmd, lp);
   AA_FakeLag(cmd, lp, shooting);
   AA_CreateMove(cmd, lp, view, shooting);
-  // double tap recharge: hold back commands while we're not shooting
-  int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 2);
-  if (g.doubletapping && !shooting && cmd.tickbaseShift == 0 && lp->m_nTickbaseShift < maxShift && ServerTime() - g.lastShotTime > 0.4f && !g.targetValid && !(cmd.buttons & IN_ATTACK))
+  // double tap:
+  //  - charge: as soon as DT is on we hold back our commands for maxShift ticks -> we freeze in place (also in the air)
+  //  - shot / key released: every held tick is simulated at once -> we teleport that many ticks ahead
+  //    (and the tickbase jump makes the weapon ready again, which is the "double" shot)
+  int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 1);
+  int charge = lp->m_nTickbaseShift;
+  if (shooting) g.lastShotTime = ServerTime();
+  if (g.doubletapping && shooting && charge > 0) cmd.tickbaseShift = std::max(cmd.tickbaseShift, charge);
+  else if (!g.doubletapping && charge > 0) cmd.tickbaseShift = charge;   // released (key / menu / fake duck) -> teleport
+  else if (g.doubletapping && !shooting && cmd.tickbaseShift == 0 && charge < maxShift && ServerTime() - g.lastShotTime > 0.25f && !(cmd.buttons & IN_ATTACK))
     cmd.tickbaseShift = -1;
   // defensive dt: shift every time we peek (break lag compensation on the first seen tick)
   if (g.doubletapping && v.rage.doubletapMode == 1 && !shooting && g.dtReady && lp->m_vecVelocity.Length2D() > 100.f && (gpGlobals->tickcount % 16) == 0) cmd.tickbaseShift = maxShift;
@@ -123,5 +130,8 @@ float GetRealYaw() { return g_pLocalPlayer ? g_pLocalPlayer->m_PlayerAnimState.m
 
 static ConCommand cmd_cheat_menu("gs_menu", [](const CCommand&) { ToggleMenu(); }, "Toggle the cheat menu");
 static ConCommand cmd_cheat_save("gs_save", [](const CCommand& c) { Config_Save(c.ArgC() > 1 ? c[1] : "default"); }, "Save cheat config");
+static ConCommand cmd_aw_menu("aw_menu", [](const CCommand&) { ToggleMenu(); }, "Toggle the aimwhere menu");
+static ConCommand cmd_aw_save("aw_save", [](const CCommand& c) { Config_Save(c.ArgC() > 1 ? c[1] : "default"); }, "Save aimwhere config");
+static ConCommand cmd_aw_load("aw_load", [](const CCommand& c) { Config_Load(c.ArgC() > 1 ? c[1] : "default"); }, "Load aimwhere config");
 static ConCommand cmd_cheat_load("gs_load", [](const CCommand& c) { Config_Load(c.ArgC() > 1 ? c[1] : "default"); }, "Load cheat config");
 } // namespace cheat

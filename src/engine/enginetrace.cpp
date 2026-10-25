@@ -1,5 +1,7 @@
 #include "enginetrace.hpp"
+#include "bsp.hpp"
 #include <cfloat>
+#include <cctype>
 
 static const surfacedata_t s_surfaces[SURFACE_COUNT] = {
   //  name           mat               pen   dmg   fric step  impact color
@@ -140,6 +142,53 @@ void CEngineTrace::TraceAgainstBox(const TraceWork& tw, const Vector& bmins, con
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+// GoldSrc BSP world (original CS 1.6 maps): clipping hulls instead of brushes
+static int BspMaterialToSurface(char m) {
+  switch (std::toupper((unsigned char)m)) {
+    case 'C': return SURFACE_CONCRETE; case 'M': case 'V': case 'P': return SURFACE_METAL; case 'D': return SURFACE_DIRT;
+    case 'G': return SURFACE_METALGRATE; case 'T': return SURFACE_TILE; case 'W': return SURFACE_WOOD; case 'Y': return SURFACE_GLASS;
+    case 'F': return SURFACE_FLESH; case 'N': return SURFACE_SAND; default: return SURFACE_CONCRETE;
+  }
+}
+static void BspSurfaceFromFace(trace_t& tr, int face) {
+  const BspTexture* t = g_Bsp.FaceTexture(face); if (!t) return;
+  tr.surface.name = t->name.c_str();
+  tr.surface.surfaceProps = (short)BspMaterialToSurface(g_Bsp.TextureMaterial(t->name));
+  if (t->sky) tr.surface.flags |= SURF_SKY | SURF_NODRAW;
+  if (t->nodraw) tr.surface.flags |= SURF_NODRAW;
+  tr.worldSurfaceIndex = (unsigned short)face;
+}
+static void TraceBspWorld(const Ray_t& ray, unsigned mask, trace_t& tr) {
+  tr.startpos = ray.m_Start + ray.m_StartOffset;
+  if (!(mask & (CONTENTS_SOLID | CONTENTS_PLAYERCLIP | CONTENTS_MOVEABLE))) { tr.endpos = ray.m_Start + ray.m_Delta + ray.m_StartOffset; return; }
+  // hull by box size: points / small boxes -> hull 0, player sized -> hull 1 (standing) or 3 (crouched).
+  // GoldSrc hulls are centered boxes; the requested box keeps its bottom on the bottom of the hull.
+  const Vector e = ray.m_Extents;
+  int hull = 0; float shift = 0;
+  if (!ray.m_IsRay && std::min(e.x, e.y) >= 10.f) { if (e.z >= 30.f) { hull = 1; shift = 36.f - e.z; } else { hull = 3; shift = 18.f - e.z; } }
+  Vector s = ray.m_Start + Vector(0, 0, shift), en = s + ray.m_Delta;
+  BspTrace bt; g_Bsp.Trace(hull, s, en, bt, true);
+  tr.fraction = bt.fraction; tr.startsolid = bt.startsolid; tr.allsolid = bt.allsolid;
+  tr.endpos = ray.m_Start + ray.m_Delta * tr.fraction + ray.m_StartOffset;
+  tr.brushIndex = bt.brushEntity;
+  if (bt.fraction < 1.f || bt.allsolid) {
+    tr.contents = CONTENTS_SOLID;
+    tr.plane.normal = bt.normal; tr.plane.dist = bt.normal.Dot(tr.endpos);
+    tr.surface.name = "concrete"; tr.surface.surfaceProps = SURFACE_CONCRETE;
+    if (bt.hitContents == BSP_CONTENTS_SKY) { tr.surface.flags |= SURF_SKY | SURF_NODRAW; tr.surface.name = "sky"; }
+    if (bt.fraction < 1.f) {
+      int face = -1;
+      if (hull == 0) face = g_Bsp.FaceAtImpact(bt);
+      else if (bt.normal.z > 0.7f) { // standing on something: material under the feet (footsteps, friction)
+        Vector feet = s + ray.m_Delta * bt.fraction - Vector(0, 0, CBspWorld::HullMaxs(hull).z);
+        face = g_Bsp.FindFace(feet + Vector(0, 0, 2), Vector(0, 0, -1), 10.f);
+      }
+      if (face >= 0) BspSurfaceFromFace(tr, face);
+    }
+  }
+}
+
 void CEngineTrace::TraceRayWorld(const Ray_t& ray, unsigned mask, trace_t* ptr) {
   trace_t& tr = *ptr;
   tr = trace_t();
@@ -150,6 +199,7 @@ void CEngineTrace::TraceRayWorld(const Ray_t& ray, unsigned mask, trace_t* ptr) 
   tw.start = ray.m_Start; tw.end = ray.m_Start + ray.m_Delta;
   tw.isPoint = ray.m_IsRay; tw.mask = mask;
   tr.startpos = tw.start;
+  if (g_Bsp.loaded) { TraceBspWorld(ray, mask, tr); return; }
   if (m_cells.empty()) { tr.endpos = tw.end; tr.startpos = tw.start + ray.m_StartOffset; tr.endpos = tw.end + ray.m_StartOffset; return; }
 
   float len = ray.m_Delta.Length();
@@ -220,13 +270,24 @@ void CEngineTrace::TraceRay(const Ray_t& ray, unsigned mask, ITraceFilter* filte
 
 int CEngineTrace::GetPointContents(const Vector& p, unsigned mask) {
   int c = 0;
+  if (g_Bsp.loaded) {
+    int bc = g_Bsp.PointContents(p, 0, 0);
+    if (bc == BSP_CONTENTS_SOLID || bc == BSP_CONTENTS_SKY) c |= CONTENTS_SOLID;
+    else if (bc == BSP_CONTENTS_WATER || bc == BSP_CONTENTS_SLIME || bc == BSP_CONTENTS_LAVA) c |= CONTENTS_WATER;
+    if (!(c & CONTENTS_SOLID))
+      for (const BspBrushEntity& be : g_Bsp.brushEnts) {
+        if (!be.solid || p.x < be.absMins.x || p.y < be.absMins.y || p.z < be.absMins.z || p.x > be.absMaxs.x || p.y > be.absMaxs.y || p.z > be.absMaxs.z) continue;
+        if (g_Bsp.PointContents(p - be.origin, 0, be.model) == BSP_CONTENTS_SOLID) { c |= CONTENTS_SOLID; break; }
+      }
+    return c & mask;
+  }
   if (m_cells.empty()) return 0;
   int x = Clamp((int)((p.x - m_gx0) / GRID), 0, m_gw - 1), y = Clamp((int)((p.y - m_gy0) / GRID), 0, m_gh - 1);
   for (int bi : m_cells[y * m_gw + x]) if ((brushes[bi].contents & mask) && IsPointInsideBrush(p, bi)) c |= brushes[bi].contents;
   return c;
 }
 int CEngineTrace::GetBrushAtPoint(const Vector& p, unsigned mask) const {
-  if (m_cells.empty()) return -1;
+  if (m_cells.empty() || g_Bsp.loaded) return -1;
   int x = Clamp((int)((p.x - m_gx0) / GRID), 0, m_gw - 1), y = Clamp((int)((p.y - m_gy0) / GRID), 0, m_gh - 1);
   for (int bi : m_cells[y * m_gw + x]) if ((brushes[bi].contents & mask) && IsPointInsideBrush(p, bi)) return bi;
   return -1;

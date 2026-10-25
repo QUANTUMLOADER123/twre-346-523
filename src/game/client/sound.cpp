@@ -1,5 +1,6 @@
 // sound.cpp - CSoundEmitterSystem: game sounds. Original Counter-Strike 1.6 .wav files are used when the player provides
 // them (own CS 1.6 install via snd_gamedir, or copied into ./sound/), everything else is synthesized procedurally.
+#include "../../engine/hlfs.hpp"
 #include "cl_main.hpp"
 #include "../shared/soundemitter.hpp"
 #include "../shared/weapon_parse.hpp"
@@ -164,23 +165,14 @@ static Synth Generate(const std::string& name, uint32_t seed) {
 // original CS 1.6 sounds (bring your own): sound name -> candidate files (relative to <root>/sound/), every file that
 // exists becomes a random variant. Valve's sounds are not shipped with this game (copyright) - point snd_gamedir at
 // your own Half-Life / Counter-Strike 1.6 folder or copy its cstrike/sound + valve/sound folders into ./sound/.
-ConVar snd_gamedir("snd_gamedir", "", FCVAR_ARCHIVE, "Your Counter-Strike 1.6 install (the 'Half-Life' folder) - original sounds are loaded from cstrike/sound and valve/sound");
+ConVar snd_gamedir("snd_gamedir", "", FCVAR_ARCHIVE, "Old name of hl_gamedir (still works): your Half-Life folder");
 ConVar snd_original("snd_original", "1", FCVAR_ARCHIVE, "Use original CS 1.6 .wav files when they are available (0 = always synthesized)");
 
+// ./sound (loose copies) first, then <cstrike|valve>/sound of the CS 1.6 install (see engine/hlfs)
 static std::vector<std::string> SoundRoots() {
-  std::vector<std::string> roots = { "sound" };
-  auto addInstall = [&](const std::string& d) {
-    if (d.empty()) return;
-    for (const char* sub : { "/cstrike/sound", "/cstrike_downloads/sound", "/valve/sound", "/sound" }) roots.push_back(d + sub);
-  };
-  addInstall(snd_gamedir.GetString());
-  // usual Steam locations
-  addInstall("C:/Program Files (x86)/Steam/steamapps/common/Half-Life");
-  addInstall("C:/Program Files/Steam/steamapps/common/Half-Life");
-  addInstall("D:/SteamLibrary/steamapps/common/Half-Life");
-  if (const char* h = std::getenv("HOME")) { addInstall(std::string(h) + "/.steam/steam/steamapps/common/Half-Life"); addInstall(std::string(h) + "/.local/share/Steam/steamapps/common/Half-Life"); }
   std::vector<std::string> out; std::error_code ec;
-  for (auto& r : roots) if (std::filesystem::is_directory(r, ec)) out.push_back(r);
+  if (std::filesystem::is_directory("sound", ec)) out.push_back("sound");
+  for (const std::string& d : hlfs::GameDirs()) { std::string r = hlfs::ResolveCase(d + "/sound"); if (!r.empty()) out.push_back(r); }
   return out;
 }
 
@@ -254,10 +246,10 @@ static std::vector<std::string> OriginalFiles(const std::string& name) {
   if (!snd_original.GetBool()) return found;
   auto it = map.find(name); if (it == map.end()) return found;
   static std::vector<std::string> roots; static std::string rootsFor = "\x01";
-  if (rootsFor != snd_gamedir.GetString()) { roots = SoundRoots(); rootsFor = snd_gamedir.GetString(); }
-  std::error_code ec;
+  std::string key = std::string(hl_gamedir.GetString()) + "|" + snd_gamedir.GetString() + "|" + hl_content.GetString();
+  if (rootsFor != key) { hlfs::Invalidate(); roots = SoundRoots(); rootsFor = key; }
   for (const std::string& f : it->second)
-    for (const std::string& r : roots) { std::string p = r + "/" + f; if (std::filesystem::is_regular_file(p, ec)) { found.push_back(p); break; } }
+    for (const std::string& r : roots) { std::string p = hlfs::ResolveCase(r + "/" + f); if (!p.empty()) { found.push_back(p); break; } }
   return found;
 }
 

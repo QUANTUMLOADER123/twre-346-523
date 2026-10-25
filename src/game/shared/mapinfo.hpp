@@ -18,6 +18,7 @@ struct CMapInfo {
   Vector sunDir{ -0.4f, 0.3f, 0.85f }, sunColor{ 1.f, 0.93f, 0.8f }, ambient{ 0.40f, 0.40f, 0.42f };
   Vector fogColor{ 0.8f, 0.76f, 0.7f };
   bool snow = false;
+  bool isBsp = false;            // original GoldSrc map from the CS 1.6 install (g_Bsp)
   std::vector<MapSpawn> spawns;
   std::vector<MapZone> zones;
   std::vector<MapLight> lights;
@@ -29,7 +30,8 @@ struct CMapInfo {
   std::vector<uint8_t> cellType; // 0 void 1 floor 2 wall 3 ramp 4 obstacle
   std::vector<int> cellMat;      // floor/wall material (radar colors)
 
-  bool Load(const std::string& path); // parse + compile into enginetrace
+  bool Load(const std::string& path); // parse + compile into enginetrace (.bsp -> LoadBsp)
+  bool LoadBsp(const std::string& path);
   const char* GetPlaceName(const Vector& p) const;
   const MapZone* FindZone(int type) const { for (auto& z : zones) if (z.type == type) return &z; return nullptr; }
   bool InZone(const Vector& p, int type) const { for (auto& z : zones) if (z.type == type && z.Contains(p)) return true; return false; }
@@ -39,3 +41,5 @@ inline CMapInfo g_MapInfo;
 
 struct MapListEntry { std::string name, title, mode, desc, file; };
 std::vector<MapListEntry> ListMaps();
+// "de_dust2" -> maps/de_dust2.bsp from the CS 1.6 install when available (hl_content 1), else assets/maps/de_dust2.map
+std::string ResolveMapFile(const std::string& name);

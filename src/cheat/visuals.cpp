@@ -332,28 +332,45 @@ static void DrawWorldESP() {
 }
 
 // ------------------------------------------------------------------------------------------------
+// aimware-style overlay pieces (same palette as the menu: red frame/title, light body, dark text)
+static Col AwShade(Col c, float k, int a = 255) { return MkCol((int)Clamp(c.r * k, 0.f, 255.f), (int)Clamp(c.g * k, 0.f, 255.f), (int)Clamp(c.b * k, 0.f, 255.f), a); }
+static void AwTitleBar(float x, float y, float w, float h) {
+  Col red = v.misc.menuCol;
+  surface()->DrawFilledRect(x + 2, y + 2, w, h, { 0, 0, 0, 60 });
+  surface()->DrawGradientV(x, y, w, h, AwShade(red, 1.15f), AwShade(red, 0.7f));
+  surface()->DrawOutlinedRect(x, y, w, h, AwShade(red, 0.35f));
+}
+static void AwLogo(float x, float y) { // "AIMWHERE" (dark + red), bold
+  surface()->DrawText(FONT_CHEAT_BOLD, "AIM", x, y, { 20, 20, 20, 255 });
+  surface()->DrawText(FONT_CHEAT_BOLD, "WHERE", x + surface()->GetTextSize(FONT_CHEAT_BOLD, "AIM").x, y, v.misc.menuCol);
+}
+
 static void DrawIndicators(CCSPlayer* lp) {
-  float y = GetScreenHeight() * 0.62f, x = 12;
-  auto ind = [&](const char* t, Col c) {
+  float y = GetScreenHeight() * 0.62f, x = 14;
+  Col red = v.misc.menuCol;
+  auto ind = [&](const char* t, bool good, float bar = -1.f) {
     Vector2 sz = surface()->GetTextSize(FONT_CHEAT_INDICATOR, t);
-    surface()->DrawGradientH(x - 6, y - 3, sz.x * 0.6f + 6, sz.y + 6, { 0, 0, 0, 0 }, { 0, 0, 0, 90 });
-    surface()->DrawGradientH(x + sz.x * 0.6f, y - 3, sz.x * 0.6f, sz.y + 6, { 0, 0, 0, 90 }, { 0, 0, 0, 0 });
-    surface()->DrawTextShadow(FONT_CHEAT_INDICATOR, t, x, y, c, { 0, 0, 0, 200 });
-    y += sz.y + 8;
+    float w = sz.x + 16, h = sz.y + 6 + (bar >= 0 ? 4 : 0);
+    surface()->DrawGradientH(x - 4, y - 3, w, h, { 0, 0, 0, 150 }, { 0, 0, 0, 0 });
+    surface()->DrawFilledRect(x - 4, y - 3, 3, h, good ? red : MkCol(70, 70, 70));
+    surface()->DrawTextShadow(FONT_CHEAT_INDICATOR, t, x + 4, y, good ? MkCol(240, 240, 240) : AwShade(red, 1.3f), { 0, 0, 0, 200 });
+    if (bar >= 0) { surface()->DrawFilledRect(x + 4, y + sz.y + 2, sz.x, 3, { 0, 0, 0, 160 }); surface()->DrawFilledRect(x + 4, y + sz.y + 2, sz.x * Clamp(bar, 0.f, 1.f), 3, red); }
+    y += h + 6;
   };
-  Col green = MkCol(150, 200, 60), red = MkCol(255, 0, 0), white = MkCol(230, 230, 230);
-  if (g.doubletapping) ind("DT", g.dtReady ? white : red);
-  if (g.hideshots) ind("ONSHOT", white);
-  if (g.fakeducking) ind("DUCK", white);
-  if (g.freestandingActive || (v.aa.freestandKey.key && v.aa.freestandKey.Active())) ind("FS", white);
-  if (v.rage.forceSafeKey.key && v.rage.forceSafeKey.Active()) ind("SAFE", white);
-  if (v.rage.forceBaimKey.key && v.rage.forceBaimKey.Active()) ind("BAIM", white);
-  if (v.rage.minDamageOverrideKey.key && v.rage.minDamageOverrideKey.Active()) ind(TextFormat("DMG: %d", (int)v.rage.minDamageOverride), white);
-  if (v.aa.fakelag && lp->m_vecVelocity.Length2D() > 200 && !g.doubletapping) ind("LC", BreakingLC(lp) ? green : red);
+  if (g.doubletapping) {
+    int maxShift = std::max(1, std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 1));
+    ind("DT", g.dtReady, g.dtCharge / (float)maxShift);
+  }
+  if (g.hideshots) ind("ONSHOT", true);
+  if (g.fakeducking) ind("DUCK", true);
+  if (g.freestandingActive || (v.aa.freestandKey.key && v.aa.freestandKey.Active())) ind("FS", true);
+  if (v.rage.forceSafeKey.key && v.rage.forceSafeKey.Active()) ind("SAFE", true);
+  if (v.rage.forceBaimKey.key && v.rage.forceBaimKey.Active()) ind("BAIM", true);
+  if (v.rage.minDamageOverrideKey.key && v.rage.minDamageOverrideKey.Active()) ind(TextFormat("DMG: %d", (int)v.rage.minDamageOverride), true);
+  if (v.aa.fakelag && lp->m_vecVelocity.Length2D() > 200 && !g.doubletapping) ind("LC", BreakingLC(lp));
   if (v.aa.enabled && v.aa.bodyYaw) {
     float desync = std::fabs(AngleDiff(lp->m_flFakeFootYaw, lp->m_PlayerAnimState.m_flFootYaw));
-    float t = Clamp(desync / 58.f, 0.f, 1.f);
-    ind("FAKE", MkCol((int)(255 - 105 * t), (int)(200 * t + 55 * (1 - t) * 0.2f), (int)(60 * t)));
+    ind("FAKE", desync > 25.f, desync / 58.f);
   }
 }
 
@@ -370,31 +387,31 @@ static void DrawArrows() {
 
 static void DrawWatermark(CCSPlayer* lp) {
   time_t tt = time(nullptr); struct tm* lt = localtime(&tt);
-  char buf[256];
-  snprintf(buf, sizeof(buf), "hvh\x01sense | %s | delay: %dms | %dtick | %02d:%02d:%02d", lp ? lp->GetPlayerName() : "user", lp ? lp->m_iPing : 0, (int)std::round(1.f / gpGlobals->interval_per_tick), lt->tm_hour, lt->tm_min, lt->tm_sec);
-  std::string full = buf; size_t p = full.find('\x01');
-  std::string a = full.substr(0, p), b = full.substr(p + 1);
-  float wa = surface()->GetTextSize(FONT_CHEAT, a.c_str()).x, wb = surface()->GetTextSize(FONT_CHEAT, b.c_str()).x;
-  float w = wa + wb + 16, h = 20, x = GetScreenWidth() - w - 10, y = 10;
-  surface()->DrawFilledRect(x - 4, y - 4, w + 8, h + 8, { 12, 12, 12, 230 });
-  surface()->DrawOutlinedRect(x - 4, y - 4, w + 8, h + 8, { 0, 0, 0, 255 }); surface()->DrawOutlinedRect(x - 3, y - 3, w + 6, h + 6, { 60, 60, 60, 255 });
-  surface()->DrawGradientH(x, y - 2, w / 2, 1, { 55, 177, 218, 255 }, { 204, 70, 205, 255 });
-  surface()->DrawGradientH(x + w / 2, y - 2, w / 2, 1, { 204, 70, 205, 255 }, { 204, 227, 53, 255 });
-  surface()->DrawText(FONT_CHEAT, a.c_str(), x + 8, y + 4, { 230, 230, 230, 255 });
-  surface()->DrawText(FONT_CHEAT, b.c_str(), x + 8 + wa, y + 4, v.misc.accent);
+  const char* info = TextFormat("%s  |  delay: %dms  |  %dtick  |  %02d:%02d:%02d", lp ? lp->GetPlayerName() : "user", lp ? lp->m_iPing : 0,
+                                (int)std::round(1.f / gpGlobals->interval_per_tick), lt->tm_hour, lt->tm_min, lt->tm_sec);
+  float logoW = surface()->GetTextSize(FONT_CHEAT_BOLD, "AIMWHERE").x + 14, infoW = surface()->GetTextSize(FONT_CHEAT, info).x + 16;
+  float h = 20, w = logoW + infoW, x = GetScreenWidth() - w - 10, y = 10;
+  AwTitleBar(x, y, w, h);
+  surface()->DrawFilledRect(x + 1, y + 2, logoW, h - 4, { 255, 255, 255, 255 });   // white logo field like the menu title
+  AwLogo(x + 7, y + 4);
+  surface()->DrawText(FONT_CHEAT, info, x + logoW + 8, y + 4, { 255, 235, 235, 255 });
 }
 
 static void DrawListBox(const char* title, float x, float y, const std::vector<std::pair<std::string, std::string>>& rows) {
-  float w = 180, h = 20 + rows.size() * 15.f;
-  surface()->DrawFilledRect(x, y, w, h + 4, { 12, 12, 12, 200 });
-  surface()->DrawGradientH(x, y, w / 2, 2, { 55, 177, 218, 255 }, { 204, 70, 205, 255 });
-  surface()->DrawGradientH(x + w / 2, y, w / 2, 2, { 204, 70, 205, 255 }, { 204, 227, 53, 255 });
-  surface()->DrawTextCentered(FONT_CHEAT_BOLD, title, x + w / 2, y + 5, { 230, 230, 230, 255 });
-  float ry = y + 22;
+  float w = 190, th = 18, rh = 16, h = rows.size() * rh + (rows.empty() ? 0 : 6);
+  AwTitleBar(x, y, w, th);
+  surface()->DrawTextCentered(FONT_CHEAT_BOLD, title, x + w / 2, y + 3, { 255, 255, 255, 255 });
+  if (rows.empty()) return;
+  Col red = v.misc.menuCol;
+  float by = y + th;
+  surface()->DrawFilledRect(x, by, w, h, { 236, 236, 236, 235 });
+  surface()->DrawFilledRect(x, by, 1, h, AwShade(red, 0.7f)); surface()->DrawFilledRect(x + w - 1, by, 1, h, AwShade(red, 0.7f));
+  surface()->DrawFilledRect(x, by + h - 1, w, 1, AwShade(red, 0.5f));
+  float ry = by + 4;
   for (auto& r : rows) {
-    surface()->DrawText(FONT_CHEAT, r.first.c_str(), x + 6, ry, { 220, 220, 220, 255 });
-    surface()->DrawTextRight(FONT_CHEAT, r.second.c_str(), x + w - 6, ry, { 150, 150, 150, 255 });
-    ry += 15;
+    surface()->DrawText(FONT_CHEAT_BOLD, r.first.c_str(), x + 7, ry, { 28, 28, 28, 255 });
+    surface()->DrawTextRight(FONT_CHEAT, r.second.c_str(), x + w - 7, ry, { 115, 115, 115, 255 });
+    ry += rh;
   }
 }
 
@@ -452,12 +469,12 @@ void Visuals_Paint() {
     if (s.keybindList) {
       std::vector<std::pair<std::string, std::string>> rows;
       for (auto& nb : g_NamedBinds) if (nb.bind->key && nb.bind->mode != KEYMODE_ALWAYS && nb.bind->Active()) rows.push_back({ nb.name, nb.bind->mode == KEYMODE_HOLD ? "[holding]" : nb.bind->mode == KEYMODE_TOGGLE ? "[toggled]" : "[off]" });
-      if (!rows.empty() || g.menuOpen) { DrawListBox("keybinds", GetScreenWidth() - 200.f, ly, rows); ly += 30 + rows.size() * 15; }
+      if (!rows.empty() || g.menuOpen) { DrawListBox("Keybinds", GetScreenWidth() - 200.f, ly, rows); ly += 30 + rows.size() * 16; }
     }
     if (s.spectatorList) {
       std::vector<std::pair<std::string, std::string>> rows;
       for (CCSPlayer* p : UTIL_GetPlayers()) if (!p->IsAlive() && p != lp && p->m_hObserverTarget == lp) rows.push_back({ p->GetPlayerName(), p->m_iObserverMode == OBS_MODE_IN_EYE ? "1st" : "3rd" });
-      if (!rows.empty()) DrawListBox("spectators", GetScreenWidth() - 200.f, ly, rows);
+      if (!rows.empty()) DrawListBox("Spectators", GetScreenWidth() - 200.f, ly, rows);
     }
   }
   if (s.watermark) DrawWatermark(lp);
