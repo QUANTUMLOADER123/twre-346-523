@@ -104,6 +104,7 @@
     <ClCompile Include="..\src\engine\hlfs.cpp" />
     <ClCompile Include="..\src\engine\host.cpp" />
     <ClCompile Include="..\src\engine\materialsystem.cpp" />
+    <ClCompile Include="..\src\engine\mdl.cpp" />
     <ClCompile Include="..\src\engine\studio.cpp" />
     <ClCompile Include="..\src\engine\view.cpp" />
     <ClCompile Include="..\src\engine\worldrender.cpp" />
@@ -143,6 +144,7 @@
     <ClInclude Include="..\src\engine\host.hpp" />
     <ClInclude Include="..\src\engine\materialsystem.hpp" />
     <ClInclude Include="..\src\engine\mathlib.hpp" />
+    <ClInclude Include="..\src\engine\mdl.hpp" />
     <ClInclude Include="..\src\engine\random.hpp" />
     <ClInclude Include="..\src\engine\studio.hpp" />
     <ClInclude Include="..\src\engine\view.hpp" />

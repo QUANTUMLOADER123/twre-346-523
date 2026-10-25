@@ -66,6 +66,9 @@
     <ClCompile Include="..\src\engine\materialsystem.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\engine\mdl.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\engine\studio.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
@@ -177,6 +180,9 @@
       <Filter>src\engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\engine\mathlib.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\mdl.hpp">
       <Filter>src\engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\engine\random.hpp">

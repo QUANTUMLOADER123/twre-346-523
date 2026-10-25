@@ -108,6 +108,11 @@ Counter-Strike 1.6 (Steam или любая копия), игра берёт и�
 Двери рисуются открытыми и не мешают проходу. Стёкла (`func_breakable`) пока не разбиваются.
 `r_lightmap_gamma` и `r_lightmap_scale` задают яркость лайтмапов, применяются при загрузке карты.
 
+**Модели оружия от первого лица.** Берутся оригинальные `models/v_*.mdl` (MDL v10) вместе с руками и анимациями:
+draw, idle, выстрелы, перезарядка, удары ножом, чека и бросок гранаты, надевание глушителя на M4A1 и USP.
+Для оружия из CS:GO берётся аналог из 1.6, как и для звуков. Выключаются командой `cl_original_viewmodels 0`.
+Модели игроков и оружия в мире пока свои (CC0).
+
 **Звуки.** Используются `weapons/*.wav` (выстрелы, перезарядка, нож, гранаты, C4), `player/pl_*.wav` (шаги), `radio/*.wav`,
 звуки попаданий и интерфейса. У оружия из CS:GO, которого нет в 1.6, берётся ближайший аналог: R8 → deagle, P250 → p228,
 SSG08 → scout, SCAR-20 → sg550, SG553 → sg552, MP9 → tmp, Nova → m3. Если какого-то файла нет, для него остаётся синтез.
@@ -154,7 +159,7 @@ sudo apt install build-essential libx11-dev libxrandr-dev libxinerama-dev libxcu
 ```
 src/engine/       ConVar/консоль, математика (Vector/QAngle/matrix3x4_t), трассировка лучей и хуллов по брашам,
                   процедурные материалы, рендер мира (запечённый свет), studio-модели (glTF, скелет, IK), host/тики,
-                  hlfs (файлы установленной CS 1.6), bsp/bsprender (карты GoldSrc: хуллы, лайтмапы, WAD, небо)
+                  hlfs (файлы установленной CS 1.6), bsp/bsprender (карты GoldSrc: хуллы, лайтмапы, WAD, небо), mdl (модели MDL v10)
 src/game/shared/  C_BaseEntity, CCSPlayer, C_WeaponCSBase + все пушки, gamemovement (Source-движение),
                   CCSGameRules (раунды, экономика, бомба), гранаты, lag compensation, анимстейт (desync/LBY), события
 src/game/server/  навигационная сетка и боты (CCSBot)
