@@ -387,7 +387,34 @@ void CL_OnTickEnd() {}
 
 // ------------------------------------------------------------------------------------------------
 // frame
+// radar spotting: an enemy shows up on the radar while any living teammate can see him
+static void CL_UpdateSpotting() {
+  static double s_next = 0;
+  if (gpGlobals->realtime < s_next) return;
+  s_next = gpGlobals->realtime + 0.1;
+  CCSPlayer* lp = g_pLocalPlayer; if (!lp) return;
+  int myTeam = lp->m_iTeamNum;
+  std::vector<CCSPlayer*> alive = UTIL_GetPlayers(true);
+  for (CCSPlayer* e : alive) {
+    if (myTeam < TEAM_TERRORIST || e->m_iTeamNum == myTeam) { e->m_flSpottedTime = (float)gpGlobals->realtime; continue; } // teammates always / spectators see all
+    Vector targets[2] = { e->EyePosition(), e->m_vecOrigin + Vector(0, 0, 36) };
+    for (CCSPlayer* o : alive) {
+      if (o->m_iTeamNum != myTeam) continue;
+      Vector eye = o->EyePosition(), fwd; AngleVectors(o->v_angle, &fwd);
+      bool seen = false;
+      for (const Vector& t : targets) {
+        Vector d = t - eye; float len = d.Length(); if (len < 1.f) { seen = true; break; }
+        if (d.Dot(fwd) / len < 0.5f) continue;                       // outside a 120 degree view cone
+        trace_t tr; UTIL_TraceLine(eye, t, MASK_VISIBLE, o, &tr);
+        if (tr.fraction >= 0.99f && !LineGoesThroughSmoke(eye, t)) { seen = true; break; }
+      }
+      if (seen) { e->m_flSpottedTime = (float)gpGlobals->realtime + 0.2f; break; }
+    }
+  }
+}
+
 void CL_Frame(float dt) {
+  CL_UpdateSpotting();
   FX_Update(dt);
   VM_Update(dt);
   cl.removeScope = cheat::RemoveScope(); cl.removeVisualRecoil = cheat::RemoveVisualRecoil(); cl.removeFlash = cheat::RemoveFlash(); cl.removeSmoke = cheat::RemoveSmoke();

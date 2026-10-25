@@ -169,5 +169,107 @@ def de_dust2():
     c.write('de_dust2')
 
 
+def de_mirage():
+    """Mirage-like: T spawn east, A site south-west (palace, ramp), B site north-west (apartments), mid + connector"""
+    c = Canvas(64, 56)
+    c.header = [
+        'name de_mirage', 'title "Mirage"', 'mode bomb', 'desc "Moroccan town. A ramp, Palace, Mid, Connector, B Apartments."',
+        'wallheight 288', 'sky 0.34 0.56 0.88  0.95 0.86 0.72', 'sun 0.38 -0.46 0.80  1.08 0.96 0.80', 'ambient 0.44 0.41 0.40',
+        'floor . cobblestone', 'floor , terracotta', 'floor ; sand_packed',
+        'wall # plaster_yellow', 'wall % sandstone_blocks', 'wall & plaster_white', 'wall @ stone_trim',
+        'covered P tile_floor 64 128', 'covered Q tile_floor 64 128 lamp',
+        'rampmat sand_packed',
+    ]
+    # T spawn (64)
+    c.fill(53, 20, 61, 38, '2'); c.fill(56, 26, 59, 31, 'T')
+    c.put(53, 21, 'C'); c.put(54, 21, 'c'); c.put(61, 37, 'b'); c.put(60, 20, 'c')
+    # T ramp -> A ramp (32)
+    c.fill(49, 34, 52, 38, '>')
+    c.fill(27, 34, 48, 39, '1')
+    c.put(40, 34, 'c'); c.put(33, 39, 'C'); c.put(34, 39, 'c'); c.put(45, 39, 'b')
+    # palace (covered, 64) with balcony drop into A
+    c.fill(55, 39, 58, 47, 'P'); c.put(56, 42, 'Q'); c.put(56, 46, 'Q')
+    c.fill(27, 46, 54, 49, 'P'); c.put(46, 47, 'Q'); c.put(36, 47, 'Q')
+    # A site (32)
+    c.fill(4, 38, 26, 52, '1'); c.fill(10, 42, 18, 48, 'A')
+    c.put(14, 45, 'C'); c.put(15, 45, 'c'); c.put(14, 44, 'c')      # triple / default
+    c.put(5, 39, 'C'); c.put(6, 39, 'c'); c.put(24, 51, 'C'); c.put(25, 51, 'c')   # ninja / firebox
+    c.fill(19, 39, 19, 41, 'w'); c.put(8, 50, 'b'); c.fill(21, 44, 22, 45, 'W')   # sandwich
+    # CT spawn (32) + links to A and B
+    c.fill(2, 22, 10, 34, '1'); c.fill(4, 26, 7, 30, 'K'); c.put(10, 22, 'c'); c.put(2, 34, 'b')
+    c.fill(4, 35, 8, 37, '1'); c.fill(4, 19, 8, 21, '1')
+    # jungle / connector between mid and A (32)
+    c.fill(22, 30, 26, 37, ','); c.put(22, 33, 'c')
+    # mid (32) + top mid ramp to T (64)
+    c.fill(14, 23, 41, 29, '.'); c.fill(11, 25, 13, 27, '.')          # mid -> CT
+    c.fill(42, 23, 45, 28, '>'); c.fill(46, 23, 52, 28, '2')
+    c.put(30, 23, 'C'); c.put(31, 23, 'c'); c.put(36, 29, 'c'); c.fill(16, 23, 16, 25, 'w')   # boxes, window cover
+    # B short / catwalk from mid (32)
+    c.fill(24, 12, 28, 22, ','); c.fill(21, 12, 23, 14, ',')
+    # B apartments (covered, 64): from T spawn north, then west, stairs down into B
+    c.fill(54, 8, 58, 19, 'P'); c.put(56, 12, 'Q'); c.put(56, 17, 'Q')
+    c.fill(29, 8, 53, 11, 'P'); c.put(48, 9, 'Q'); c.put(40, 9, 'Q'); c.put(32, 9, 'Q')
+    c.fill(25, 8, 28, 11, '>'); c.fill(21, 8, 24, 11, ',')
+    # B site (32)
+    c.fill(4, 4, 20, 18, '1'); c.fill(8, 7, 15, 13, 'B')
+    c.fill(16, 14, 18, 15, 'W')                                       # van
+    c.put(9, 9, 'C'); c.put(10, 9, 'c'); c.put(4, 4, 'C'); c.put(5, 4, 'c'); c.put(19, 5, 'b'); c.put(12, 17, 'c')
+    c.vary_walls('%', 'PQ')
+    c.place('TSpawn', 53, 20, 61, 38); c.place('TRamp', 46, 34, 52, 39); c.place('ARamp', 27, 34, 45, 39)
+    c.place('Palace', 27, 39, 58, 49); c.place('BombsiteA', 4, 38, 26, 52); c.place('CTSpawn', 2, 19, 10, 37)
+    c.place('Jungle', 22, 30, 26, 37); c.place('Mid', 14, 23, 41, 29); c.place('TopofMid', 42, 23, 52, 28)
+    c.place('Catwalk', 21, 12, 28, 22); c.place('Apartments', 25, 8, 58, 19); c.place('BombsiteB', 4, 4, 20, 18)
+    c.write('de_mirage')
+
+
+def de_inferno():
+    """Inferno-like: T spawn south-west, banana up to B (north-west), CT north-east, A east via apartments / library"""
+    c = Canvas(60, 60)
+    c.header = [
+        'name de_inferno', 'title "Inferno"', 'mode bomb', 'desc "Italian village. Banana, B site, Apartments, Library, Arch, A site."',
+        'wallheight 288', 'sky 0.30 0.52 0.86  0.90 0.84 0.74', 'sun -0.30 -0.50 0.81  1.10 0.94 0.76', 'ambient 0.40 0.40 0.42',
+        'floor . cobblestone', 'floor , terracotta', 'floor ; grass',
+        'wall # brick_red', 'wall % plaster_white', 'wall & plaster_yellow', 'wall @ roof_tiles',
+        'covered P planks 64 128', 'covered Q planks 64 128 lamp',
+        'rampmat cobblestone',
+    ]
+    # T spawn (32)
+    c.fill(4, 48, 18, 57, '1'); c.fill(8, 52, 14, 55, 'T'); c.put(4, 48, 'C'); c.put(18, 57, 'b'); c.put(17, 48, 'c')
+    # banana: lower (32), ramp up (64) into B
+    c.fill(8, 26, 13, 47, ','); c.fill(8, 22, 13, 25, '^')
+    c.put(13, 40, 'c'); c.put(8, 34, 'C'); c.put(9, 34, 'c'); c.fill(12, 30, 13, 30, 'w')   # sandbags / car
+    # B site (64)
+    c.fill(4, 4, 24, 21, '2'); c.fill(10, 8, 18, 14, 'B')
+    c.fill(13, 10, 15, 11, 'W')                                          # fountain
+    c.put(5, 5, 'C'); c.put(6, 5, 'c'); c.put(22, 17, 'C'); c.put(22, 16, 'c'); c.put(19, 6, 'c'); c.put(5, 18, 'k')  # coffins, dark
+    # CT spawn (64), CT -> B corridor (64)
+    c.fill(40, 4, 52, 12, '2'); c.fill(43, 6, 49, 9, 'K'); c.put(52, 4, 'c')
+    c.fill(25, 6, 39, 9, '2'); c.put(31, 6, 'c')
+    # CT -> A ramp down (64 -> 32)
+    c.fill(44, 13, 48, 15, '2'); c.fill(44, 16, 48, 21, '^')
+    # A site (32)
+    c.fill(38, 22, 55, 36, '1'); c.fill(44, 26, 50, 31, 'A')
+    c.put(47, 28, 'C'); c.put(48, 28, 'c'); c.put(39, 23, 'C'); c.put(40, 23, 'c'); c.put(54, 35, 'c'); c.fill(51, 23, 52, 24, 'W')  # pit wall
+    # mid (32) from T spawn ("second mid")
+    c.fill(19, 50, 25, 54, '.'); c.fill(26, 37, 32, 55, '.')
+    c.put(29, 46, 'c'); c.put(26, 41, 'b')
+    # library / short (32) mid -> A
+    c.fill(26, 30, 37, 36, ','); c.put(33, 30, 'c')
+    # arch: CT -> mid (64 -> 32)
+    c.fill(33, 10, 37, 25, '2'); c.fill(33, 26, 37, 29, '^')   # '^' rises toward -y (library is lower)
+    # apartments (covered, 64): stairs from mid, east, then north with a balcony drop into A
+    c.fill(33, 51, 36, 53, '>')
+    c.fill(37, 51, 50, 53, 'P'); c.put(40, 52, 'Q'); c.put(46, 52, 'Q')
+    c.fill(50, 37, 53, 50, 'P'); c.put(51, 40, 'Q'); c.put(51, 46, 'Q')
+    c.vary_walls('%', 'PQ')
+    c.place('TSpawn', 4, 48, 18, 57); c.place('Banana', 8, 22, 13, 47); c.place('BombsiteB', 4, 4, 24, 21)
+    c.place('CTSpawn', 40, 4, 52, 15); c.place('Construction', 25, 6, 39, 9); c.place('BombsiteA', 38, 16, 55, 36)
+    c.place('SecondMid', 19, 50, 25, 54); c.place('Mid', 26, 37, 32, 55); c.place('Library', 26, 30, 37, 36)
+    c.place('Arch', 33, 13, 37, 29); c.place('Apartments', 33, 37, 53, 53)
+    c.write('de_inferno')
+
+
 if __name__ == '__main__':
     de_dust2()
+    de_mirage()
+    de_inferno()

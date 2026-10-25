@@ -8,3 +8,5 @@ screenshots/
 cfg/config.cfg
 cfg/hvhsense_*.cfg
 /cshvh
+third_party/
+*.pdb
