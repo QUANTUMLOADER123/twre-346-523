@@ -59,6 +59,8 @@ static void UpdateManual() {
   lastL = l; lastR = r; lastB = b;
 }
 
+bool LocalBodyYawActive() { CCSPlayer* lp = g_pLocalPlayer; return lp && lp->IsAlive() && v.aa.enabled && v.aa.bodyYaw != 0; }
+
 void AA_FakeLag(CUserCmd& cmd, CCSPlayer* lp, bool shooting) {
   int maxChoke = std::max(1, sv_maxusrcmdprocessticks.GetInt() - 2);
   auto& a = v.aa;

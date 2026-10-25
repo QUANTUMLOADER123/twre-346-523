@@ -34,7 +34,7 @@ public:
   MaterialInfo& Get(int id) { return m_mats[(id > 0 && id < MAT_COUNT) ? id : MAT_DEV_GRAY]; }
   int FindByName(const std::string& n) const;
   Texture2D white{};
-  Texture2D smoke{}, spark{}, flare{}, decalHole{}, glowDot{}, cloud{};
+  Texture2D smoke{}, spark{}, flare{}, decalHole{}, glowDot{}, cloud{}, smokePuff{};
   bool initialized = false;
 private:
   MaterialInfo m_mats[MAT_COUNT];

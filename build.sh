@@ -46,7 +46,7 @@ mkdir -p "$OBJ/raylib" bin
 RL_SRC="rcore rshapes rtextures rtext rmodels raudio"
 GAME_SRC=$(ls src/engine/*.cpp src/game/*/*.cpp src/vgui/*.cpp src/cheat/*.cpp src/main.cpp)
 CXXFLAGS="-std=c++17 -O2 -I$RL"
-CFLAGS="-O2 -I$RL -I$RL/external/glfw/include"
+CFLAGS="-O2 -I. -I$RL -I$RL/external/glfw/include"   # -I. : rlsw.h does #include __FILE__ (repo-relative path)
 
 case "$TARGET" in
   linux)

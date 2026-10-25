@@ -32,7 +32,7 @@ void LevelInit() { Rage_LevelInit(); Visuals_LevelInit(); g.choked = 0; g.shots.
 static bool IsShooting(const CUserCmd& cmd, CCSPlayer* lp) {
   C_WeaponCSBase* w = lp->GetActiveCSWeapon();
   if (!w) return false;
-  float now = ServerTime();
+  float now = LocalAttackTime(lp);
   if (IsGrenade(w->GetCSWeaponID())) {
     CBaseCSGrenade* gr = (CBaseCSGrenade*)w;
     return gr->m_bPinPulled && !(cmd.buttons & (IN_ATTACK | IN_ATTACK2));   // released -> throw this tick

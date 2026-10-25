@@ -6,6 +6,7 @@
 `C_WeaponCSBase`, `CCSGameRules`, `CGameMovement`, `CLagCompensationManager`, `CUserCmd`, ConVar/ConCommand, игровые события.
 
 > Проект не связан с Valve. Код, текстуры и звуки сделаны с нуля: текстуры и звуки генерируются процедурно.
+> Оригинальные звуки CS 1.6 можно подключить из своей копии игры, см. раздел [«Оригинальные звуки CS»](#оригинальные-звуки-cs).
 > Карты сделаны «по мотивам» классических раскладок, это не копии. 3D-модели взяты из свободных CC0-паков, подробнее в [CREDITS.md](CREDITS.md).
 
 ## Запуск
@@ -53,18 +54,43 @@
 
 ## Меню чита (Insert)
 
-* **Rage:** aimbot (выбор хитбоксов, multipoint, hitchance, минимальный урон и его override), autowall,
+Меню в стиле Aimware: красная рамка, чёрная панель вкладок, светлые группы. Перетаскивается за красную рамку,
+цвет рамки меняется в **Misc → Settings → Menu color** (или во вкладке **Colors**). Legitbot нет, только HvH.
+
+* **Ragebot:** aimbot (выбор хитбоксов, multipoint, hitchance, минимальный урон и его override), autowall,
   silent aim, autoscope, quick stop, backtrack, double tap, hide shots, knifebot, prefer/force baim, safe point, резольвер.
 * **Anti-aim:** pitch, yaw base, yaw/jitter/spin, body yaw (desync), freestanding, LBY, edge yaw, manual AA (стрелки),
   fake lag, slow walk, fake duck.
 * **Visuals:** ESP (бокс, HP, имя, флаги, оружие, патроны, скелет), стрелки вне экрана, glow, chams (видимые, за стеной,
   local, fake, backtrack), radar reveal, удаление флешки/дыма/скоупа/отдачи, ночной режим, третье лицо, трассеры,
-  траектория гранат, spread circle, FOV и FOV viewmodel, hitmarker, урон, индикаторы, watermark, список биндов, спектаторы.
+  траектория гранат, дым (можно убрать), spread circle, FOV и FOV viewmodel, hitmarker, урон, индикаторы, watermark, список биндов, спектаторы.
 * **Misc:** bhop, autostrafe, edge jump, quick stop, hitsound, killsay, логи урона и покупок, buy bot.
+* **Colors:** все цвета ESP, chams, трассеров, индикаторов и самого меню на одной вкладке.
 * **Players:** белый список, приоритет, force baim, override резольвера для отдельных игроков.
-* **Config:** сохранение и загрузка конфигов (`cfg/hvhsense_<имя>.cfg`), импорт и экспорт через буфер обмена.
+* **Settings:** сохранение и загрузка конфигов (`cfg/hvhsense_<имя>.cfg`), импорт и экспорт через буфер обмена.
 
 Боты при `bot_hvh 1` тоже играют «HvH»: используют desync, jitter и fake lag.
+
+## Оригинальные звуки CS
+
+Звуки Valve защищены авторским правом, поэтому в репозитории их нет и игра их не скачивает.
+По умолчанию работает процедурный синтез. Если у тебя установлена Counter-Strike 1.6 (Steam), игра сама подхватит её звуки:
+
+1. **Автоматически.** Проверяются стандартные папки Steam: `C:/Program Files (x86)/Steam/steamapps/common/Half-Life`,
+   `C:/Program Files/...`, `D:/SteamLibrary/...`, на Linux `~/.steam/steam/...` и `~/.local/share/Steam/...`.
+2. **Своя папка.** Укажи путь в консоли (сохраняется в конфиг):
+   ```
+   snd_gamedir "E:/Games/Half-Life"
+   snd_restart
+   ```
+   Звуки ищутся в `<snd_gamedir>/cstrike/sound`, `cstrike_downloads/sound`, `valve/sound` и `<snd_gamedir>/sound`.
+3. **Копия рядом с игрой.** Скопируй папку `cstrike/sound` в `./sound/` рядом с `cshvh.exe`
+   (папка в `.gitignore`), потом выполни `snd_restart`.
+
+Используются `weapons/*.wav` (выстрелы, перезарядка, нож, гранаты, C4), `player/pl_*.wav` (шаги), `radio/*.wav`, звуки
+попаданий и интерфейса. У оружия из CS:GO, которого нет в 1.6, берётся ближайший аналог: R8 → deagle, P250 → p228,
+SSG08 → scout, SCAR-20 → sg550, SG553 → sg552, MP9 → tmp, Nova → m3. Если какого-то файла нет, для него остаётся синтез.
+`snd_original 0` выключает оригинальные звуки, `play Weapon_ak47.Single` проигрывает звук для проверки. После `snd_restart` в консоли видно, сколько файлов найдено.
 
 ## Сборка
 
@@ -109,7 +135,7 @@ src/engine/       ConVar/консоль, математика (Vector/QAngle/mat
 src/game/shared/  C_BaseEntity, CCSPlayer, C_WeaponCSBase + все пушки, gamemovement (Source-движение),
                   CCSGameRules (раунды, экономика, бомба), гранаты, lag compensation, анимстейт (desync/LBY), события
 src/game/server/  навигационная сетка и боты (CCSBot)
-src/game/client/  ввод/бинды, HUD (как в CS), VGUI-меню закупки и команд, viewmodel, эффекты, звук (процедурный синтез)
+src/game/client/  ввод/бинды, HUD (как в CS), VGUI-меню закупки и команд, viewmodel, эффекты, звук (процедурный синтез или WAV из CS 1.6)
 src/vgui/         ISurface, контролы (Frame/Button/Slider/ComboBox/…), главное меню CS 1.6, консоль
 src/cheat/        hvhsense: меню, ragebot, antiaim, visuals, misc
 tools/            mapgen.py, gen_vs.py (решение Visual Studio), simtest (симуляция матча без графики), worldtest, modeltest

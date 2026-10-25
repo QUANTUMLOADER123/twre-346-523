@@ -335,7 +335,7 @@ static void DrawRadar(CCSPlayer* lp, float sc) {
   float pxPerUnitTex = 4.f / m.cell;
   float scale = 1.f / unitsPerPx / pxPerUnitTex;        // screen px per texture px
   float tx = (center.x - m.gridOrigin.x) * pxPerUnitTex, ty = (m.gridOrigin.y - center.y) * pxPerUnitTex;
-  float rot = -(yaw - 90.f);                             // forward = up on screen
+  float rot = yaw - 90.f;                                // forward = up on screen (raylib rotates clockwise on screen)
   float cx = x0 + size / 2, cy = y0 + size / 2;
   DrawTexturePro(s_radarTex, { 0, 0, (float)s_radarTex.width, (float)s_radarTex.height }, { cx, cy, s_radarTex.width * scale, s_radarTex.height * scale }, { tx * scale, ty * scale }, rot, { 255, 255, 255, 220 });
   auto toRadar = [&](const Vector& p, Vector2& out) {

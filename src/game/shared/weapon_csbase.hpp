@@ -135,3 +135,4 @@ public:
 C_WeaponCSBase* CreateWeapon(int weaponId);
 class CStudioModel;
 CStudioModel* GetWeaponWorldModelById(int id);
+bool KnifeIsKarambit();                          // cl_knife_model 1: karambit (reverse grip)

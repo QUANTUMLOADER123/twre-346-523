@@ -554,9 +554,46 @@ void CC4::ItemPostFrame() {
 
 // ------------------------------------------------------------------------------------------------
 // world models (glTF for guns, procedural for knife / grenades / C4)
+ConVar cl_knife_model("cl_knife_model", "1", FCVAR_ARCHIVE, "Knife model: 0 = default knife, 1 = karambit", true, 0, true, 1);
+bool KnifeIsKarambit() { return cl_knife_model.GetInt() == 1; }
+
+// karambit: curved claw blade (curves towards +z, held in reverse grip so the curve faces forward), finger ring at the back
+static void BuildKarambit(CStudioModel* m) {
+  const Color steel = { 178, 184, 192, 255 }, edge = { 228, 231, 236, 255 }, grip = { 32, 34, 30, 255 }, scale = { 62, 74, 48, 255 }, dark = { 70, 72, 78, 255 };
+  // handle (slightly drooping) with G10 scales
+  m->AddBox({ -4.4f, -0.32f, -0.70f }, { 0.0f, 0.32f, 0.55f }, grip);
+  m->AddBox({ -4.1f, -0.42f, -0.55f }, { -0.4f, 0.42f, 0.40f }, scale);
+  for (int i = 0; i < 4; i++) { float x0 = -3.8f + i * 0.9f; m->AddBox({ x0, -0.44f, -0.12f }, { x0 + 0.18f, 0.44f, 0.02f }, grip); } // grip grooves
+  m->AddBox({ -0.15f, -0.48f, -0.85f }, { 0.45f, 0.48f, 0.70f }, dark); // bolster
+  // finger ring (annulus in the xz plane)
+  const Vector rc(-5.55f, 0, -0.05f); const float r0 = 0.82f, r1 = 1.36f; const int RS = 16;
+  for (int i = 0; i < RS; i++) {
+    float a0 = i * 2.f * M_PI_F / RS, a1 = (i + 1) * 2.f * M_PI_F / RS;
+    Vector d0(std::cos(a0), 0, std::sin(a0)), d1(std::cos(a1), 0, std::sin(a1));
+    m->AddWedge(rc + d0 * r0, rc + d0 * r1, rc + d1 * r1, rc + d1 * r0, 0.62f, dark);
+  }
+  // blade: arc around C, spine on the outside, sharpened concave edge inside
+  const Vector C(0.35f, 0, 5.6f); const float R = 5.6f; const int N = 14; const float phiMax = DEG2RADF(78.f);
+  auto P = [&](float t, float off) { float ph = t * phiMax; Vector dir(std::sin(ph), 0, -std::cos(ph)); return C + dir * (R + off); };
+  auto W = [&](float t) { return 1.45f * std::pow(1.f - t, 0.75f) + 0.04f; };
+  for (int i = 0; i < N; i++) {
+    float t0 = (float)i / N, t1 = (float)(i + 1) / N;
+    float w0 = W(t0), w1 = W(t1);
+    // outer (spine) half .. 65% of the width
+    m->AddWedge(P(t0, 0.5f * w0), P(t1, 0.5f * w1), P(t1, -0.15f * w1), P(t0, -0.15f * w0), 0.26f * (1.f - 0.6f * t0), steel);
+    // bevel / edge
+    m->AddWedge(P(t0, -0.15f * w0), P(t1, -0.15f * w1), P(t1, -0.5f * w1), P(t0, -0.5f * w0), 0.10f, edge);
+  }
+}
+
 CStudioModel* GetWeaponWorldModelById(int id) {
   static CStudioModel* cache[WEAPON_MAX] = {};
   if (id <= 0 || id >= WEAPON_MAX) return nullptr;
+  if (id == WEAPON_KNIFE && KnifeIsKarambit()) {
+    static CStudioModel* kara = nullptr;
+    if (!kara) { kara = g_ModelCache.GetProcedural("weapon_knife_karambit"); if (kara->prims.empty()) BuildKarambit(kara); }
+    return kara;
+  }
   if (cache[id]) return cache[id];
   const CCSWeaponInfo* wi = GetWeaponInfo(id);
   if (wi->modelPath) { cache[id] = g_ModelCache.Get(wi->modelPath, STUDIO_ORIENT_WEAPON, wi->modelLength, 1.6f); return cache[id]; }

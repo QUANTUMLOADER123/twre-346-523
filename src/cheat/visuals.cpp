@@ -87,7 +87,7 @@ bool DrawPlayer(CCSPlayer* p, const CStudioModel& mdl, const PlayerPoseOutput& p
   if (p->IsLocalPlayer()) {
     // fake model (what other players see: client side feet yaw)
     if (s.chamsFake && v.aa.enabled && v.aa.bodyYaw) {
-      float delta = AngleDiff(p->m_flFakeFootYaw, p->m_PlayerAnimState.m_flFootYaw);
+      float delta = AngleDiff(p->m_PlayerAnimState.m_flFootYaw, p->m_flFakeFootYaw); // main model = sent yaw, ghost = desynced server body
       matrix3x4_t rot; AngleMatrix(QAngle(0, delta, 0), rot);
       Vector o = p->m_vecRenderOrigin;
       matrix3x4_t toOrigin, back; toOrigin.SetOrigin(o * -1.f); back.SetOrigin(o);

@@ -32,5 +32,6 @@ float NightmodeAmount();
 float ViewmodelFov();
 bool ThirdpersonActive();
 bool ShouldDrawLocalInThirdperson();
+bool LocalBodyYawActive();                      // anti-aim desync on: draw the local model with the sent (AA) yaw, the ghost shows the desync
 float GetRealYaw();                             // local real (server) foot yaw for AA indicator
 } // namespace cheat

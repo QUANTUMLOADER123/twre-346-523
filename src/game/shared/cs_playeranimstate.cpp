@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <cmath>
 
+bool KnifeIsKarambit(); // weapon_csbase.cpp (cl_knife_model)
+
 // ------------------------------------------------------------------------------------------------
 // CCSGOPlayerAnimState
 void CCSGOPlayerAnimState::Reset(float yaw) {
@@ -81,7 +83,7 @@ void StudioBoneMap::Init(const CStudioModel& m) {
   for (int s = 0; s < 2; s++) {
     std::string S = std::string(".") + side[s];
     shoulder[s] = m.FindNode("Shoulder" + S); upperArm[s] = m.FindNode("UpperArm" + S); lowerArm[s] = m.FindNode("LowerArm" + S);
-    hand[s] = m.FindNode("Hand" + S); middle2[s] = m.FindNode("Middle2" + S);
+    hand[s] = m.FindNode("Hand" + S); middle2[s] = m.FindNode("Middle2" + S); thumb2[s] = m.FindNode("Thumb2" + S);
     upperLeg[s] = m.FindNode("UpperLeg" + S); lowerLeg[s] = m.FindNode("LowerLeg" + S); foot[s] = m.FindNode("Foot" + S); footEnd[s] = m.FindNode("Foot" + S + "_end");
     for (const char* f : { "Index", "Middle", "Ring", "Pinky" }) for (int k = 2; k <= 4; k++) { int n = m.FindNode(std::string(f) + std::to_string(k) + S); if (n >= 0) fingers[s].push_back(n); }
   }
@@ -189,6 +191,7 @@ void BuildPlayerPose(const CStudioModel& mdl, const CStudioModel* wmdl, const Pl
         break;
       case WEAPONTYPE_KNIFE: case WEAPONTYPE_GRENADE: case WEAPONTYPE_C4:
         gripLocal = Vector(mn.x + 0.25f * L, 0, cz); twoHands = wi->type == WEAPONTYPE_C4;
+        if (wi->type == WEAPONTYPE_KNIFE && KnifeIsKarambit()) gripLocal = Vector(-2.1f, 0, -0.1f);
         foreLocal = gripLocal + Vector(0, 3, 0);
         gripTarget = chestP + Vector(0, 0, -9.f) + aimDir * 12.f + aimRight * 5.f;
         break;
@@ -205,10 +208,11 @@ void BuildPlayerPose(const CStudioModel& mdl, const CStudioModel* wmdl, const Pl
       // first person: place the grip relative to the eyes (CS v_ models sit lower-right of the view)
       Vector eyeM = pose.nodes[B.head].GetOrigin() + Vector(1.5f, 0, 3.5f);
       if (wi->type == WEAPONTYPE_PISTOL) gripTarget = eyeM + aimDir * 21.f - aimUp * 8.f + aimRight * 4.6f;
-      else if (wi->type == WEAPONTYPE_KNIFE) gripTarget = eyeM + aimDir * 18.f - aimUp * 8.5f + aimRight * 6.5f;
+      else if (wi->type == WEAPONTYPE_KNIFE) gripTarget = KnifeIsKarambit() ? eyeM + aimDir * 21.f - aimUp * 3.5f + aimRight * 7.5f : eyeM + aimDir * 18.f - aimUp * 8.5f + aimRight * 6.5f;
       else if (wi->type == WEAPONTYPE_GRENADE) gripTarget = eyeM + aimDir * 18.f - aimUp * 8.f + aimRight * 6.f;
     }
-    if (wi->type == WEAPONTYPE_KNIFE && in.viewmodel) // blade tilted up/inwards like v_knife
+    bool karambit = wi->type == WEAPONTYPE_KNIFE && KnifeIsKarambit();
+    if (wi->type == WEAPONTYPE_KNIFE && in.viewmodel && !karambit) // blade tilted up/inwards like v_knife
       wrot = MatrixMul(AxisAngleMatrix(aimUp, 12.f), MatrixMul(AxisAngleMatrix(aimRight, 18.f), wrot));
     if (in.reloadCycle >= 0) { // tilt the gun while reloading
       float r = std::sin(Clamp(in.reloadCycle, 0.f, 1.f) * M_PI_F);
@@ -217,28 +221,68 @@ void BuildPlayerPose(const CStudioModel& mdl, const CStudioModel* wmdl, const Pl
     }
     gripTarget -= aimDir * (2.5f * kick);
     if (kick > 0) wrot = MatrixMul(AxisAngleMatrix(aimRight, -6.f * kick), wrot);
+    matrix3x4_t handRot = wrot; // hand frames follow the aim, not the knife's reverse-grip rotation
+    if (karambit) { // reverse grip: blade points down out of the fist, the claw curves forward, ring on the index finger
+      wrot = MatrixMul(wrot, AxisAngleMatrix(Vector(0, 1, 0), 82.f));
+      if (in.viewmodel) wrot = MatrixMul(AxisAngleMatrix(aimUp, -14.f), wrot);
+    }
     matrix3x4_t w2m = wrot; w2m.SetOrigin(gripTarget - VectorRotate(gripLocal, wrot));
     out.weaponToWorld = MatrixMul(m2w, w2m);
     out.hasWeapon = true;
     Vector rHand = VectorTransform(gripLocal, w2m), lHand = VectorTransform(foreLocal, w2m);
+    Vector gunFwd = VectorRotate(Vector(1, 0, 0), handRot), gunUp = VectorRotate(Vector(0, 0, 1), handRot), gunLat = VectorRotate(Vector(0, 1, 0), handRot);
+    Vector wantF[2], wantN[2];
+    bool pistol = wi->type == WEAPONTYPE_PISTOL, melee = wi->type == WEAPONTYPE_KNIFE || wi->type == WEAPONTYPE_GRENADE;
+    if (pistol)     { wantF[1] = gunFwd * 0.70f - gunUp * 0.72f; wantN[1] = gunLat; wantF[0] = gunFwd * 0.55f - gunUp * 0.70f - gunLat * 0.45f; wantN[0] = gunUp * 0.35f - gunLat * 0.95f; }
+    else if (karambit) { wantF[1] = gunFwd; wantN[1] = gunLat; wantF[0] = gunFwd; wantN[0] = gunUp; }
+    else if (melee) { wantF[1] = gunFwd * 0.35f - gunUp * 0.94f; wantN[1] = gunLat; wantF[0] = gunFwd; wantN[0] = gunUp; }
+    else if (wi->type == WEAPONTYPE_C4) { wantF[1] = gunFwd * 0.6f - gunLat * 0.8f; wantN[1] = -gunUp; wantF[0] = gunFwd * 0.6f + gunLat * 0.8f; wantN[0] = -gunUp; }
+    else            { wantF[1] = gunFwd * 0.80f - gunUp * 0.60f; wantN[1] = gunLat; wantF[0] = gunFwd * 0.45f - gunLat * 0.90f; wantN[0] = gunUp; }
+    auto frame = [](Vector F, Vector N, bool right, Vector& T) { // orthonormalise, returns T
+      F.NormalizeInPlace(); N = (N - F * N.Dot(F)).Normalized(); T = right ? F.Cross(N) : N.Cross(F); return F; };
+    // the Hand bone is the wrist: pull it back so the palm (not the wrist) sits on the grip, and off the surface
+    for (int s = 0; s < 2; s++) {
+      if (B.hand[s] < 0 || B.middle2[s] < 0) continue;
+      float palm = mdl.nodes[B.middle2[s]].bindPos().DistTo(mdl.nodes[B.hand[s]].bindPos());
+      Vector wT; Vector wF = frame(wantF[s], wantN[s], s == 1, wT); Vector wN = (wantN[s] - wF * wantN[s].Dot(wF)).Normalized();
+      Vector off = wF * ((karambit && s == 1 ? -0.85f : -0.55f) * palm) - wN * ((s == 0 && !pistol && !melee) ? 0.4f : 1.1f);
+      if (pistol) off += gunUp * 1.8f;   // palm around the grip, not under it
+      if (s == 1) rHand += off; else lHand += off;
+    }
     if (in.reloadCycle >= 0) { float r = std::sin(Clamp(in.reloadCycle, 0.f, 1.f) * M_PI_F); lHand = VectorLerp(lHand, VectorTransform(Vector((mn.x + mx.x) * 0.5f, 0, mn.z - 4.f), w2m), r); }
     mdl.SolveTwoBoneIK(d, B.upperArm[1], B.lowerArm[1], B.hand[1], rHand, Vector(-0.2f, -0.8f, -1.f));
     if (twoHands) mdl.SolveTwoBoneIK(d, B.upperArm[0], B.lowerArm[0], B.hand[0], lHand, Vector(-0.2f, 0.8f, -1.f));
     else { // free left arm hangs a bit forward
-      mdl.SolveTwoBoneIK(d, B.upperArm[0], B.lowerArm[0], B.hand[0], shoulderL + Vector(4, 3, -22), Vector(-0.3f, 0.6f, 0));
+      mdl.SolveTwoBoneIK(d, B.upperArm[0], B.lowerArm[0], B.hand[0], shoulderL + (in.viewmodel ? Vector(-3, 4, -26) : Vector(4, 3, -22)), Vector(-0.3f, 0.6f, 0));
     }
     mdl.BuildPose(d, pose);
-    // orient hands along the weapon and curl fingers
-    Vector gunFwd = VectorRotate(Vector(1, 0, 0), wrot), gunUp = VectorRotate(Vector(0, 0, 1), wrot), gunLat = VectorRotate(Vector(0, 1, 0), wrot);
+    // orient hands: full frame (fingers F, thumb side T, palm normal N). Bind pose = palms down, thumbs forward,
+    // so per side the palm normal is N = T x F (right) / F x T (left). Right palm faces the grip from the right side,
+    // the left hand cups the foregrip from below (palm up) or wraps the shooting hand on pistols.
     for (int s = 0; s < 2; s++) {
       if (B.hand[s] < 0 || B.middle2[s] < 0) continue;
       if (s == 0 && !twoHands) continue;
-      Vector cur = pose.nodes[B.middle2[s]].GetOrigin() - pose.nodes[B.hand[s]].GetOrigin();
-      Vector want = s == 1 ? (gunFwd * 0.55f - gunUp * 0.85f) : (gunFwd * 0.8f - gunUp * 0.3f + gunLat * -0.4f);
-      SetDelta(d, B.hand[s], RotationBetween(cur, want));
+      Vector h = pose.nodes[B.hand[s]].GetOrigin();
+      Vector cF = (pose.nodes[B.middle2[s]].GetOrigin() - h).Normalized();
+      if (B.thumb2[s] < 0) { SetDelta(d, B.hand[s], RotationBetween(cF, wantF[s])); continue; }
+      Vector cT = pose.nodes[B.thumb2[s]].GetOrigin() - h; cT = (cT - cF * cT.Dot(cF)).Normalized();
+      Vector cN = s == 1 ? cT.Cross(cF) : cF.Cross(cT);
+      Vector wT; Vector wF = frame(wantF[s], wantN[s], s == 1, wT); Vector wN = wantN[s]; wN = (wN - wF * wN.Dot(wF)).Normalized();
+      // R = [wF wT wN] * [cF cT cN]^T
+      matrix3x4_t A, Bm; A.SetColumn(0, wF); A.SetColumn(1, wT); A.SetColumn(2, wN); A.SetOrigin(Vector());
+      Bm.SetColumn(0, cF); Bm.SetColumn(1, cT); Bm.SetColumn(2, cN); Bm.SetOrigin(Vector());
+      SetDelta(d, B.hand[s], MatrixMul(A, RigidInvert(Bm)));
     }
     mdl.BuildPose(d, pose);
-    for (int s = 0; s < 2; s++) for (int f : B.fingers[s]) SetDelta(d, f, AxisAngleMatrix(gunLat, s == 1 ? 38.f : 30.f));
+    // curl fingers towards the palm (rotation about F x N moves the finger tips into N)
+    for (int s = 0; s < 2; s++) {
+      if (s == 0 && !twoHands) continue;
+      Vector wT; Vector wF = frame(wantF[s], wantN[s], s == 1, wT);
+      Vector wN = (wantN[s] - wF * wantN[s].Dot(wF)).Normalized();
+      Vector axis = wF.Cross(wN).Normalized();
+      float curl = karambit && s == 1 ? 72.f : (s == 0 && !pistol && !melee) ? 34.f : 46.f;
+      for (int f : B.fingers[s]) SetDelta(d, f, AxisAngleMatrix(axis, curl));
+    }
   } else {
     // relaxed arms (no weapon / dead / planting)
     float down = alive ? 72.f : 40.f;

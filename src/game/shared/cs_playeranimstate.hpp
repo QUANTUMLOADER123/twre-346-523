@@ -84,7 +84,7 @@ int IntersectHitboxes(const HitboxSet& hb, const Vector& start, const Vector& de
 // bone indices cache per model
 struct StudioBoneMap {
   int hips = -1, abdomen = -1, torso = -1, chest = -1, neck = -1, head = -1, headEnd = -1;
-  int shoulder[2] = { -1, -1 }, upperArm[2] = { -1, -1 }, lowerArm[2] = { -1, -1 }, hand[2] = { -1, -1 }, middle2[2] = { -1, -1 };
+  int shoulder[2] = { -1, -1 }, upperArm[2] = { -1, -1 }, lowerArm[2] = { -1, -1 }, hand[2] = { -1, -1 }, middle2[2] = { -1, -1 }, thumb2[2] = { -1, -1 };
   int upperLeg[2] = { -1, -1 }, lowerLeg[2] = { -1, -1 }, foot[2] = { -1, -1 }, footEnd[2] = { -1, -1 };
   std::vector<int> fingers[2];
   void Init(const CStudioModel& m);

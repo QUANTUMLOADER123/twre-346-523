@@ -97,7 +97,7 @@ struct Vars {
     bool chamsFake = true; Col chamsFakeCol = MkCol(255, 255, 255, 70);
     float scopeBlend = 40;                   // local model transparency in scope
     // world/view
-    bool removeFlash = true, removeSmoke = true, removeScope = true, removeRecoil = true;
+    bool removeFlash = true, removeSmoke = false, removeScope = true, removeRecoil = true;
     float nightmode = 0;
     KeyBind thirdpersonKey{ 0, KEYMODE_TOGGLE }; float thirdpersonDist = 140; bool thirdpersonDead = true;
     bool forceCrosshair = true; bool penCrosshair = true;
@@ -123,6 +123,7 @@ struct Vars {
     bool logHits = true, logHurt = true, logPurchases = false;
     bool clantag = false;
     Col accent = MkCol(150, 200, 60);
+    Col menuCol = MkCol(170, 12, 12);          // aimware red
     KeyBind menuKey{ KEY_INSERT, KEYMODE_TOGGLE };
     int dpi = 0; // 100 125 150
   } misc;
@@ -134,7 +135,9 @@ struct PlayerSettings { int resolverOverride = 0; bool forceBaim = false; bool w
 extern PlayerSettings g_PlayerList[65];
 
 // shared runtime state
-struct ShotRecord { int target; int hitbox; Vector aimPoint; float time; int tick; bool resolved; float resolvedYaw; int side; bool acked; bool hit; float damage; int hitchance; int backtrackTicks; bool safe; };
+struct ShotRecord { int target; int hitbox; Vector aimPoint; float time; int tick; bool resolved; float resolvedYaw; int side; bool acked; bool hit; float damage; int hitchance; int backtrackTicks; bool safe; bool fired; };
+// time the local weapon actually uses for attacks (tickbase, differs from the server clock while double tap charges)
+float LocalAttackTime(CCSPlayer* lp);
 struct RuntimeState {
   bool sendPacket = true;
   int choked = 0;

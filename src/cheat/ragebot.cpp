@@ -210,10 +210,10 @@ static Vector SpreadDir(const QAngle& ang, int seed, float inacc, float spread, 
   return d;
 }
 
-static int HitChance(CCSPlayer* lp, C_WeaponCSBase* w, const Vector& eye, const QAngle& ang, const AimCandidate& c) {
+static int HitChance(CCSPlayer* lp, C_WeaponCSBase* w, const Vector& eye, const QAngle& ang, const AimCandidate& c, float inaccOverride = -1.f) {
   (void)lp;
   if (weapon_accuracy_nospread.GetBool()) return 100;
-  float inacc = w->GetInaccuracy(), spread = w->GetSpread();
+  float inacc = inaccOverride >= 0 ? inaccOverride : w->GetInaccuracy(), spread = w->GetSpread();
   if (inacc + spread < 0.0005f) return 100;
   int hits = 0, total = 0;
   float range = w->GetCSWpnData().range;
@@ -264,12 +264,12 @@ static void QuickStop(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles, bo
   cmd.buttons &= ~(IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT | IN_JUMP);
 }
 
+float LocalAttackTime(CCSPlayer* lp) { return TICKS_TO_TIME(lp->m_nTickBase); }
+
 static bool CanShoot(CCSPlayer* lp, C_WeaponCSBase* w) {
-  float now = TICKS_TO_TIME(lp->m_nTickBase);
-  float sv = ServerTime();
-  (void)now;
-  if (!w || w->IsReloading() || w->m_iClip1 == 0) return false;
-  if (sv < lp->m_flNextAttack || sv < w->m_flNextPrimaryAttack) return false;
+  if (!w || w->IsReloading() || w->m_iClip1 <= 0) return false;
+  float now = LocalAttackTime(lp);   // the weapon fires on tickbase time, not on the server clock
+  if (now < lp->m_flNextAttack || now < w->m_flNextPrimaryAttack) return false;
   if (CSGameRules()->IsFreezePeriod()) return false;
   if (lp->m_bIsDefusing || lp->m_bIsPlanting) return false;
   return true;
@@ -287,6 +287,7 @@ static void ProcessPendingShot() {
   if (s.acked) return;
   if (gpGlobals->tickcount <= s.tick) return;
   s.acked = true;
+  if (!s.fired) { g.shots.pop_back(); return; }     // the weapon never fired (no weapon_fire) -> not a shot, no log
   CCSPlayer* t = UTIL_PlayerByIndex(s.target);
   if (s_hurtTick >= s.tick && s_hurtVictim == s.target) { s.hit = true; return; }
   if (!t) return;
@@ -315,7 +316,9 @@ static void ProcessPendingShot() {
 
 void Rage_OnEvent(const IGameEvent& ev) {
   CCSPlayer* lp = g_pLocalPlayer; if (!lp) return;
-  if (ev.IsEvent("bullet_impact") && ev.GetInt("userid") == lp->entindex() && !ev.GetBool("exit")) {
+  if (ev.IsEvent("weapon_fire") && ev.GetInt("userid") == lp->entindex()) {
+    if (!g.shots.empty() && !g.shots.back().acked && g.shots.back().tick == gpGlobals->tickcount) g.shots.back().fired = true;
+  } else if (ev.IsEvent("bullet_impact") && ev.GetInt("userid") == lp->entindex() && !ev.GetBool("exit")) {
     s_lastImpact = Vector(ev.GetFloat("x"), ev.GetFloat("y"), ev.GetFloat("z")); s_haveImpact = true; s_impactTick = gpGlobals->tickcount;
   } else if (ev.IsEvent("player_hurt") && ev.GetInt("attacker") == lp->entindex()) {
     s_hurtTick = gpGlobals->tickcount; s_hurtVictim = ev.GetInt("userid");
@@ -399,24 +402,39 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
   }
   if (!best.target) return;
   g.target = best.target; g.targetHitbox = best.hitbox; g.targetPoint = best.point; g.targetValid = true;
-  // accuracy: autoscope / quick stop
+  // with spread compensation (or a nospread server) every bullet goes exactly where we aim:
+  // no autoscope, no quick stop, no hitchance, no unduck delay
+  bool perfect = v.rage.compensateSpread || weapon_accuracy_nospread.GetBool();
   bool sniper = IsSniper(w->GetCSWeaponID());
-  if (v.rage.autoscope && sniper && !w->IsZoomed() && (lp->m_fFlags & FL_ONGROUND)) {
-    if (ServerTime() >= w->m_flNextSecondaryAttack) cmd.buttons |= IN_ATTACK2;
+  bool onGround = (lp->m_fFlags & FL_ONGROUND) != 0;
+  if (!perfect && v.rage.autoscope && sniper && !w->IsZoomed() && onGround) {
+    if (LocalAttackTime(lp) >= w->m_flNextSecondaryAttack) cmd.buttons |= IN_ATTACK2;
     if (v.rage.quickStop) QuickStop(cmd, lp, viewAngles, v.rage.quickStop == 2);
     return;
   }
-  if (v.rage.quickStop && (canShoot || v.rage.quickStopBetweenShots)) QuickStop(cmd, lp, viewAngles, v.rage.quickStop == 2);
-  if (!canShoot) return;
-  if (v.rage.delayShot && lp->m_flDuckAmount > 0.05f && lp->m_flDuckAmount < 0.95f) return;
+  if (!perfect && v.rage.delayShot && lp->m_flDuckAmount > 0.05f && lp->m_flDuckAmount < 0.95f) return;
   // aim
   QAngle aim = CalcAngle(eye, best.point);
   if (v.rage.removeRecoil) { aim.x -= lp->m_aimPunchAngle.x * weapon_recoil_scale.GetFloat(); aim.y -= lp->m_aimPunchAngle.y * weapon_recoil_scale.GetFloat(); }
   int hc = 100;
-  if (v.rage.compensateSpread) aim = CompensateSpread(aim, cmd.random_seed & 255, w->GetInaccuracy(), w->GetSpread());
-  else {
+  if (perfect) {
+    if (!canShoot) return;
+    if (v.rage.compensateSpread) aim = CompensateSpread(aim, cmd.random_seed & 255, w->GetInaccuracy(), w->GetSpread());
+  } else {
+    int need = (int)v.rage.hitchance;
     hc = HitChance(lp, w, eye, aim, best);
-    if (v.rage.hitchance > 0 && hc < (int)v.rage.hitchance) return;
+    if (need > 0 && hc < need) {
+      // quick stop only when standing still would actually reach the hitchance (otherwise keep moving / anti-aiming)
+      if (v.rage.quickStop && onGround && (canShoot || v.rage.quickStopBetweenShots)) {
+        const CCSWeaponInfo& wi = w->GetCSWpnData();
+        bool ducked = lp->m_flDuckAmount > 0.9f;
+        float still = (ducked ? (w->IsZoomed() ? wi.inaccuracyCrouchAlt : wi.inaccuracyCrouch) : (w->IsZoomed() ? wi.inaccuracyStandAlt : wi.inaccuracyStand)) / 1000.f;
+        if (HitChance(lp, w, eye, aim, best, still) >= need) QuickStop(cmd, lp, viewAngles, v.rage.quickStop == 2);
+      }
+      return;
+    }
+    if (v.rage.quickStop && v.rage.quickStopBetweenShots && !canShoot) QuickStop(cmd, lp, viewAngles, v.rage.quickStop == 2);
+    if (!canShoot) return;
   }
   aim.x = Clamp(aim.x, -89.f, 89.f); aim.y = AngleNormalize(aim.y); aim.z = 0;
   if (!v.rage.autoFire && !(cmd.buttons & IN_ATTACK)) return;
@@ -428,7 +446,7 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
   if (dtOn && g.dtReady) cmd.tickbaseShift = maxShift;
   g.lastShotTime = ServerTime();
   ShotRecord s{}; s.target = best.target->entindex(); s.hitbox = best.hitbox; s.aimPoint = best.point; s.time = ServerTime(); s.tick = gpGlobals->tickcount;
-  s.resolved = true; s.resolvedYaw = best.resolvedYaw; s.side = best.side; s.damage = best.damage; s.hitchance = hc; s.backtrackTicks = best.btTicks; s.safe = best.safe;
+  s.resolved = true; s.resolvedYaw = best.resolvedYaw; s.side = best.side; s.damage = best.damage; s.hitchance = hc; s.backtrackTicks = best.btTicks; s.safe = best.safe; s.fired = false;
   g.shots.push_back(s); while (g.shots.size() > 32) g.shots.pop_front();
   s_haveImpact = false;
 }

@@ -10,3 +10,4 @@ cfg/hvhsense_*.cfg
 /cshvh
 third_party/raylib-*/
 *.pdb
+/sound/

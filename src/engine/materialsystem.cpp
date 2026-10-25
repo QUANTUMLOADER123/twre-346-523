@@ -236,12 +236,23 @@ void CMaterialSystem::Init() {
     return Color{ 255, 255, 255, c8(a * 255) };
   });
   SetTextureWrap(cloud, TEXTURE_WRAP_REPEAT);
+  // smoke grenade puff: soft round billow with a noisy, cauliflower edge and some internal density variation
+  smokePuff = sprite(128, [](float u, float v, int x, int y) {
+    float r = std::sqrt(u * u + v * v);
+    float n = fbm(x / 128.f * 4, y / 128.f * 4, 4, 911, 5), m = fbm(x / 128.f * 8, y / 128.f * 8, 8, 517, 3);
+    float rd = r + (n - 0.5f) * 0.42f;                       // billowy outline
+    float edge = Clamp((0.95f - rd) / 0.55f, 0.f, 1.f); edge = edge * edge * (3 - 2 * edge);
+    float a = edge * (0.80f + 0.45f * m);
+    float shade = 0.86f + 0.14f * (1.f - v) * 0.5f + (m - 0.5f) * 0.12f; // brighter towards the top of the sprite
+    uint8_t g = c8(Clamp(shade, 0.f, 1.f) * 255);
+    return Color{ g, g, g, c8(Clamp(a, 0.f, 1.f) * 255) };
+  });
   initialized = true;
 }
 void CMaterialSystem::Shutdown() {
   if (!initialized) return;
   for (auto& m : m_mats) if (m.tex.id) UnloadTexture(m.tex);
-  for (Texture2D* t : { &white, &smoke, &spark, &flare, &decalHole, &glowDot, &cloud }) if (t->id) UnloadTexture(*t);
+  for (Texture2D* t : { &white, &smoke, &spark, &flare, &decalHole, &glowDot, &cloud, &smokePuff }) if (t->id) UnloadTexture(*t);
   initialized = false;
 }
 int CMaterialSystem::FindByName(const std::string& n) const {

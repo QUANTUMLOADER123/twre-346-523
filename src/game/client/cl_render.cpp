@@ -21,6 +21,8 @@ ConVar fov_desired("fov_desired", "90", FCVAR_ARCHIVE, "Sets the base field-of-v
 extern ConVar cl_interp;
 ConVar cl_interpolate("cl_interpolate", "1", FCVAR_ARCHIVE, "Interpolate entities on the client.");
 ConVar cam_idealdist("cam_idealdist", "120", FCVAR_ARCHIVE, "Thirdperson camera distance");
+ConVar cam_idealyaw("cam_idealyaw", "0", FCVAR_CHEAT, "Thirdperson camera yaw offset (orbit around the player)");
+ConVar cam_idealpitch("cam_idealpitch", "0", FCVAR_CHEAT, "Thirdperson camera pitch offset");
 ConVar view_recoil_tracking("view_recoil_tracking", "0.45", FCVAR_CHEAT | FCVAR_REPLICATED, "How closely the view tracks with the aim punch from weapon recoil");
 ConVar r_drawothermodels("r_drawothermodels", "1", FCVAR_CHEAT, "0=Off, 1=Normal, 2=Wireframe");
 ConVar r_drawentities("r_drawentities", "1", FCVAR_CHEAT, "");
@@ -147,10 +149,11 @@ void CL_ComputeView(CViewSetup& view) {
   view.origin = org; view.angles = ang;
   // thirdperson for the alive local player
   if (lp->IsAlive() && (cl.thirdperson || cheat::ThirdpersonActive())) {
-    Vector fwd; AngleVectors(cl.viewangles, &fwd);
+    QAngle camAng = cl.viewangles; camAng.x = Clamp(camAng.x + cam_idealpitch.GetFloat(), -89.f, 89.f); camAng.y += cam_idealyaw.GetFloat();
+    Vector fwd; AngleVectors(camAng, &fwd);
     float dist = cl.thirdpersonDist > 0 ? cl.thirdpersonDist : cam_idealdist.GetFloat();
     trace_t tr; g_EngineTrace.TraceHull(org, org - fwd * dist, Vector(-8, -8, -8), Vector(8, 8, 8), MASK_PLAYERSOLID_BRUSHONLY, nullptr, &tr);
-    view.origin = tr.endpos; view.angles = cl.viewangles;
+    view.origin = tr.endpos; view.angles = camAng;
     cl.firstPerson = false;
   }
   cheat::OverrideView(view);
@@ -212,6 +215,9 @@ void CCSPlayer::BuildRenderPose(float alpha, bool useNet) {
     in.reloadCycle = (w && w->m_bInReload && w->m_flReloadFinishTime > w->m_flReloadStartTime) ? Clamp((ServerTime() - w->m_flReloadStartTime) / (w->m_flReloadFinishTime - w->m_flReloadStartTime), 0.f, 1.f) : -1.f;
     in.planting = m_bIsPlanting; in.defusing = m_bIsDefusing;
     if (m_LastCmd.bFakeDuck && (m_fFlags & FL_ONGROUND)) in.duckAmount = m_net.duckAmount;
+    // body yaw (desync): the visible model keeps the anti-aim yaw that was actually sent and the feet other
+    // clients compute from it - the desynced server body is drawn by the cheat as the 'fake' ghost
+    if (IsLocalPlayer() && m_net.valid && cheat::LocalBodyYawActive()) { in.eyeAngles = m_angLastSentAngles; in.footYaw = m_flFakeFootYaw; }
   }
   m_vecRenderOrigin = in.origin;
   BuildPlayerPose(*mdl, GetWeaponWorldModel(in.weaponId), in, m_RenderPose, true);

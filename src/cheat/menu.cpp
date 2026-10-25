@@ -100,7 +100,7 @@ static void RegisterVars() {
   R("misc.bhop", m.bhop); R("misc.autostrafe", m.autostrafe); R("misc.edgejump_key", m.edgeJumpKey); R("misc.faststop", m.fastStop); R("misc.buy_primary", m.buyPrimary);
   R("misc.buy_secondary", m.buySecondary); R("misc.buy_armor", m.buyArmor); R("misc.buy_nades", m.buyNades); R("misc.buy_kit", m.buyKit); R("misc.hitsound", m.hitsound);
   R("misc.hitsound_type", m.hitsoundType); R("misc.killsay", m.killsay); R("misc.log_hits", m.logHits); R("misc.log_hurt", m.logHurt); R("misc.log_buy", m.logPurchases);
-  R("misc.clantag", m.clantag); R("misc.accent", m.accent); R("misc.menu_key", m.menuKey); R("misc.dpi", m.dpi);
+  R("misc.clantag", m.clantag); R("misc.accent", m.accent); R("misc.menu_col", m.menuCol); R("misc.menu_key", m.menuKey); R("misc.dpi", m.dpi);
   g_NamedBinds = { { "Ragebot", &r.key }, { "Minimum damage override", &r.minDamageOverrideKey }, { "Force body aim", &r.forceBaimKey }, { "Force safe point", &r.forceSafeKey },
     { "Double tap", &r.doubletapKey }, { "Hide shots", &r.hideshotsKey }, { "Anti-aim inverter", &a.inverter }, { "Freestanding", &a.freestandKey },
     { "Manual left", &a.manualLeft }, { "Manual right", &a.manualRight }, { "Manual back", &a.manualBack }, { "Duck peek assist", &a.fakeDuckKey },
@@ -181,7 +181,7 @@ void DrawLogs() {
 }
 
 // ------------------------------------------------------------------------------------------------
-// immediate mode gui
+// immediate mode gui - aimware style (light grey window, white group boxes, labels left / controls right, red accents)
 namespace gui {
 static float S = 1.f;                    // dpi scale
 static Vector2 mouse; static bool mDown, mPressed, mReleased, mRPressed; static float wheel;
@@ -194,8 +194,16 @@ static std::vector<std::function<void()>> deferred;  // popups drawn last
 static float gx, gy, gw, gh, cy, gTop, gContent; static int gId; static std::map<int, float> scrolls;
 static int idSeed = 0;
 
-static Col TextC() { return MkCol(205, 205, 205); }
-static Col TextDim() { return MkCol(140, 140, 140); }
+// palette
+static Col BgC() { return MkCol(236, 236, 236); }
+static Col GroupC() { return MkCol(250, 250, 250); }
+static Col BorderC() { return MkCol(168, 168, 168); }
+static Col FieldBorder() { return MkCol(140, 140, 140); }
+static Col TextC() { return MkCol(28, 28, 28); }
+static Col TextDim() { return MkCol(115, 115, 115); }
+static Col Accent() { return v.misc.menuCol; }
+static Col AccentDark() { Col a = v.misc.menuCol; return MkCol(a.r * 6 / 10, a.g * 6 / 10, a.b * 6 / 10); }
+
 static bool Hover(float x, float y, float w, float h) { return mouse.x >= x && mouse.x < x + w && mouse.y >= y && mouse.y < y + h; }
 static bool HoverClipped(float x, float y, float w, float h) { return !inputBlocked && Hover(x, y, w, h) && mouse.y >= gTop && mouse.y < gTop + gh - 4; }
 static int MakeId(const char* label) { unsigned h = 2166136261u + idSeed * 16777619u; for (const char* p = label; *p; p++) { h ^= (unsigned char)*p; h *= 16777619u; } return (int)(h & 0x7fffffff) | 1; }
@@ -204,165 +212,197 @@ static void Outline(float x, float y, float w, float h, Col c) { surface()->Draw
 static void GradV(float x, float y, float w, float h, Col a, Col b) { surface()->DrawGradientV(x, y, w, h, a, b); }
 static void Text(float x, float y, const char* t, Col c = TextC(), int font = FONT_CHEAT) { surface()->DrawText(font, t, x, y, c); }
 static float TextW(const char* t, int font = FONT_CHEAT) { return surface()->GetTextSize(font, t).x; }
-static Col Accent() { return v.misc.accent; }
+// text shortened with "..." to fit maxW
+static std::string Fit(const char* t, float maxW, int font = FONT_CHEAT) {
+  std::string s = t; if (TextW(s.c_str(), font) <= maxW) return s;
+  while (s.size() > 1 && TextW((s + "...").c_str(), font) > maxW) s.pop_back();
+  return s + "...";
+}
 
 static void BeginGroup(const char* title, float x, float y, float w, float h) {
   gId = MakeId(title); gx = x; gy = y; gw = w; gh = h;
-  Rect(x, y, w, h, MkCol(17, 17, 17));
-  Outline(x, y, w, h, MkCol(0, 0, 0)); Outline(x + 1, y + 1, w - 2, h - 2, MkCol(40, 40, 40));
+  Rect(x, y, w, h, GroupC());
+  Outline(x, y, w, h, BorderC());
   // title cut into the top border
   float tw = TextW(title, FONT_CHEAT_BOLD);
-  Rect(x + 10, y - 1, tw + 8, 3, MkCol(17, 17, 17));
-  Text(x + 14, y - 6, title, MkCol(210, 210, 210), FONT_CHEAT_BOLD);
+  Rect(x + 10 * S, y - 1, tw + 8 * S, 3, GroupC());
+  Text(x + 14 * S, y - 7 * S, title, MkCol(20, 20, 20), FONT_CHEAT_BOLD);
   float& sc = scrolls[gId];
   gTop = y + 4;
   surface()->PushClip((int)x + 2, (int)y + 4, (int)w - 4, (int)h - 6);
-  cy = y + 14 - sc;
+  cy = y + 16 * S - sc;
   gContent = cy;
 }
 static void EndGroup() {
   float& sc = scrolls[gId];
-  float content = cy + sc - (gy + 14) + 8;
-  float view = gh - 18;
+  float content = cy + sc - (gy + 16 * S) + 8;
+  float view = gh - 20;
   if (!inputBlocked && Hover(gx, gy, gw, gh) && wheel != 0) sc -= wheel * 30 * S;
   sc = Clamp(sc, 0.f, std::max(0.f, content - view));
   surface()->PopClip();
   if (content > view) { // scrollbar
     float bh = std::max(20.f, view * view / content), by = gy + 6 + (view - bh) * (sc / std::max(1.f, content - view));
-    Rect(gx + gw - 6, by, 3, bh, MkCol(60, 60, 60));
+    Rect(gx + gw - 7, gy + 6, 4, view, MkCol(228, 228, 228));
+    Rect(gx + gw - 7, by, 4, bh, MkCol(170, 170, 170));
   }
 }
-static float WX() { return gx + 20 * S; }
-static float WW() { return gw - 60 * S; }
+// two column layout inside a group: label at LX, control at CX (width CW)
+static float LX() { return gx + 14 * S; }
+static float CX() { return gx + std::max(118 * S, gw * 0.47f); }
+static float CW() { return gx + gw - 16 * S - CX(); }
+static float WX() { return LX(); }
+static float WW() { return gw - 30 * S; }
 static float s_lastLineY = 0;   // y of the last widget line (for attached keybind/colour)
+static bool s_lastLineHasControl = false;
+static float s_lastLineRight = 0; // free space right edge on the last line (attached widgets stack leftwards)
+
+static void RowLabel(const char* label, float y, bool enabled = true) {
+  std::string t = Fit(label, CX() - LX() - 6 * S, FONT_CHEAT_BOLD);
+  Text(LX(), y, t.c_str(), enabled ? TextC() : TextDim(), FONT_CHEAT_BOLD);
+}
+static void Field(float x, float y, float w, float h, bool hv, bool focus = false) {
+  Rect(x, y, w, h, hv ? MkCol(255, 255, 255) : MkCol(252, 252, 252));
+  Outline(x, y, w, h, focus ? Accent() : (hv ? MkCol(110, 110, 110) : FieldBorder()));
+}
 
 static bool Checkbox(const char* label, bool& val, bool enabled = true) {
-  int id = MakeId(label);
-  float x = gx + 10 * S, y = cy;
-  float bs = 8 * S;
-  bool hv = enabled && HoverClipped(x, y - 1, TextW(label) + 20 * S, 14 * S);
+  float y = cy, bs = 12 * S, x = CX();
+  bool hv = enabled && HoverClipped(LX(), y - 2, gw - 28 * S, 18 * S);
   if (hv && mPressed) { val = !val; EmitSound2D("UI.Click", 0.3f); }
-  if (val) GradV(x, y + 2, bs, bs, Accent(), Accent().Alpha(170));
-  else GradV(x, y + 2, bs, bs, hv ? MkCol(70, 70, 70) : MkCol(60, 60, 60), MkCol(40, 40, 40));
-  Outline(x - 1, y + 1, bs + 2, bs + 2, MkCol(0, 0, 0));
-  Text(x + 18 * S, y, label, enabled ? TextC() : TextDim());
-  (void)id;
-  s_lastLineY = y; cy += 19 * S;
+  RowLabel(label, y, enabled);
+  Rect(x, y, bs, bs, MkCol(255, 255, 255));
+  Outline(x, y, bs, bs, hv ? MkCol(90, 90, 90) : FieldBorder());
+  if (val) { Rect(x + 2, y + 2, bs - 4, bs - 4, Accent()); Outline(x + 2, y + 2, bs - 4, bs - 4, AccentDark()); }
+  s_lastLineY = y; s_lastLineHasControl = true; s_lastLineRight = gx + gw - 16 * S; cy += 24 * S;
   return val;
 }
 static bool SliderF(const char* label, float& val, float mn, float mx, const char* fmt = "%.0f", float step = 0, const char* zeroText = nullptr) {
-  int id = MakeId(label);
-  if (label[0]) { Text(WX(), cy - 2, label); cy += 13 * S; }
-  float x = WX(), y = cy, w = WW(), h = 7 * S;
-  bool hv = HoverClipped(x, y - 2, w, h + 4);
+  int id = MakeId(label[0] ? label : TextFormat("slider%p", (void*)&val));
+  float y = cy;
+  if (label[0]) RowLabel(label, y);
+  float x = CX(), w = CW(), ty = y + 3 * S, th = 5 * S;
+  bool hv = HoverClipped(x - 4, y - 2, w + 8, 16 * S);
   if (hv && mPressed) activeId = id;
   bool changed = false;
   if (activeId == id) {
     if (!mDown) activeId = 0;
     else { float t = Clamp((mouse.x - x) / w, 0.f, 1.f); float nv = mn + (mx - mn) * t; if (step > 0) nv = std::round(nv / step) * step; if (nv != val) { val = nv; changed = true; } }
   }
-  if (hv && !mDown) { // arrow keys / wheel-free fine tuning with left/right click on the ends
+  if (hv && !mDown) {
     if (IsKeyPressed(KEY_LEFT)) { val = std::max(mn, val - (step > 0 ? step : 1)); changed = true; }
     if (IsKeyPressed(KEY_RIGHT)) { val = std::min(mx, val + (step > 0 ? step : 1)); changed = true; }
   }
-  GradV(x, y, w, h, MkCol(50, 50, 50), MkCol(36, 36, 36));
-  float t = (val - mn) / std::max(0.0001f, mx - mn);
-  GradV(x, y, w * t, h, Accent(), Accent().Alpha(160));
-  Outline(x - 1, y - 1, w + 2, h + 2, MkCol(0, 0, 0));
+  GradV(x, ty, w, th, MkCol(214, 214, 214), MkCol(236, 236, 236));
+  Outline(x, ty, w, th, MkCol(150, 150, 150));
+  float t = Clamp((val - mn) / std::max(0.0001f, mx - mn), 0.f, 1.f);
+  float hx = x + w * t - 2.5f * S;
+  Rect(hx, y, 5 * S, 11 * S, Accent()); Outline(hx, y, 5 * S, 11 * S, AccentDark());
   char buf[64];
   if (zeroText && val <= mn + 0.0001f) snprintf(buf, sizeof(buf), "%s", zeroText); else snprintf(buf, sizeof(buf), fmt, val);
   float tw = TextW(buf, FONT_CHEAT_BOLD);
-  surface()->DrawTextOutline(FONT_CHEAT_BOLD, buf, Clamp(x + w * t - tw * 0.5f, x - tw * 0.5f, x + w - tw * 0.5f), y - 2, MkCol(230, 230, 230));
-  s_lastLineY = y - 13 * S; cy += 20 * S;
+  Text(x + (w - tw) * 0.5f, y + 12 * S, buf, MkCol(20, 20, 20), FONT_CHEAT_BOLD);
+  s_lastLineY = y; s_lastLineHasControl = true; s_lastLineRight = gx + gw - 16 * S; cy += 30 * S;
   return changed;
+}
+static void ComboArrow(float x, float y, float w, bool open) {
+  Col c = open ? Accent() : MkCol(70, 70, 70);
+  surface()->DrawTriangle({ x + w - 12 * S, y + 7 * S }, { x + w - 5 * S, y + 7 * S }, { x + w - 8.5f * S, y + 11 * S }, c);
 }
 static bool Combo(const char* label, int& sel, const std::vector<const char*>& items) {
   int id = MakeId(label);
-  if (label[0]) { Text(WX(), cy - 2, label); cy += 13 * S; }
-  float x = WX(), y = cy, w = WW(), h = 19 * S;
-  bool hv = HoverClipped(x, y, w, h);
+  float y = cy;
+  RowLabel(label, y);
+  float x = CX(), w = CW(), h = 17 * S, fy = y - 2 * S;
+  bool hv = HoverClipped(x, fy, w, h);
   if (hv && mPressed) { openPopup = openPopup == id ? 0 : id; EmitSound2D("UI.Click", 0.3f); }
-  GradV(x, y, w, h, hv ? MkCol(41, 41, 41) : MkCol(35, 35, 35), MkCol(30, 30, 30));
-  Outline(x - 1, y - 1, w + 2, h + 2, MkCol(0, 0, 0));
+  Field(x, fy, w, h, hv, openPopup == id);
   sel = Clamp(sel, 0, (int)items.size() - 1);
-  Text(x + 8, y + 3 * S, items[sel], TextC());
-  surface()->DrawTriangle({ x + w - 12, y + 8 * S }, { x + w - 5, y + 8 * S }, { x + w - 8.5f, y + 12 * S }, openPopup == id ? (Color)Accent() : Color{ 150, 150, 150, 255 });
-  bool changed = false;
+  Text(x + 5 * S, fy + 2 * S, Fit(items[sel], w - 22 * S).c_str(), TextC());
+  ComboArrow(x, fy, w, openPopup == id);
   if (openPopup == id) {
-    float py = y + h + 1;
-    int* psel = &sel; std::vector<const char*> its = items;
+    float py = fy + h; int* psel = &sel; std::vector<const char*> its = items;
     deferred.push_back([=]() {
-      float ih = 19 * S, ph = ih * its.size();
-      Rect(x, py, w, ph, MkCol(35, 35, 35)); Outline(x - 1, py - 1, w + 2, ph + 2, MkCol(0, 0, 0));
+      float ih = 18 * S, ph = ih * its.size();
+      Rect(x, py, w, ph, MkCol(255, 255, 255)); Outline(x, py, w, ph, MkCol(110, 110, 110));
       for (size_t i = 0; i < its.size(); i++) {
         bool ih_ = Hover(x, py + i * ih, w, ih);
-        if (ih_) Rect(x, py + i * ih, w, ih, MkCol(28, 28, 28));
-        Text(x + 8, py + i * ih + 3 * S, its[i], (int)i == *psel ? Accent() : (ih_ ? MkCol(255, 255, 255) : TextC()), (int)i == *psel ? FONT_CHEAT_BOLD : FONT_CHEAT);
+        if (ih_) Rect(x + 1, py + i * ih, w - 2, ih, MkCol(232, 232, 232));
+        Text(x + 5 * S, py + i * ih + 2 * S, its[i], (int)i == *psel ? Accent() : TextC(), (int)i == *psel ? FONT_CHEAT_BOLD : FONT_CHEAT);
         if (ih_ && mPressed) { *psel = (int)i; openPopup = 0; }
       }
       if (mPressed && !Hover(x, py - h - 2, w, ph + h + 2)) openPopup = 0;
     });
   }
-  cy += h + 8 * S;
-  return changed;
+  s_lastLineY = y; s_lastLineHasControl = true; s_lastLineRight = gx + gw - 16 * S; cy += 24 * S;
+  return false;
 }
 static void MultiCombo(const char* label, int& mask, const std::vector<const char*>& items) {
   int id = MakeId(label);
-  if (label[0]) { Text(WX(), cy - 2, label); cy += 13 * S; }
-  float x = WX(), y = cy, w = WW(), h = 19 * S;
-  bool hv = HoverClipped(x, y, w, h);
+  float y = cy;
+  RowLabel(label, y);
+  float x = CX(), w = CW(), h = 17 * S, fy = y - 2 * S;
+  bool hv = HoverClipped(x, fy, w, h);
   if (hv && mPressed) openPopup = openPopup == id ? 0 : id;
-  GradV(x, y, w, h, hv ? MkCol(41, 41, 41) : MkCol(35, 35, 35), MkCol(30, 30, 30));
-  Outline(x - 1, y - 1, w + 2, h + 2, MkCol(0, 0, 0));
+  Field(x, fy, w, h, hv, openPopup == id);
   std::string txt;
   for (size_t i = 0; i < items.size(); i++) if (mask & (1 << i)) { if (!txt.empty()) txt += ", "; txt += items[i]; }
   if (txt.empty()) txt = "-";
-  while (txt.size() > 3 && TextW(txt.c_str()) > w - 26) { txt.pop_back(); }
-  if (TextW(txt.c_str()) > w - 26) txt += "...";
-  Text(x + 8, y + 3 * S, txt.c_str());
-  surface()->DrawTriangle({ x + w - 12, y + 8 * S }, { x + w - 5, y + 8 * S }, { x + w - 8.5f, y + 12 * S }, Color{ 150, 150, 150, 255 });
+  Text(x + 5 * S, fy + 2 * S, Fit(txt.c_str(), w - 22 * S).c_str());
+  ComboArrow(x, fy, w, openPopup == id);
   if (openPopup == id) {
-    float py = y + h + 1; int* pm = &mask; std::vector<const char*> its = items;
+    float py = fy + h; int* pm = &mask; std::vector<const char*> its = items;
     deferred.push_back([=]() {
-      float ih = 19 * S, ph = ih * its.size();
-      Rect(x, py, w, ph, MkCol(35, 35, 35)); Outline(x - 1, py - 1, w + 2, ph + 2, MkCol(0, 0, 0));
+      float ih = 18 * S, ph = ih * its.size();
+      Rect(x, py, w, ph, MkCol(255, 255, 255)); Outline(x, py, w, ph, MkCol(110, 110, 110));
       for (size_t i = 0; i < its.size(); i++) {
         bool on = (*pm >> i) & 1, ih_ = Hover(x, py + i * ih, w, ih);
-        if (ih_) Rect(x, py + i * ih, w, ih, MkCol(28, 28, 28));
-        Text(x + 8, py + i * ih + 3 * S, its[i], on ? Accent() : (ih_ ? MkCol(255, 255, 255) : TextC()), on ? FONT_CHEAT_BOLD : FONT_CHEAT);
+        if (ih_) Rect(x + 1, py + i * ih, w - 2, ih, MkCol(232, 232, 232));
+        // small checkbox per item
+        float bx = x + 5 * S, by = py + i * ih + 3 * S, bs = 11 * S;
+        Rect(bx, by, bs, bs, MkCol(255, 255, 255)); Outline(bx, by, bs, bs, FieldBorder());
+        if (on) { Rect(bx + 2, by + 2, bs - 4, bs - 4, Accent()); }
+        Text(bx + bs + 6 * S, py + i * ih + 2 * S, its[i], on ? Accent() : TextC(), on ? FONT_CHEAT_BOLD : FONT_CHEAT);
         if (ih_ && mPressed) *pm ^= (1 << i);
       }
       if (mPressed && !Hover(x, py - h - 2, w, ph + h + 2)) openPopup = 0;
     });
   }
-  cy += h + 8 * S;
+  s_lastLineY = y; s_lastLineHasControl = true; s_lastLineRight = gx + gw - 16 * S; cy += 24 * S;
 }
 static bool ButtonW(const char* label, float wOverride = 0) {
-  float x = WX(), y = cy, w = wOverride > 0 ? wOverride : WW(), h = 24 * S;
+  float x = LX(), y = cy, w = wOverride > 0 ? wOverride : WW(), h = 22 * S;
   bool hv = HoverClipped(x, y, w, h);
-  GradV(x, y, w, h, hv ? (mDown ? MkCol(28, 28, 28) : MkCol(42, 42, 42)) : MkCol(35, 35, 35), MkCol(26, 26, 26));
-  Outline(x - 1, y - 1, w + 2, h + 2, MkCol(0, 0, 0)); Outline(x, y, w, h, MkCol(50, 50, 50));
+  GradV(x, y, w, h, hv ? (mDown ? MkCol(205, 205, 205) : MkCol(252, 252, 252)) : MkCol(244, 244, 244), hv && mDown ? MkCol(225, 225, 225) : MkCol(212, 212, 212));
+  Outline(x, y, w, h, hv ? MkCol(100, 100, 100) : MkCol(140, 140, 140));
   float tw = TextW(label, FONT_CHEAT_BOLD);
-  Text(x + (w - tw) * 0.5f, y + 6 * S, label, TextC(), FONT_CHEAT_BOLD);
-  cy += h + 8 * S;
+  Text(x + (w - tw) * 0.5f, y + 4 * S, label, TextC(), FONT_CHEAT_BOLD);
+  s_lastLineHasControl = true;
+  cy += h + 7 * S;
   bool clicked = hv && mPressed;
   if (clicked) EmitSound2D("UI.Click", 0.4f);
   return clicked;
 }
-static void LabelW(const char* t, Col c = TextC()) { Text(gx + 10 * S + 18 * S, cy, t, c); s_lastLineY = cy; cy += 17 * S; }
+static void LabelW(const char* t, Col c = TextC()) {
+  std::string s = Fit(t, gw - 30 * S, FONT_CHEAT_BOLD);
+  Text(LX(), cy, s.c_str(), c, FONT_CHEAT_BOLD);
+  s_lastLineY = cy; s_lastLineHasControl = false; s_lastLineRight = gx + gw - 16 * S; cy += 24 * S;
+}
 
-// key bind attached to the previous line (right aligned)
+// key bind attached to the previous line: a text field in the control column for label rows (like aimware's "On Key"),
+// a small field at the right end of rows that already have a control
 static void KeyBindW(const char* idLabel, KeyBind& kb) {
   int id = MakeId(idLabel);
   char buf[48];
-  if (captureKeyId == id) snprintf(buf, sizeof(buf), "[...]");
-  else if (kb.mode == KEYMODE_ALWAYS) snprintf(buf, sizeof(buf), "[on]");
-  else if (!kb.key) snprintf(buf, sizeof(buf), "[-]");
-  else { std::string k = Key_KeynumToString(kb.key); for (auto& ch : k) ch = (char)toupper(ch); if (k.size() > 6) k = k.substr(0, 6); snprintf(buf, sizeof(buf), "[%s]", k.c_str()); }
-  float tw = TextW(buf, FONT_ICONS_SMALL);
-  float x = gx + gw - 16 * S - tw, y = s_lastLineY + 1;
-  bool hv = HoverClipped(x - 4, y - 2, tw + 8, 14 * S);
-  Text(x, y, buf, captureKeyId == id ? MkCol(255, 40, 40) : (hv ? MkCol(200, 200, 200) : MkCol(115, 115, 115)), FONT_ICONS_SMALL);
+  if (captureKeyId == id) snprintf(buf, sizeof(buf), "press a key...");
+  else if (kb.mode == KEYMODE_ALWAYS) snprintf(buf, sizeof(buf), "always");
+  else if (!kb.key) snprintf(buf, sizeof(buf), "-");
+  else { std::string k = Key_KeynumToString(kb.key); for (auto& ch : k) ch = (char)tolower(ch); snprintf(buf, sizeof(buf), "%s", k.c_str()); }
+  float x, w, y = s_lastLineY - 2 * S, h = 17 * S;
+  if (!s_lastLineHasControl) { x = CX(); w = CW(); }
+  else { w = 58 * S; x = s_lastLineRight - w; s_lastLineRight = x - 4 * S; }
+  bool hv = HoverClipped(x, y, w, h);
+  Field(x, y, w, h, hv, captureKeyId == id);
+  Text(x + 5 * S, y + 2 * S, Fit(buf, w - 8 * S).c_str(), captureKeyId == id ? Accent() : TextC());
   if (hv && mPressed && captureKeyId != id) { captureKeyId = id; return; }
   if (hv && mRPressed) openPopup = id + 1;
   if (captureKeyId == id) {
@@ -374,30 +414,33 @@ static void KeyBindW(const char* idLabel, KeyBind& kb) {
     else if (key) { kb.key = key; if (kb.mode == KEYMODE_ALWAYS) kb.mode = KEYMODE_HOLD; captureKeyId = 0; }
   }
   if (openPopup == id + 1) {
-    KeyBind* pk = &kb; float px = x + tw + 6, py = y;
+    KeyBind* pk = &kb; float px = x, py = y + h;
     deferred.push_back([=]() {
       const char* modes[4] = { "Always on", "On hotkey", "Toggle", "Off hotkey" };
-      float ih = 18 * S, w = 90 * S;
-      Rect(px, py, w, ih * 4, MkCol(35, 35, 35)); Outline(px - 1, py - 1, w + 2, ih * 4 + 2, MkCol(0, 0, 0));
+      float ih = 18 * S, w2 = 96 * S;
+      Rect(px, py, w2, ih * 4, MkCol(255, 255, 255)); Outline(px, py, w2, ih * 4, MkCol(110, 110, 110));
       for (int i = 0; i < 4; i++) {
-        bool h = Hover(px, py + i * ih, w, ih);
-        if (h) Rect(px, py + i * ih, w, ih, MkCol(28, 28, 28));
-        Text(px + 7, py + i * ih + 3, modes[i], pk->mode == i ? Accent() : TextC(), pk->mode == i ? FONT_CHEAT_BOLD : FONT_CHEAT);
-        if (h && mPressed) { pk->mode = i; openPopup = 0; }
+        bool hh = Hover(px, py + i * ih, w2, ih);
+        if (hh) Rect(px + 1, py + i * ih, w2 - 2, ih, MkCol(232, 232, 232));
+        Text(px + 6, py + i * ih + 2 * S, modes[i], pk->mode == i ? Accent() : TextC(), pk->mode == i ? FONT_CHEAT_BOLD : FONT_CHEAT);
+        if (hh && mPressed) { pk->mode = i; openPopup = 0; }
       }
-      if (mPressed && !Hover(px, py, w, ih * 4)) openPopup = 0;
+      if (mPressed && !Hover(px, py, w2, ih * 4)) openPopup = 0;
     });
   }
 }
 
-// HSV colour picker attached to the previous line
+// colour swatch attached to the previous line (opens an HSV picker)
 static void ColorToHSV(Col c, float& h, float& s, float& vv) { Vector3 hsv = ColorToHSV(Color{ c.r, c.g, c.b, 255 }); h = hsv.x; s = hsv.y; vv = hsv.z; }
 static void ColorPickerW(const char* idLabel, Col& col, float rightOffset = 0) {
   int id = MakeId(idLabel);
-  float w = 16 * S, h = 8 * S, x = gx + gw - 18 * S - w - rightOffset, y = s_lastLineY + 3;
+  float w = 22 * S, h = 12 * S, x = s_lastLineRight - w - rightOffset, y = s_lastLineY;
+  s_lastLineRight = x - 4 * S;
   bool hv = HoverClipped(x - 2, y - 2, w + 4, h + 4);
-  GradV(x, y, w, h, Col(col).Alpha(255), MkCol(col.r * 3 / 4, col.g * 3 / 4, col.b * 3 / 4));
-  Outline(x - 1, y - 1, w + 2, h + 2, MkCol(0, 0, 0));
+  // checker behind (shows alpha)
+  Rect(x, y, w, h, MkCol(255, 255, 255)); Rect(x, y, w / 2, h / 2, MkCol(200, 200, 200)); Rect(x + w / 2, y + h / 2, w / 2, h / 2, MkCol(200, 200, 200));
+  Rect(x, y, w, h, col);
+  Outline(x, y, w, h, hv ? MkCol(60, 60, 60) : FieldBorder());
   if (hv && mPressed) openPopup = openPopup == id ? 0 : id;
   if (openPopup == id) {
     Col* pc = &col; float px = x + w + 6, py = y;
@@ -406,13 +449,12 @@ static void ColorPickerW(const char* idLabel, Col& col, float rightOffset = 0) {
       if (lastId != id) { ColorToHSV(*pc, hue, sat, val); lastId = id; }
       float sz = 150 * S, pw = sz + 36 * S, ph = sz + 24 * S;
       float qx = std::min(px, (float)GetScreenWidth() - pw - 4);
-      Rect(qx, py, pw, ph, MkCol(30, 30, 30)); Outline(qx - 1, py - 1, pw + 2, ph + 2, MkCol(0, 0, 0));
+      Rect(qx, py, pw, ph, MkCol(248, 248, 248)); Outline(qx, py, pw, ph, MkCol(110, 110, 110));
       float sx = qx + 6, sy = py + 6;
-      // saturation/value square
       Color hc = ColorFromHSV(hue, 1, 1);
       surface()->DrawGradientH(sx, sy, sz, sz, { 255, 255, 255, 255 }, hc);
       surface()->DrawGradientV(sx, sy, sz, sz, { 0, 0, 0, 0 }, { 0, 0, 0, 255 });
-      Outline(sx - 1, sy - 1, sz + 2, sz + 2, MkCol(0, 0, 0));
+      Outline(sx - 1, sy - 1, sz + 2, sz + 2, MkCol(110, 110, 110));
       static int drag = 0;
       if (mPressed && Hover(sx, sy, sz, sz)) drag = 1;
       if (mPressed && Hover(sx + sz + 6, sy, 14 * S, sz)) drag = 2;
@@ -423,29 +465,28 @@ static void ColorPickerW(const char* idLabel, Col& col, float rightOffset = 0) {
       if (drag == 3) pc->a = (unsigned char)(Clamp((mouse.x - sx) / sz, 0.f, 1.f) * 255);
       if (drag) { Color c = ColorFromHSV(hue, sat, val); pc->r = c.r; pc->g = c.g; pc->b = c.b; }
       surface()->DrawOutlinedRect(sx + sat * sz - 2, sy + (1 - val) * sz - 2, 4, 4, { 255, 255, 255, 255 });
-      // hue bar
       float hx = sx + sz + 6;
       for (int i = 0; i < 6; i++) surface()->DrawGradientV(hx, sy + i * sz / 6, 14 * S, sz / 6 + 1, ColorFromHSV(i * 60.f, 1, 1), ColorFromHSV((i + 1) * 60.f, 1, 1));
-      Rect(hx - 1, sy + hue / 360.f * sz - 1, 14 * S + 2, 3, MkCol(255, 255, 255));
-      // alpha bar
+      Rect(hx - 1, sy + hue / 360.f * sz - 1, 14 * S + 2, 3, MkCol(20, 20, 20));
       surface()->DrawGradientH(sx, sy + sz + 5, sz, 9 * S, { pc->r, pc->g, pc->b, 0 }, { pc->r, pc->g, pc->b, 255 });
-      Outline(sx - 1, sy + sz + 4, sz + 2, 9 * S + 2, MkCol(0, 0, 0));
-      Rect(sx + pc->a / 255.f * sz - 1, sy + sz + 4, 3, 9 * S + 2, MkCol(255, 255, 255));
+      Outline(sx - 1, sy + sz + 4, sz + 2, 9 * S + 2, MkCol(110, 110, 110));
+      Rect(sx + pc->a / 255.f * sz - 1, sy + sz + 4, 3, 9 * S + 2, MkCol(20, 20, 20));
       if (mPressed && !Hover(qx, py, pw, ph) && !drag) { openPopup = 0; lastId = 0; }
     });
   }
 }
 
 static bool ListBox(const char* idLabel, const std::vector<std::string>& items, int& sel, float h) {
-  float x = WX(), y = cy, w = WW();
-  Rect(x, y, w, h, MkCol(25, 25, 25)); Outline(x - 1, y - 1, w + 2, h + 2, MkCol(0, 0, 0));
-  bool changed = false; float ih = 20 * S;
-  surface()->PushClip((int)x, (int)std::max(y, gTop), (int)w, (int)h);
+  float x = LX(), y = cy, w = WW();
+  Rect(x, y, w, h, MkCol(255, 255, 255)); Outline(x, y, w, h, FieldBorder());
+  bool changed = false; float ih = 19 * S;
+  surface()->PushClip((int)x + 1, (int)std::max(y + 1, gTop), (int)w - 2, (int)h - 2);
   for (size_t i = 0; i < items.size(); i++) {
-    float iy = y + i * ih; if (iy > y + h) break;
+    float iy = y + 1 + i * ih; if (iy > y + h) break;
     bool hv = HoverClipped(x, iy, w, ih) && Hover(x, y, w, h);
-    if ((int)i == sel) Rect(x, iy, w, ih, MkCol(35, 35, 35));
-    Text(x + 8, iy + 4 * S, items[i].c_str(), (int)i == sel ? Accent() : (hv ? MkCol(255, 255, 255) : TextC()), (int)i == sel ? FONT_CHEAT_BOLD : FONT_CHEAT);
+    if ((int)i == sel) Rect(x + 1, iy, w - 2, ih, Accent());
+    else if (hv) Rect(x + 1, iy, w - 2, ih, MkCol(234, 234, 234));
+    Text(x + 6 * S, iy + 2 * S, items[i].c_str(), (int)i == sel ? MkCol(255, 255, 255) : TextC(), (int)i == sel ? FONT_CHEAT_BOLD : FONT_CHEAT);
     if (hv && mPressed) { sel = (int)i; changed = true; }
   }
   surface()->PopClip();
@@ -457,10 +498,10 @@ static bool g_cheatTextFocus = false;
 static bool TextBox(const char* idLabel, std::string& txt) {
   int id = MakeId(idLabel);
   static int focus = 0;
-  float x = WX(), y = cy, w = WW(), h = 20 * S;
+  float x = LX(), y = cy, w = WW(), h = 19 * S;
   bool hv = HoverClipped(x, y, w, h);
   if (mPressed) focus = hv ? id : (focus == id ? 0 : focus);
-  Rect(x, y, w, h, MkCol(25, 25, 25)); Outline(x - 1, y - 1, w + 2, h + 2, focus == id ? Accent() : MkCol(0, 0, 0));
+  Field(x, y, w, h, hv, focus == id);
   bool enter = false;
   if (focus == id) {
     for (int c : vgui::Input().chars) if (c >= 32 && c < 127 && txt.size() < 24) txt += (char)c;
@@ -471,7 +512,7 @@ static bool TextBox(const char* idLabel, std::string& txt) {
     g_cheatTextFocus = true;
   }
   std::string shown = txt + ((focus == id && std::fmod(GetTime(), 1.0) < 0.5) ? "_" : "");
-  Text(x + 6, y + 4 * S, shown.c_str());
+  Text(x + 5 * S, y + 3 * S, shown.c_str());
   cy += h + 8 * S;
   return enter;
 }
@@ -479,37 +520,6 @@ static bool TextBox(const char* idLabel, std::string& txt) {
 
 static bool s_capturingAny() { return gui::captureKeyId != 0 || gui::g_cheatTextFocus; }
 bool Menu_IsCapturingKey() { return s_capturingAny(); }
-
-// ------------------------------------------------------------------------------------------------
-// tab icons (procedural, gamesense style)
-static void DrawTabIcon(int tab, float cx, float cy, Col c, float S) {
-  auto* s = surface();
-  switch (tab) {
-    case 0: // rage: crosshair
-      s->DrawCircle(cx, cy, 13 * S, c, 32); s->DrawCircle(cx, cy, 12 * S, c, 32);
-      s->DrawLine(cx - 19 * S, cy, cx - 6 * S, cy, c, 2); s->DrawLine(cx + 6 * S, cy, cx + 19 * S, cy, c, 2);
-      s->DrawLine(cx, cy - 19 * S, cx, cy - 6 * S, c, 2); s->DrawLine(cx, cy + 6 * S, cx, cy + 19 * S, c, 2);
-      s->DrawFilledCircle(cx, cy, 2 * S, c); break;
-    case 1: { // anti-aim: rotating arrows
-      for (int i = 0; i < 3; i++) { float a0 = i * 2.094f + 0.3f; for (int k = 0; k < 8; k++) { float a = a0 + k * 0.17f, b = a + 0.17f; s->DrawLine(cx + std::cos(a) * 14 * S, cy + std::sin(a) * 14 * S, cx + std::cos(b) * 14 * S, cy + std::sin(b) * 14 * S, c, 2.5f); }
-        float e = a0 + 1.36f; Vector2 tip{ cx + std::cos(e + 0.25f) * 14 * S, cy + std::sin(e + 0.25f) * 14 * S };
-        s->DrawTriangle({ cx + std::cos(e) * 9 * S, cy + std::sin(e) * 9 * S }, tip, { cx + std::cos(e) * 19 * S, cy + std::sin(e) * 19 * S }, c); }
-      s->DrawFilledCircle(cx, cy, 3 * S, c); break; }
-    case 2: { // visuals: eye
-      for (int k = 0; k < 16; k++) { float t0 = -1 + k / 8.f, t1 = -1 + (k + 1) / 8.f; float y0 = (1 - t0 * t0) * 9 * S, y1 = (1 - t1 * t1) * 9 * S;
-        s->DrawLine(cx + t0 * 18 * S, cy - y0, cx + t1 * 18 * S, cy - y1, c, 2); s->DrawLine(cx + t0 * 18 * S, cy + y0, cx + t1 * 18 * S, cy + y1, c, 2); }
-      s->DrawFilledCircle(cx, cy, 6 * S, c); s->DrawFilledCircle(cx, cy, 2.5f * S, { 12, 12, 12, 255 }); break; }
-    case 3: { // misc: gear
-      for (int i = 0; i < 8; i++) { float a = i * 0.785f; s->DrawLine(cx + std::cos(a) * 9 * S, cy + std::sin(a) * 9 * S, cx + std::cos(a) * 17 * S, cy + std::sin(a) * 17 * S, c, 5 * S); }
-      s->DrawFilledCircle(cx, cy, 12 * S, c); s->DrawFilledCircle(cx, cy, 5 * S, { 12, 12, 12, 255 }); break; }
-    case 4: // players: two heads
-      s->DrawFilledCircle(cx - 7 * S, cy - 6 * S, 5 * S, c); s->DrawFilledCircle(cx + 7 * S, cy - 6 * S, 5 * S, c);
-      s->DrawFilledRect(cx - 14 * S, cy + 1 * S, 13 * S, 12 * S, c); s->DrawFilledRect(cx + 1 * S, cy + 1 * S, 13 * S, 12 * S, c); break;
-    case 5: // config: floppy disk
-      s->DrawFilledRect(cx - 14 * S, cy - 14 * S, 28 * S, 28 * S, c); s->DrawFilledRect(cx - 8 * S, cy - 14 * S, 14 * S, 9 * S, { 12, 12, 12, 255 });
-      s->DrawFilledRect(cx + 1 * S, cy - 12 * S, 3 * S, 5 * S, c); s->DrawFilledRect(cx - 9 * S, cy + 2 * S, 18 * S, 10 * S, { 12, 12, 12, 255 }); break;
-  }
-}
 
 // ------------------------------------------------------------------------------------------------
 static float s_mx = 120, s_my = 90;
@@ -679,6 +689,7 @@ static void PaintMisc(float x, float y, float w, float h) {
   Checkbox("Log damage dealt", m.logHits);
   Checkbox("Log damage received", m.logHurt);
   Checkbox("Log weapon purchases", m.logPurchases);
+  if (ConVar* km = FindConVar("cl_knife_model")) { int k = km->GetInt(); Combo("Knife model", k, { "Default", "Karambit" }); if (k != km->GetInt()) km->SetValue(k); }
   EndGroup();
   BeginGroup("Buy bot", x + 20 * S + cw, y, cw, h * 0.5f);
   Combo("Primary", m.buyPrimary, { "Off", "Auto sniper", "Scout", "AWP", "Rifle" });
@@ -689,9 +700,41 @@ static void PaintMisc(float x, float y, float w, float h) {
   EndGroup();
   BeginGroup("Settings", x + 20 * S + cw, y + h * 0.5f + 16 * S, cw, h * 0.5f - 16 * S);
   LabelW("Menu key"); KeyBindW("menukey", m.menuKey);
-  LabelW("Menu color"); ColorPickerW("accent", m.accent);
+  LabelW("Menu color"); ColorPickerW("menucol", m.menuCol);
+  LabelW("Indicator / log color"); ColorPickerW("accent", m.accent);
   Combo("DPI scale", m.dpi, { "100%", "125%", "150%" });
   if (ButtonW("Unload")) { g.menuOpen = false; v.rage.enabled = false; v.aa.enabled = false; Log(MkCol(255, 80, 80), "unloaded (not really)"); }
+  EndGroup();
+}
+
+static void PaintColors(float x, float y, float w, float h) {
+  using namespace gui;
+  float cw = (w - 40 * S) / 3;
+  auto& s = v.vis; auto& m = v.misc;
+  auto row = [](const char* label, Col& c, const char* id) { LabelW(label); ColorPickerW(id, c); };
+  BeginGroup("ESP", x + 10 * S, y, cw, h);
+  row("Bounding box", s.boxCol, "c.box");
+  row("Name", s.nameCol, "c.name");
+  row("Ammo bar", s.ammoCol, "c.ammo");
+  row("Skeleton", s.skeletonCol, "c.skel");
+  row("Out of FOV arrow", s.oofCol, "c.oof");
+  row("Glow", s.glowCol, "c.glow");
+  row("Aimbot hitboxes", s.hitboxCol, "c.hb");
+  EndGroup();
+  BeginGroup("Colored models", x + 20 * S + cw, y, cw, h);
+  row("Player", s.chamsCol, "c.chams");
+  row("Player behind wall", s.chamsXqzCol, "c.xqz");
+  row("Teammate", s.chamsTeamCol, "c.team");
+  row("Backtrack", s.chamsBacktrackCol, "c.bt");
+  row("Local player", s.chamsLocalCol, "c.local");
+  row("Local player fake", s.chamsFakeCol, "c.fake");
+  EndGroup();
+  BeginGroup("Other", x + 30 * S + cw * 2, y, cw, h);
+  row("Bullet tracers", s.tracerCol, "c.tracer");
+  row("Grenade trajectory", s.grenadeCol, "c.nade");
+  row("Anti-aim arrows", s.arrowCol, "c.arrows");
+  row("Indicators / logs", m.accent, "c.accent");
+  row("Menu", m.menuCol, "c.menu");
   EndGroup();
 }
 
@@ -760,64 +803,68 @@ void Menu_Paint() {
   mouse = GetMousePosition(); mDown = IsMouseButtonDown(MOUSE_BUTTON_LEFT); mPressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
   mReleased = IsMouseButtonReleased(MOUSE_BUTTON_LEFT); mRPressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT); wheel = GetMouseWheelMove();
   if (!g.menuOpen) { mPressed = mRPressed = false; mDown = false; wheel = 0; }
-  float W = 660 * S, H = 560 * S;
+  float W = 780 * S, H = 600 * S;
+  W = std::min(W, (float)GetScreenWidth()); H = std::min(H, (float)GetScreenHeight());
   s_mx = Clamp(s_mx, 0.f, std::max(0.f, GetScreenWidth() - W)); s_my = Clamp(s_my, 0.f, std::max(0.f, GetScreenHeight() - H));
   float x = s_mx, y = s_my;
-  int alpha = (int)(255 * s_openAnim);
-  (void)alpha;
-  // dragging: anywhere on the frame that isn't a widget (top bar / borders / tab column background)
+  const float titleH = 26 * S, tabH = 26 * S, border = 3 * S;
+  // dragging by the red title bar / frame
   bool overFrame = Hover(x, y, W, H);
-  if (mPressed && openPopup == 0 && overFrame && (mouse.y < y + 14 * S || mouse.x < x + 8 || mouse.x > x + W - 8 || mouse.y > y + H - 8)) { s_drag = true; s_dragOff = { mouse.x - x, mouse.y - y }; }
+  if (mPressed && openPopup == 0 && overFrame && (mouse.y < y + titleH || mouse.x < x + border || mouse.x > x + W - border || mouse.y > y + H - border)) { s_drag = true; s_dragOff = { mouse.x - x, mouse.y - y }; }
   if (!mDown) s_drag = false;
   if (s_drag) { s_mx = mouse.x - s_dragOff.x; s_my = mouse.y - s_dragOff.y; x = s_mx; y = s_my; }
-  // frame: gamesense nested borders
-  Col borders[] = { MkCol(0, 0, 0), MkCol(60, 60, 60), MkCol(40, 40, 40), MkCol(40, 40, 40), MkCol(40, 40, 40), MkCol(60, 60, 60) };
-  for (int i = 0; i < 6; i++) Outline(x + i, y + i, W - i * 2, H - i * 2, borders[i]);
-  float ix = x + 6, iy = y + 6, iw = W - 12, ih = H - 12;
-  Rect(ix, iy, iw, ih, MkCol(12, 12, 12));
-  // subtle pattern
-  for (float py = iy + 4; py < iy + ih; py += 4) for (float px = ix + 74 * S + ((int)((py - iy) / 4) % 2) * 2; px < ix + iw; px += 4) Rect(px, py, 1, 1, MkCol(18, 18, 18));
-  // rainbow gradient bar
-  float bw = iw / 2;
-  surface()->DrawGradientH(ix + 1, iy + 1, bw, 2, { 55, 177, 218, 255 }, { 204, 70, 205, 255 });
-  surface()->DrawGradientH(ix + 1 + bw, iy + 1, bw - 2, 2, { 204, 70, 205, 255 }, { 204, 227, 53, 255 });
-  Rect(ix + 1, iy + 3, iw - 2, 1, MkCol(0, 0, 0));
-  // tab column
-  float tx = ix, ty = iy + 4, tw = 74 * S, th = 64 * S;
-  Rect(tx, ty, tw, ih - 4, MkCol(12, 12, 12));
-  Rect(tx + tw, ty, 1, ih - 4, MkCol(0, 0, 0)); Rect(tx + tw - 1, ty, 1, ih - 4, MkCol(48, 48, 48));
-  float tabsY = ty + 14 * S;
-  for (int t = 0; t < 6; t++) {
-    float yy = tabsY + t * th;
-    bool sel = s_tab == t, hv = openPopup == 0 && Hover(tx, yy, tw, th);
-    if (sel) {
-      Rect(tx, yy, tw + 1, th, MkCol(20, 20, 20));
-      Rect(tx, yy, tw, 1, MkCol(0, 0, 0)); Rect(tx, yy + 1, tw, 1, MkCol(48, 48, 48));
-      Rect(tx, yy + th - 1, tw, 1, MkCol(0, 0, 0)); Rect(tx, yy + th - 2, tw, 1, MkCol(48, 48, 48));
-    }
-    DrawTabIcon(t, tx + tw / 2, yy + th / 2, sel ? MkCol(210, 210, 210) : (hv ? MkCol(150, 150, 150) : MkCol(90, 90, 90)), S);
+  const Col red = v.misc.menuCol;
+  auto shade = [](Col c, float k) { return MkCol((int)Clamp(c.r * k, 0.f, 255.f), (int)Clamp(c.g * k, 0.f, 255.f), (int)Clamp(c.b * k, 0.f, 255.f)); };
+  // drop shadow + red frame
+  Rect(x + 4, y + 4, W, H, MkCol(0, 0, 0, 70));
+  GradV(x, y, W, H, shade(red, 0.95f), shade(red, 0.55f));
+  Outline(x, y, W, H, shade(red, 0.35f));
+  // title bar: white name field on the left (aimware), gradient red bar
+  GradV(x + 1, y + 1, W - 2, titleH - 1, shade(red, 1.15f), shade(red, 0.7f));
+  float fw = 250 * S;
+  Rect(x + 1, y + 2 * S, fw, titleH - 5 * S, MkCol(255, 255, 255));
+  Text(x + 8 * S, y + 6 * S, "hvh", MkCol(20, 20, 20), FONT_CHEAT_BOLD);
+  Text(x + 8 * S + TextW("hvh", FONT_CHEAT_BOLD), y + 6 * S, "sense", red, FONT_CHEAT_BOLD);
+  Text(x + 8 * S + TextW("hvhsense  ", FONT_CHEAT_BOLD), y + 6 * S, "counter-strike: hvh", MkCol(130, 130, 130));
+  {
+    const char* r = TextFormat("%s | %s", g_pLocalPlayer ? g_pLocalPlayer->GetPlayerName() : "user", "v4");
+    Text(x + W - 10 * S - TextW(r), y + 6 * S, r, MkCol(255, 230, 230));
+  }
+  // black tab bar
+  float tbx = x + border, tby = y + titleH, tbw = W - border * 2;
+  GradV(tbx, tby, tbw, tabH, MkCol(48, 48, 48), MkCol(6, 6, 6));
+  static const char* tabs[] = { "Ragebot", "Anti-aim", "Visuals", "Misc", "Colors", "Players", "Settings" };
+  const int NT = 7;
+  float tw = tbw / NT;
+  for (int t = 0; t < NT; t++) {
+    float xx = tbx + t * tw;
+    bool sel = s_tab == t, hv = openPopup == 0 && !s_drag && Hover(xx, tby, tw, tabH);
+    if (sel) { GradV(xx, tby, tw, tabH, MkCol(122, 122, 122), MkCol(66, 66, 66)); Rect(xx, tby, tw, 1, MkCol(160, 160, 160)); }
+    else if (hv) GradV(xx, tby, tw, tabH, MkCol(70, 70, 70), MkCol(24, 24, 24));
+    float lw = TextW(tabs[t], FONT_CHEAT_BOLD);
+    Text(xx + (tw - lw) * 0.5f, tby + (tabH - 12 * S) * 0.5f, tabs[t], sel || hv ? MkCol(255, 255, 255) : MkCol(215, 215, 215), FONT_CHEAT_BOLD);
     if (hv && mPressed) { s_tab = t; openPopup = 0; EmitSound2D("UI.Click", 0.4f); }
   }
-  // content
-  float cx = tx + tw + 10 * S, cyy = ty + 22 * S, cw = ix + iw - cx - 10 * S, ch = iy + ih - cyy - 14 * S;
+  // light grey content area
+  float ax = x + border, ay = tby + tabH, aw = W - border * 2, ah = y + H - border - ay;
+  Rect(ax, ay, aw, ah, BgC());
+  float cx = ax + 4 * S, cyy = ay + 16 * S, cw = aw - 8 * S, ch = ah - 26 * S;
   inputBlocked = openPopup != 0 || s_drag;
-  bool blockedBeforeDeferred = inputBlocked;
   deferred.clear();
   idSeed = s_tab;
   switch (s_tab) {
-    case 0: PaintRage(cx - 10 * S, cyy, cw + 10 * S, ch); break;
-    case 1: PaintAA(cx - 10 * S, cyy, cw + 10 * S, ch); break;
-    case 2: PaintVisuals(cx - 10 * S, cyy, cw + 10 * S, ch); break;
-    case 3: PaintMisc(cx - 10 * S, cyy, cw + 10 * S, ch); break;
-    case 4: PaintPlayers(cx - 10 * S, cyy, cw + 10 * S, ch); break;
-    case 5: PaintConfig(cx - 10 * S, cyy, cw + 10 * S, ch); break;
+    case 0: PaintRage(cx, cyy, cw, ch); break;
+    case 1: PaintAA(cx, cyy, cw, ch); break;
+    case 2: PaintVisuals(cx, cyy, cw, ch); break;
+    case 3: PaintMisc(cx, cyy, cw, ch); break;
+    case 4: PaintColors(cx, cyy, cw, ch); break;
+    case 5: PaintPlayers(cx, cyy, cw, ch); break;
+    case 6: PaintConfig(cx, cyy, cw, ch); break;
   }
   // popups on top (they receive input even though widgets are blocked)
   inputBlocked = false; gTop = 0; gh = 1e9f;
   auto dl = deferred; deferred.clear();
   for (auto& f : dl) f();
-  (void)blockedBeforeDeferred;
-  // footer: user name like gamesense
   // fade-in overlay
   if (s_openAnim < 1.f) Rect(x, y, W, H, MkCol(0, 0, 0, (int)(255 * (1 - s_openAnim))));
 }

@@ -3,6 +3,7 @@
 #include "../../engine/materialsystem.hpp"
 #include "../../engine/random.hpp"
 #include "../../engine/enginetrace.hpp"
+#include "../../engine/worldrender.hpp"
 #include "../shared/cs_player.hpp"
 #include "rlgl.h"
 #include <vector>
@@ -37,7 +38,10 @@ static std::vector<Tracer> s_tracers;
 static std::deque<Decal> s_decals;
 static std::vector<DebugBox> s_boxes;
 static std::vector<Capsules> s_capsules;
-struct SmokeCloud { Vector center; float start, duration; std::vector<Vector> puffs; std::vector<float> sizes; std::vector<float> shade; };
+// CS:GO style smoke: ~90 big soft puffs pour out of the grenade, expand (ease-out) to fill a ~150u dome that respects
+// walls, slowly churn while active, then thin out from the edges during the last seconds
+struct SmokePuff { Vector target; float size, shade, birth, rot, spin, phase, fadeBias; };
+struct SmokeCloud { Vector center; float start, duration; std::vector<SmokePuff> puffs; Vector light{ 1, 1, 1 }; };
 static std::vector<SmokeCloud> s_smokes;
 
 void FX_Init() {}
@@ -122,17 +126,38 @@ void FX_Blood(const Vector& pos, const Vector& dir) {
 
 void FX_SmokeCloud(const Vector& center, float start, float duration) {
   SmokeCloud c; c.center = center; c.start = start; c.duration = duration;
-  uint32_t seed = (uint32_t)(center.x * 13 + center.y * 7);
+  uint32_t seed = (uint32_t)(std::fabs(center.x) * 13 + std::fabs(center.y) * 7);
   CUniformRandomStream rs; rs.SetSeed((int)seed);
-  for (int i = 0; i < 46; i++) {
-    // fill a flattened sphere, push puffs out of walls
-    Vector off(rs.RandomFloat(-1, 1), rs.RandomFloat(-1, 1), rs.RandomFloat(-0.2f, 0.9f));
+  const Vector base = center + Vector(0, 0, 36);
+  const int N = 110;
+  for (int i = 0; i < N; i++) {
+    // dome: wide at the bottom, rounded top; later puffs go further out
+    float k = (float)i / N;
+    Vector off(rs.RandomFloat(-1, 1), rs.RandomFloat(-1, 1), rs.RandomFloat(-0.35f, 1.f));
     if (off.Length() > 1) off = off.Normalized();
-    Vector p = center + Vector(0, 0, 40) + Vector(off.x * 130, off.y * 130, off.z * 80);
-    trace_t tr; Ray_t ray; ray.Init(center + Vector(0, 0, 40), p); g_EngineTrace.TraceRayWorld(ray, MASK_PLAYERSOLID_BRUSHONLY, &tr);
-    p = tr.endpos - (p - center).Normalized() * 20.f;
-    if (p.z < center.z + 20) p.z = center.z + 20;
-    c.puffs.push_back(p); c.sizes.push_back(rs.RandomFloat(70, 105)); c.shade.push_back(rs.RandomFloat(0.82f, 1.f));
+    float reach = 0.55f + 0.45f * std::sqrt(k);
+    Vector want = base + Vector(off.x * 150 * reach, off.y * 150 * reach, off.z * 118 * reach);
+    float size = rs.RandomFloat(58, 92) * (1.15f - 0.3f * k);
+    // keep the puff inside the level: trace out from the core and stop short of walls / ceilings
+    trace_t tr; Ray_t ray; ray.Init(base, want); g_EngineTrace.TraceRayWorld(ray, MASK_PLAYERSOLID_BRUSHONLY, &tr);
+    Vector dir = (want - base); float len = dir.Length(); dir = len > 0.1f ? dir / len : Vector(0, 0, 1);
+    Vector p = tr.endpos - dir * std::min(size * 0.45f, (tr.endpos - base).Length() * 0.5f);
+    // sit on the floor below
+    trace_t fl; Ray_t r2; r2.Init(p, p - Vector(0, 0, 200)); g_EngineTrace.TraceRayWorld(r2, MASK_PLAYERSOLID_BRUSHONLY, &fl);
+    p.z = std::max(p.z, fl.endpos.z + size * 0.32f);
+    SmokePuff sp;
+    sp.target = p; sp.size = size; sp.shade = rs.RandomFloat(0.86f, 1.f);
+    sp.birth = k * 0.9f + rs.RandomFloat(0.f, 0.15f);                 // poured out over ~1 s
+    sp.rot = rs.RandomFloat(0, 360); sp.spin = rs.RandomFloat(-6.f, 6.f); sp.phase = rs.RandomFloat(0, 6.28f);
+    sp.fadeBias = Clamp(((p - base).Length2D() / 150.f) * 0.7f + rs.RandomFloat(0.f, 0.3f), 0.f, 1.f); // edges thin out first
+    c.puffs.push_back(sp);
+  }
+  // light: mostly neutral grey (CS:GO smoke is grey-white), only slightly tinted / darkened by the local light
+  if (g_WorldRender.built) {
+    LightSample ls = g_WorldRender.SampleLight(base + Vector(0, 0, 40));
+    Vector l = ls.ambient + ls.direct * 0.4f; float lum = std::max(0.05f, (l.x + l.y + l.z) / 3.f);
+    Vector tint = l / lum; float b = Clamp(0.72f + 0.28f * lum, 0.6f, 1.f);
+    c.light = (Vector(1, 1, 1) * 0.8f + tint * 0.2f) * b;
   }
   s_smokes.push_back(std::move(c));
 }
@@ -248,24 +273,60 @@ void FX_DrawTranslucent(const CViewSetup& v) {
   rlDisableBackfaceCulling();
   float now = ServerTime();
   // smoke grenade clouds (sorted far->near)
-  if (!cl.removeSmoke) {
-    struct P { float d; Vector p; float s; float a; float shade; };
-    std::vector<P> puffs;
+  if (!cl.removeSmoke && !s_smokes.empty()) {
+    struct P { float d; Vector p; float s; float rot; Color c; };
+    std::vector<P> puffs; puffs.reserve(s_smokes.size() * 96);
+    float veil = 0.f; Vector veilCol(0.75f, 0.75f, 0.74f);
     for (auto& c : s_smokes) {
-      float t = now - c.start;
-      float grow = Clamp(t / 0.9f, 0.f, 1.f), fade = Clamp((c.start + c.duration - now) / 2.f, 0.f, 1.f);
-      for (size_t i = 0; i < c.puffs.size(); i++) {
-        Vector p = VectorLerp(c.center + Vector(0, 0, 16), c.puffs[i], 0.3f + 0.7f * grow);
-        p.z += std::sin(now * 0.4f + i) * 3.f;
-        puffs.push_back({ (p - v.origin).LengthSqr(), p, c.sizes[i] * (0.4f + 0.6f * grow), fade * 0.92f, c.shade[i] });
+      float t = now - c.start, left = c.start + c.duration - now;
+      float dissolve = Clamp(1.f - left / 3.5f, 0.f, 1.f);            // 0 while active -> 1 when gone
+      Vector base = c.center + Vector(0, 0, 36);
+      for (const SmokePuff& sp : c.puffs) {
+        float age = t - sp.birth; if (age <= 0) continue;
+        float e = 1.f - std::exp(-age * 2.6f);                         // ease-out expansion
+        Vector p = VectorLerp(c.center + Vector(0, 0, 10), sp.target, e);
+        p.x += std::sin(now * 0.35f + sp.phase) * 4.f; p.y += std::cos(now * 0.29f + sp.phase * 1.3f) * 4.f; p.z += std::sin(now * 0.5f + sp.phase) * 2.5f;
+        float size = sp.size * (0.35f + 0.65f * e) * (1.f + 0.25f * dissolve);
+        float in = Clamp(age / 0.25f, 0.f, 1.f);
+        float out = Clamp(1.f - (dissolve * 1.6f - sp.fadeBias * 0.6f), 0.f, 1.f); if (left <= 0) out = 0;
+        float a = in * out;
+        if (a <= 0.01f) continue;
+        // camera inside a puff: fade it (avoids the big flat quad slicing the view) and thicken the veil instead
+        float dc = (p - v.origin).Length();
+        float near = Clamp((dc - size * 0.25f) / (size * 0.6f), 0.f, 1.f);
+        a *= near;
+        // vertical shading: lit top, darker underside; churn adds a little variation
+        float h = Clamp((p.z - base.z) / 110.f + 0.5f, 0.f, 1.f);
+        float sh = sp.shade * (0.80f + 0.22f * h) * cl.worldBrightness;
+        Vector col = c.light * (226.f * sh);
+        Color cc{ (uint8_t)Clamp(col.x, 0.f, 255.f), (uint8_t)Clamp(col.y, 0.f, 255.f), (uint8_t)Clamp(col.z * 0.99f, 0.f, 255.f), (uint8_t)(255 * Clamp(a, 0.f, 1.f)) };
+        puffs.push_back({ dc * dc, p, size, sp.rot + now * sp.spin, cc });
+      }
+      // how deep the camera is inside this cloud (only while it is dense)
+      if (t > 0.6f) {
+        Vector d = v.origin - base; d.z *= 1.45f;
+        float depth = Clamp(1.f - d.Length() / 150.f, 0.f, 1.f) * Clamp((t - 0.6f) / 0.8f, 0.f, 1.f) * (1.f - dissolve);
+        if (depth > veil) { veil = depth; veilCol = c.light * (0.78f * cl.worldBrightness); }
       }
     }
     std::sort(puffs.begin(), puffs.end(), [](const P& a, const P& b) { return a.d > b.d; });
-    rlSetTexture(g_MaterialSystem.cloud.id);
+    rlSetTexture(g_MaterialSystem.smokePuff.id);
     rlBegin(RL_QUADS);
-    for (auto& p : puffs) { unsigned char g = (unsigned char)(185 * p.shade * cl.worldBrightness); Billboard(v, p.p, p.s, p.d * 0.0001f, { g, g, (unsigned char)(g * 0.98f), (unsigned char)(255 * p.a) }); }
+    for (auto& p : puffs) Billboard(v, p.p, p.s, p.rot, p.c);
     rlEnd();
     rlDrawRenderBatchActive();
+    // inside the smoke: CS:GO greys the whole view out
+    if (veil > 0.01f) {
+      rlDisableDepthTest();
+      rlSetTexture(g_MaterialSystem.white.id);
+      rlBegin(RL_QUADS);
+      Vector q = v.origin + v.forward * 6.f;
+      float a = Clamp(veil * 1.6f, 0.f, 0.97f);
+      Billboard(v, q, 40.f, 0.f, { (uint8_t)Clamp(veilCol.x * 255, 0.f, 255.f), (uint8_t)Clamp(veilCol.y * 255, 0.f, 255.f), (uint8_t)Clamp(veilCol.z * 255, 0.f, 255.f), (uint8_t)(a * 255) });
+      rlEnd();
+      rlDrawRenderBatchActive();
+      rlEnableDepthTest();
+    }
   }
   // normal particles
   std::vector<int> order(s_particles.size());

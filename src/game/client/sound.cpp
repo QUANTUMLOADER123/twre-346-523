@@ -1,4 +1,5 @@
-// sound.cpp - CSoundEmitterSystem: procedurally synthesized game sounds (no sample files needed)
+// sound.cpp - CSoundEmitterSystem: game sounds. Original Counter-Strike 1.6 .wav files are used when the player provides
+// them (own CS 1.6 install via snd_gamedir, or copied into ./sound/), everything else is synthesized procedurally.
 #include "cl_main.hpp"
 #include "../shared/soundemitter.hpp"
 #include "../shared/weapon_parse.hpp"
@@ -12,6 +13,8 @@
 #include <cstring>
 #include <algorithm>
 #include <utility>
+#include <filesystem>
+#include <cstdlib>
 
 ConVar volume("volume", "0.6", FCVAR_ARCHIVE, "Sound volume", true, 0, true, 1);
 ConVar snd_musicvolume("snd_musicvolume", "0.5", FCVAR_ARCHIVE, "Music volume", true, 0, true, 1);
@@ -157,6 +160,107 @@ static Synth Generate(const std::string& name, uint32_t seed) {
   s = Synth(0.06f); s.Noise(0.6f, 100.f); s.Normalize(0.3f); return s;
 }
 
+// ------------------------------------------------------------------------------------------------
+// original CS 1.6 sounds (bring your own): sound name -> candidate files (relative to <root>/sound/), every file that
+// exists becomes a random variant. Valve's sounds are not shipped with this game (copyright) - point snd_gamedir at
+// your own Half-Life / Counter-Strike 1.6 folder or copy its cstrike/sound + valve/sound folders into ./sound/.
+ConVar snd_gamedir("snd_gamedir", "", FCVAR_ARCHIVE, "Your Counter-Strike 1.6 install (the 'Half-Life' folder) - original sounds are loaded from cstrike/sound and valve/sound");
+ConVar snd_original("snd_original", "1", FCVAR_ARCHIVE, "Use original CS 1.6 .wav files when they are available (0 = always synthesized)");
+
+static std::vector<std::string> SoundRoots() {
+  std::vector<std::string> roots = { "sound" };
+  auto addInstall = [&](const std::string& d) {
+    if (d.empty()) return;
+    for (const char* sub : { "/cstrike/sound", "/cstrike_downloads/sound", "/valve/sound", "/sound" }) roots.push_back(d + sub);
+  };
+  addInstall(snd_gamedir.GetString());
+  // usual Steam locations
+  addInstall("C:/Program Files (x86)/Steam/steamapps/common/Half-Life");
+  addInstall("C:/Program Files/Steam/steamapps/common/Half-Life");
+  addInstall("D:/SteamLibrary/steamapps/common/Half-Life");
+  if (const char* h = std::getenv("HOME")) { addInstall(std::string(h) + "/.steam/steam/steamapps/common/Half-Life"); addInstall(std::string(h) + "/.local/share/Steam/steamapps/common/Half-Life"); }
+  std::vector<std::string> out; std::error_code ec;
+  for (auto& r : roots) if (std::filesystem::is_directory(r, ec)) out.push_back(r);
+  return out;
+}
+
+static std::vector<std::string> OriginalFiles(const std::string& name) {
+  static const std::unordered_map<std::string, std::vector<std::string>> map = {
+    // guns (CS:GO-only guns use the closest CS 1.6 sound)
+    { "Weapon_ak47.Single", { "weapons/ak47-1.wav", "weapons/ak47-2.wav" } },
+    { "Weapon_m4a1.Single", { "weapons/m4a1_unsil-1.wav", "weapons/m4a1_unsil-2.wav" } },
+    { "Weapon_m4a1_silencer.Single", { "weapons/m4a1_unsil-1.wav", "weapons/m4a1_unsil-2.wav" } },
+    { "Weapon_m4a1_silencer.Silenced", { "weapons/m4a1-1.wav" } },
+    { "Weapon_usp_silencer.Silenced", { "weapons/usp1.wav", "weapons/usp2.wav" } },
+    { "Weapon_usp_silencer.Single", { "weapons/usp_unsil-1.wav" } },
+    { "Weapon_glock.Single", { "weapons/glock18-2.wav", "weapons/glock18-1.wav" } },
+    { "Weapon_deagle.Single", { "weapons/deagle-1.wav", "weapons/deagle-2.wav" } },
+    { "Weapon_revolver.Single", { "weapons/deagle-2.wav" } },
+    { "Weapon_p250.Single", { "weapons/p228-1.wav" } },
+    { "Weapon_awp.Single", { "weapons/awp1.wav" } },
+    { "Weapon_ssg08.Single", { "weapons/scout_fire-1.wav" } },
+    { "Weapon_g3sg1.Single", { "weapons/g3sg1-1.wav" } },
+    { "Weapon_scar20.Single", { "weapons/sg550-1.wav" } },
+    { "Weapon_aug.Single", { "weapons/aug-1.wav" } },
+    { "Weapon_sg556.Single", { "weapons/sg552-1.wav", "weapons/sg552-2.wav" } },
+    { "Weapon_famas.Single", { "weapons/famas-1.wav", "weapons/famas-2.wav" } },
+    { "Weapon_galilar.Single", { "weapons/galil-1.wav", "weapons/galil-2.wav" } },
+    { "Weapon_mac10.Single", { "weapons/mac10-1.wav" } },
+    { "Weapon_mp9.Single", { "weapons/tmp-1.wav", "weapons/tmp-2.wav" } },
+    { "Weapon_ump45.Single", { "weapons/ump45-1.wav" } },
+    { "Weapon_p90.Single", { "weapons/p90-1.wav" } },
+    { "Weapon_nova.Single", { "weapons/m3-1.wav" } },
+    { "Weapon_xm1014.Single", { "weapons/xm1014-1.wav" } },
+    // weapon handling
+    { "Weapon.Reload", { "weapons/clipout1.wav" } }, { "Weapon.ClipOut", { "weapons/clipout1.wav" } }, { "Weapon.ClipIn", { "weapons/clipin1.wav" } },
+    { "Weapon.BoltPull", { "weapons/boltpull1.wav" } }, { "Weapon.DryFire", { "weapons/dryfire_rifle.wav", "weapons/dryfire_pistol.wav" } },
+    { "Weapon.Deploy", { "items/gunpickup2.wav" } }, { "Player.PickupWeapon", { "items/gunpickup2.wav" } }, { "Buy.Item", { "items/gunpickup2.wav" } },
+    { "Default.Zoom", { "weapons/zoom.wav" } }, { "Weapon_Shotgun.InsertShell", { "weapons/m3_insertshell.wav", "weapons/xm1014_insertshell.wav" } },
+    { "Weapon_Silencer.On", { "weapons/m4a1_silencer_on.wav", "weapons/usp_silencer_on.wav" } }, { "Weapon_Silencer.Off", { "weapons/m4a1_silencer_off.wav", "weapons/usp_silencer_off.wav" } },
+    { "Weapon_Revolver.Prepare", { "weapons/slideback1.wav" } },
+    // knife
+    { "Weapon_Knife.Slash", { "weapons/knife_slash1.wav", "weapons/knife_slash2.wav" } },
+    { "Weapon_Knife.Hit", { "weapons/knife_hit1.wav", "weapons/knife_hit2.wav", "weapons/knife_hit3.wav", "weapons/knife_hit4.wav" } },
+    { "Weapon_Knife.Stab", { "weapons/knife_stab.wav" } }, { "Weapon_Knife.HitWall", { "weapons/knife_hitwall1.wav" } }, { "Weapon_Knife.Deploy", { "weapons/knife_deploy1.wav" } },
+    // grenades / bomb
+    { "Weapon_Grenade.PullPin", { "weapons/pinpull.wav" } },
+    { "HEGrenade.Bounce", { "weapons/he_bounce-1.wav", "weapons/grenade_hit1.wav", "weapons/grenade_hit2.wav", "weapons/grenade_hit3.wav" } },
+    { "Flashbang.Bounce", { "weapons/grenade_hit1.wav", "weapons/grenade_hit2.wav", "weapons/grenade_hit3.wav" } },
+    { "SmokeGrenade.Bounce", { "weapons/grenade_hit1.wav", "weapons/grenade_hit2.wav", "weapons/grenade_hit3.wav" } },
+    { "BaseGrenade.Explode", { "weapons/hegrenade-1.wav", "weapons/hegrenade-2.wav", "weapons/explode3.wav", "weapons/explode4.wav", "weapons/explode5.wav" } },
+    { "Flashbang.Explode", { "weapons/flashbang-1.wav", "weapons/flashbang-2.wav" } },
+    { "BaseSmokeEffect.Sound", { "weapons/sg_explode.wav" } },
+    { "c4.beep", { "weapons/c4_beep1.wav" } }, { "c4.plant", { "weapons/c4_plant.wav" } }, { "c4.click", { "weapons/c4_click.wav" } },
+    { "c4.disarmstart", { "weapons/c4_disarm.wav" } }, { "c4.disarmfinish", { "weapons/c4_disarmed.wav" } }, { "c4.explode", { "weapons/c4_explode1.wav" } },
+    { "c4.keypress", { "weapons/c4_click.wav" } },
+    // player
+    { "Player.StepConcrete", { "player/pl_step1.wav", "player/pl_step2.wav", "player/pl_step3.wav", "player/pl_step4.wav" } },
+    { "Player.StepSand", { "player/pl_dirt1.wav", "player/pl_dirt2.wav", "player/pl_dirt3.wav", "player/pl_dirt4.wav" } },
+    { "Player.StepMetal", { "player/pl_metal1.wav", "player/pl_metal2.wav", "player/pl_metal3.wav", "player/pl_metal4.wav" } },
+    { "Player.StepTile", { "player/pl_tile1.wav", "player/pl_tile2.wav", "player/pl_tile3.wav", "player/pl_tile4.wav", "player/pl_tile5.wav" } },
+    { "Player.StepWood", { "player/pl_step1.wav", "player/pl_step2.wav", "player/pl_step3.wav", "player/pl_step4.wav" } },
+    { "Player.Land", { "player/pl_jumpland2.wav" } }, { "Player.FallDamage", { "player/pl_fallpain3.wav", "player/pl_fallpain2.wav" } },
+    { "Player.DamageHelmet", { "player/bhit_helmet-1.wav" } }, { "Player.DamageKevlar", { "player/bhit_kevlar-1.wav" } },
+    { "Player.DamageHeadShot", { "player/headshot1.wav", "player/headshot2.wav", "player/headshot3.wav" } },
+    { "Player.DamageBody", { "player/bhit_flesh-1.wav", "player/bhit_flesh-2.wav", "player/bhit_flesh-3.wav" } },
+    { "Player.Death", { "player/die1.wav", "player/die2.wav", "player/die3.wav", "player/death6.wav" } },
+    // radio / ui
+    { "Radio.CTWin", { "radio/ctwin.wav" } }, { "Radio.TerWin", { "radio/terwin.wav" } }, { "Radio.RoundDraw", { "radio/rounddraw.wav" } },
+    { "Radio.BombPlanted", { "radio/bombpl.wav" } }, { "Radio.BombDefused", { "radio/bombdef.wav" } }, { "Radio.TargetBombed", { "radio/terwin.wav" } },
+    { "Radio.LetsGo", { "radio/letsgo.wav", "radio/locknload.wav", "radio/moveout.wav", "radio/com_go.wav" } },
+    { "Buy.Fail", { "common/wpn_denyselect.wav" } }, { "UI.Click", { "common/wpn_hudoff.wav", "common/wpn_select.wav" } },
+  };
+  std::vector<std::string> found;
+  if (!snd_original.GetBool()) return found;
+  auto it = map.find(name); if (it == map.end()) return found;
+  static std::vector<std::string> roots; static std::string rootsFor = "\x01";
+  if (rootsFor != snd_gamedir.GetString()) { roots = SoundRoots(); rootsFor = snd_gamedir.GetString(); }
+  std::error_code ec;
+  for (const std::string& f : it->second)
+    for (const std::string& r : roots) { std::string p = r + "/" + f; if (std::filesystem::is_regular_file(p, ec)) { found.push_back(p); break; } }
+  return found;
+}
+
 struct SoundEntry { std::vector<Sound> variants; std::vector<Sound> aliases; int next = 0; float maxDist = 1500; };
 static std::unordered_map<std::string, SoundEntry> s_sounds;
 
@@ -174,8 +278,11 @@ static SoundEntry* GetSound(const std::string& name) {
   auto it = s_sounds.find(name);
   if (it != s_sounds.end()) return &it->second;
   SoundEntry e;
-  int variants = (name.rfind("Player.Step", 0) == 0) ? 4 : (name.find(".Bounce") != std::string::npos ? 2 : 1);
-  for (int v = 0; v < variants; v++) e.variants.push_back(MakeSound(Generate(name, 1234u + v * 7919u + (uint32_t)std::hash<std::string>()(name))));
+  for (const std::string& f : OriginalFiles(name)) { Sound snd = LoadSound(f.c_str()); if (snd.frameCount > 0) e.variants.push_back(snd); }
+  if (e.variants.empty()) {
+    int variants = (name.rfind("Player.Step", 0) == 0) ? 4 : (name.find(".Bounce") != std::string::npos ? 2 : 1);
+    for (int v = 0; v < variants; v++) e.variants.push_back(MakeSound(Generate(name, 1234u + v * 7919u + (uint32_t)std::hash<std::string>()(name))));
+  }
   for (auto& base : e.variants) for (int k = 0; k < 5; k++) e.aliases.push_back(LoadSoundAlias(base));
   if (name.find(".Single") != std::string::npos) e.maxDist = 3200;
   if (name.find("Explode") != std::string::npos || name.find("explode") != std::string::npos) e.maxDist = 4000;
@@ -221,6 +328,18 @@ void EmitSound(const char* name, const Vector& origin, int entindex, float vol, 
 void EmitSound2D(const char* name, float vol, float pitch) { if (!s_ready || !name) return; PlayEntry(GetSound(name), vol, 0, pitch); }
 
 static ConCommand cmd_play("play", [](const CCommand& a) { if (a.ArgC() > 1) EmitSound2D(a.Arg(1)); }, "Play a sound.");
+static void S_FlushSounds() {
+  for (auto& [k, e] : s_sounds) { for (auto& al : e.aliases) { StopSound(al); UnloadSoundAlias(al); } for (auto& v : e.variants) UnloadSound(v); }
+  s_sounds.clear();
+}
+static ConCommand cmd_snd_restart("snd_restart", [](const CCommand&) {
+  if (s_ready) S_FlushSounds();
+  std::vector<std::string> r = SoundRoots();
+  Msg("Sound: %d sound folder(s) found%s\n", (int)r.size(), r.empty() ? " - using synthesized sounds" : "");
+  for (auto& d : r) Msg("  %s\n", d.c_str());
+  int have = 0; for (const char* n : { "Weapon_ak47.Single", "Weapon_awp.Single", "Player.StepConcrete", "Radio.CTWin" }) have += !OriginalFiles(n).empty();
+  Msg("Sound: original files found for %d/4 test sounds (ak47, awp, footsteps, radio)\n", have);
+}, "Reload all sounds (after setting snd_gamedir or copying original .wav files into ./sound/)");
 
 static void OnVolumeChanged(ConVar* v, const char*) { if (s_ready) SetMasterVolume(v->GetFloat()); }
 
