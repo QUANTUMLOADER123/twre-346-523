@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include <utility>
 
 ConVar r_drawmodels("r_drawmodels", "1", FCVAR_CHEAT, "Draw studio models");
 

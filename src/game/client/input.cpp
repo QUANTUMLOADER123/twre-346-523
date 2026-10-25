@@ -13,6 +13,7 @@
 #include <strings.h>
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 
 ConVar sensitivity("sensitivity", "2.5", FCVAR_ARCHIVE, "Mouse sensitivity.", true, 0.0001f, true, 100);
 ConVar m_yaw("m_yaw", "0.022", FCVAR_ARCHIVE, "Mouse yaw factor.");

@@ -70,7 +70,16 @@
 
 Нужен компилятор C++17. raylib 6.2 скачивается автоматически.
 
-**Windows (рекомендуется CMake + Visual Studio 2022 / MinGW / clang):**
+**Visual Studio (проще всего):**
+1. Установите Visual Studio 2022 или 2026 с нагрузкой **«Разработка классических приложений на C++»**.
+2. Откройте **`CounterStrikeHvH.slnx`** (VS 2022 17.13+ / VS 2026) или **`CounterStrikeHvH.sln`** (любая VS 2019+).
+3. Вверху выберите **Release | x64** и нажмите **Ctrl+Shift+B** (собрать) или **F5** (собрать и запустить).
+
+Скачивать ничего не нужно: исходники raylib лежат в `third_party/raylib` и собираются как отдельный проект решения.
+Готовый файл появляется в `bin\cshvh.exe` (в Debug — `bin\cshvh_debug.exe`, с консолью для логов).
+Если добавили новые `.cpp`/`.hpp`, обновите проекты командой `python tools/gen_vs.py`.
+
+**Windows через CMake (Visual Studio / MinGW / clang):**
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j
@@ -103,7 +112,9 @@ src/game/server/  навигационная сетка и боты (CCSBot)
 src/game/client/  ввод/бинды, HUD (как в CS), VGUI-меню закупки и команд, viewmodel, эффекты, звук (процедурный синтез)
 src/vgui/         ISurface, контролы (Frame/Button/Slider/ComboBox/…), главное меню CS 1.6, консоль
 src/cheat/        hvhsense: меню, ragebot, antiaim, visuals, misc
-tools/            mapgen.py, simtest (симуляция матча без графики), worldtest, modeltest
+tools/            mapgen.py, gen_vs.py (решение Visual Studio), simtest (симуляция матча без графики), worldtest, modeltest
+msvc/             проекты Visual Studio (cshvh.vcxproj, raylib.vcxproj)
+third_party/      raylib 6.2 (исходники, zlib-лицензия)
 ```
 
 Мир работает с тикрейтом 64. Командование, предсказание, интерполяция и lag compensation устроены как в Source.

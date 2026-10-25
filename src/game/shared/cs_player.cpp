@@ -12,6 +12,7 @@
 #include "../../engine/random.hpp"
 #include <cmath>
 #include <algorithm>
+#include <iterator>
 
 ConVar mp_friendlyfire("mp_friendlyfire", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Allows team members to injure other members of their team");
 ConVar mp_buytime("mp_buytime", "20", FCVAR_REPLICATED | FCVAR_NOTIFY, "How many seconds after round start players can buy items for");

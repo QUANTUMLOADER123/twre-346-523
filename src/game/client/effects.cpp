@@ -9,6 +9,7 @@
 #include <deque>
 #include <cmath>
 #include <algorithm>
+#include <utility>
 
 ConVar r_decals("r_decals", "256", FCVAR_ARCHIVE, "Maximum number of bullet hole decals");
 ConVar cl_tracers("cl_tracers", "1", FCVAR_ARCHIVE, "Draw bullet tracers");

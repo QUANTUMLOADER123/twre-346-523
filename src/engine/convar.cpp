@@ -7,6 +7,8 @@
 #include <fstream>
 #include <sstream>
 #include <chrono>
+#include <cctype>
+#include <utility>
 
 static double Plat_Time() {
   using namespace std::chrono;

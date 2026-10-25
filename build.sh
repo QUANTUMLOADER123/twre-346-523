@@ -6,7 +6,7 @@
 #   ./build.sh headless   -> software renderer, no window (bin/cshvh_headless) - used for automated screenshots/tests
 #   ./build.sh clean
 #
-# raylib 6.2 is downloaded into third_party/ on first use (github.com/raysan5/raylib).
+# raylib 6.2 sources are vendored in third_party/raylib (downloaded from github.com/raysan5/raylib if missing).
 # Environment: JOBS=8 (parallel jobs), RAYLIB_DIR=/path/to/raylib (use an existing checkout)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -14,7 +14,10 @@ cd "$(dirname "$0")"
 TARGET="${1:-linux}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 RAYLIB_VERSION=6.2
-RAYLIB_DIR="${RAYLIB_DIR:-third_party/raylib-$RAYLIB_VERSION}"
+if [ -z "${RAYLIB_DIR:-}" ]; then
+  if [ -f third_party/raylib/src/raylib.h ]; then RAYLIB_DIR=third_party/raylib   # vendored copy (also used by the Visual Studio solution)
+  else RAYLIB_DIR=third_party/raylib-$RAYLIB_VERSION; fi
+fi
 
 if [ "$TARGET" = clean ]; then rm -rf build bin; echo "cleaned"; exit 0; fi
 

@@ -15,6 +15,9 @@
 #include <cmath>
 #include <ctime>
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <utility>
 
 extern ConVar sv_maxusrcmdprocessticks;
 extern ConVar sv_maxdtshift;

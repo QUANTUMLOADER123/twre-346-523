@@ -14,6 +14,8 @@
 #include <cstring>
 #include <cstdarg>
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
 
 namespace cheat {
 Vars v;

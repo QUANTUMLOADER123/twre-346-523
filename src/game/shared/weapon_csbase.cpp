@@ -9,6 +9,7 @@
 #include "../../engine/random.hpp"
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
 
 extern ConVar weapon_recoil_scale;
 extern ConVar weapon_recoil_view_punch_extra;

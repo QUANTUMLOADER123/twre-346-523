@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <cstdlib>
+#include <utility>
 
 class IGameEvent {
 public:

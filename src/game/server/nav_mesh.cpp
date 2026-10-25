@@ -6,6 +6,7 @@
 #include <queue>
 #include <cmath>
 #include <algorithm>
+#include <utility>
 
 void CNavMesh::Build() {
   const CMapInfo& m = g_MapInfo;
