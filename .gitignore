@@ -1,3 +1,10 @@
-node_modules
-dist
-.DS_Store
+build/
+out/
+bin/
+*.o
+*.exe
+!dist/.keep
+screenshots/
+cfg/config.cfg
+cfg/hvhsense_*.cfg
+/cshvh

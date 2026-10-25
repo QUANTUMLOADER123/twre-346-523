@@ -1,0 +1,38 @@
+// worldrender.hpp - brush world mesh builder, light baker and renderer (IVRenderView-ish)
+#pragma once
+#include "mathlib.hpp"
+#include "view.hpp"
+#include "raylib.h"
+#include <vector>
+#include <unordered_map>
+
+struct CMapInfo;
+
+struct LightSample { Vector ambient; Vector direct; Vector dir; }; // for models: ambient + directional
+
+class CWorldRenderer {
+public:
+  void Build(const CMapInfo& map);
+  void Unload();
+  void DrawSky(const CViewSetup& view, float time);
+  void DrawWorld(const CViewSetup& view);
+  LightSample SampleLight(const Vector& pos);          // cached lighting probe (for players, weapons, props)
+  Vector ComputeLightAt(const Vector& p, const Vector& n, int aoRays, int sunRays); // full lighting evaluation
+  bool built = false;
+  int numTris = 0, numVerts = 0, numChunks = 0, drawnChunks = 0;
+  float bakeSeconds = 0;
+  const CMapInfo* map = nullptr;
+private:
+  struct Chunk { int mat; Mesh mesh{}; Material material{}; Vector mins, maxs; };
+  std::vector<Chunk> m_chunks;
+  std::unordered_map<long long, LightSample> m_probeCache;
+  float m_maxTop = 512;
+};
+inline CWorldRenderer g_WorldRender;
+
+// frustum helper
+struct Frustum {
+  float planes[6][4];
+  void FromMatrix(const Matrix& viewProj);
+  bool CullBox(const Vector& mins, const Vector& maxs) const; // true = outside
+};
