@@ -337,6 +337,9 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
   if (!WinHttpCrackUrl(w.c_str(), 0, 0, &uc)) { err = "bad url"; return false; }
   HINTERNET s = WinHttpOpen(L"cshvh", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
   if (!s) { err = "WinHttpOpen failed"; return false; }
+  // github release assets redirect to a CDN host - WinHTTP does not follow redirects unless told to
+  DWORD policy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+  WinHttpSetOption(s, WINHTTP_OPTION_REDIRECT_POLICY, &policy, sizeof(policy));
   WinHttpSetTimeouts(s, 20000, 20000, 60000, 60000);
   HINTERNET c = WinHttpConnect(s, host, uc.nPort, 0);
   HINTERNET r = c ? WinHttpOpenRequest(c, L"GET", path, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, uc.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0) : nullptr;
@@ -364,7 +367,7 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
 }
 #else
 bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const char* accept = nullptr) {
-  std::string cmd = "curl -fsSL --connect-timeout 10 --max-time 120 --retry 1 " + (accept ? std::string("-H 'Accept: ") + accept + "' " : std::string()) + "'" + url + "'";
+  std::string cmd = "curl -fsSL --connect-timeout 10 --retry 2 --speed-limit 4096 --speed-time 60 " + (accept ? std::string("-H 'Accept: ") + accept + "' " : std::string()) + "'" + url + "'";
   FILE* f = popen(cmd.c_str(), "r");
   if (!f) { err = "curl not found"; return false; }
   std::vector<uint8_t> buf(256 * 1024);
