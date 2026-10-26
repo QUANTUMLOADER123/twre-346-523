@@ -15,6 +15,7 @@
 
 ConVar cl_css_models("cl_css_models", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source player / weapon models when CS:S content is installed");
 ConVar cl_css_viewmodels("cl_css_viewmodels", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source view models (with hands) when CS:S content is installed");
+ConVar cl_css_anim_layers("cl_css_anim_layers", "255", FCVAR_CHEAT, "debug: 1 jump 2 upper 4 reload 8 aim 16 shoot");
 ConVar cl_css_viewmodel_fov("cl_css_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
 
 bool CSS_ModelsActive() { return cl_css_models.GetBool() && srcfs::Available(); }
@@ -84,7 +85,7 @@ void LayerDelta(std::vector<Vector>& pos, std::vector<Quat>& q, const std::vecto
   for (size_t b = 0; b < pos.size(); b++) {
     float k = (b < w.size() ? w[b] : 1.f) * amount; if (k <= 0.001f) continue;
     Quat d = k >= 0.999f ? dq[b] : QuatSlerp(Quat(), dq[b], k);
-    q[b] = QuatMul(q[b], d); pos[b] = pos[b] + dp[b] * k;
+    q[b] = QuatMul(d, q[b]); pos[b] = pos[b] + dp[b] * k;   // Source QuaternionSM (non-STUDIO_POST delta): delta * base
   }
 }
 
@@ -125,7 +126,8 @@ void BuildPlayerBones(CCSPlayer* pl, const CSrcModel& m, const PlayerPoseInput& 
   tr.cycle -= std::floor(tr.cycle);
   tr.air = in.onGround ? 0.f : tr.air + dt;
   m.SampleSeq(base, tr.cycle, pv, pos, q);
-  if (!in.onGround) {
+  const int lm = cl_css_anim_layers.GetInt();
+  if (!in.onGround && (lm & 1)) {
     SrcSeqRef j = m.FindSeq("Jump");
     if (j) { m.SampleSeq(j, Clamp(0.25f + tr.air / std::max(0.1f, m.SeqDuration(j)), 0.f, 0.8f), pv, lp, lq, &w); LayerFull(pos, q, lp, lq, std::vector<float>(), 1.f); }
   }
@@ -134,8 +136,8 @@ void BuildPlayerBones(CCSPlayer* pl, const CSrcModel& m, const PlayerPoseInput& 
   const std::string st = crouch ? (moving ? "Crouch_Walk_" : "Crouch_Idle_") : (run ? "Run_" : moving ? "Walk_" : "Idle_");
   const std::string aimSt = crouch ? "Crouch_" : (run ? "Run_" : moving ? "Walk_" : "Idle_");
   SrcSeqRef up = m.FindSeq(st + "Upper_" + wpn);
-  if (up) { m.SampleSeq(up, tr.cycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
-  if (in.reloadCycle >= 0) {
+  if (up && (lm & 2)) { m.SampleSeq(up, tr.cycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  if (in.reloadCycle >= 0 && (lm & 4)) {
     SrcSeqRef r = m.FindSeq(st + "Reload_" + wpn);
     if (r) { m.SampleSeq(r, in.reloadCycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   }
@@ -144,8 +146,8 @@ void BuildPlayerBones(CCSPlayer* pl, const CSrcModel& m, const PlayerPoseInput& 
     if (r) { m.SampleSeq(r, std::fmod(now / std::max(0.1f, m.SeqDuration(r)), 1.f), pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   }
   SrcSeqRef aim = m.FindSeq(aimSt + "Aim_" + wpn);
-  if (aim) { m.SampleSeq(aim, 0, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
-  if (in.fireAmount > 0 && in.weaponId != WEAPON_C4) {
+  if (aim && (lm & 8)) { m.SampleSeq(aim, 0, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
+  if (in.fireAmount > 0 && in.weaponId != WEAPON_C4 && (lm & 16)) {
     SrcSeqRef s = m.FindSeq(st + "Shoot_" + wpn);
     if (!s) s = m.FindSeq(st + "Shoot_" + wpn + "_R");
     if (s) { m.SampleSeq(s, 1.f - in.fireAmount, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
