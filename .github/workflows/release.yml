@@ -88,12 +88,54 @@ jobs:
         with:
           path: artifacts
       - run: find artifacts -type f | xargs ls -la
+      - name: Extract latest release notes
+        run: |
+          VERSION="1.2.${{ github.run_number }}"
+          python3 -c "
+          import re
+          with open('.github/release_notes.md') as f:
+              content = f.read()
+          # Find the section for this version
+          pattern = r'### Что нового в ' + re.escape('$VERSION') + r'.*?(?=### Что нового в|$)'
+          match = re.search(pattern, content, re.DOTALL)
+          if match:
+              section = match.group(0).strip()
+          else:
+              # Take the first section after the table
+              lines = content.split('\n')
+              section_lines = []
+              in_section = False
+              for line in lines:
+                  if line.startswith('### Что нового в'):
+                      if not in_section:
+                          in_section = True
+                          section_lines.append(line)
+                      else:
+                          break
+                  elif in_section:
+                      section_lines.append(line)
+              section = '\n'.join(section_lines).strip()
+          # Add file table at the top
+          table = '''## Counter-Strike: HvH
+
+| Файл | Что это |
+|---|---|
+| **CounterStrikeHvH-windows.zip** | Полная Windows-версия: распаковать, запустить \`cshvh.exe\` |
+| **cshvh.exe** | Только exe (класть рядом с папкой \`assets\` из архива / репозитория) |
+| **cshvh.apk** | Android (arm64 / armv7, Android 7.0+, OpenGL ES 3) |
+
+'''
+          with open('/tmp/release_notes.txt', 'w') as f:
+              f.write(table + section + '\n')
+          "
+        env:
+          VERSION: "1.2.${{ github.run_number }}"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.2.${{ github.run_number }}
           name: Counter-Strike HvH 1.2.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          body_path: .github/release_notes.md
+          body_path: /tmp/release_notes.txt
           make_latest: true
           files: |
             artifacts/windows/dist/CounterStrikeHvH-windows.zip
