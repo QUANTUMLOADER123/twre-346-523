@@ -4,6 +4,7 @@ void HUD_DrawScoreboard();
 void HUD_DrawTeamMenu();
 void HUD_DrawBuyMenu();
 void HUD_BuyMenuSetCategory(int cat);   // -1 = categories, 0..5
+void DrawWeaponGlyph(int wtype, float x, float y, float w, float h, Color c);   // hud.cpp: fallback weapon silhouettes
 bool HUD_MenusWantInput();         // team/buy menu or chat open -> show cursor, no game input
 bool HUD_MenuKeyPressed(int key);  // raylib key; returns true if consumed
 void HUD_ChatChar(int codepoint);

@@ -78,65 +78,89 @@ struct BuyItem { const char* alias; int weaponId; const char* label; int price; 
 // CS:GO buy wheel: 6 categories around the money, then the items of the category around a BACK button
 // CS:GO layout: 6 categories, at most 6 items each, no sniper category (scouts / AWPs / autos are rifles);
 // slots with two guns (M4A4 / M4A1-S, ...) show the one chosen in the main menu LOADOUT screen
-static constexpr int kNumCategories = LOADOUT_NUM_CATEGORIES;
+static constexpr int kNumCategories = 5;
+// buy wheel order: 3 weapon categories of the loadout + equipment + grenades.
+// NOTE: the loadout enum (PISTOLS 0, MIDTIER 1, RIFLES 2) is different from the legacy one
+// (PISTOLS 0, HEAVY 1, SMGS 2, RIFLES 3, GEAR 4, GRENADES 5) - always go through this table.
+static const int kCategoryIds[kNumCategories] = { LOADOUT_PISTOLS, LOADOUT_MIDTIER, LOADOUT_RIFLES, LOADOUT_CAT_GEAR, LOADOUT_CAT_GRENADES };
+static const char* kCategoryNames[kNumCategories] = { "PISTOLS", "MID-TIER", "RIFLES", "EQUIPMENT", "GRENADES" };
 static std::vector<BuyItem> GetCategory(int cat, int team) {
   std::vector<BuyItem> out;
   auto add = [&](const char* alias, int id, const char* label, int price, int t, const char* img) { if (t && team && t != team) return; out.push_back({ alias, id, label, price, t, img }); };
+  ConVar* anyTeam = FindConVar("mp_buy_anyteam");
+  const bool any = anyTeam && anyTeam->GetBool();
   switch (cat) {
     case LOADOUT_CAT_GEAR:
-      add("vest", 0, "Kevlar Vest", 650, 0, "kevlar"); add("vesthelm", 0, "Kevlar + Helmet", 1000, 0, "kevlar_helmet");
-      add("defuser", 0, "Defuse Kit", 400, FindConVar("mp_buy_anyteam")->GetBool() ? 0 : TEAM_CT, "defuser");
+      add("vest", 0, "Kevlar Vest", 650, 0, "kevlar");
+      add("vesthelm", 0, "Kevlar + Helmet", 1000, 0, "kevlar_helmet");
+      add("defuser", 0, "Defuse Kit", 400, any ? 0 : TEAM_CT, "defuser");
       break;
     case LOADOUT_CAT_GRENADES: {
-      const bool any = FindConVar("mp_buy_anyteam")->GetBool();
-      add("molotov", WEAPON_MOLOTOV, "Molotov", GetWeaponInfo(WEAPON_MOLOTOV)->price, any ? 0 : TEAM_TERRORIST, nullptr);
-      add("incgrenade", WEAPON_INCGRENADE, "Incendiary Grenade", GetWeaponInfo(WEAPON_INCGRENADE)->price, any ? 0 : TEAM_CT, nullptr);
-      add("flashbang", WEAPON_FLASHBANG, "Flashbang", GetWeaponInfo(WEAPON_FLASHBANG)->price, 0, nullptr);
-      add("hegrenade", WEAPON_HEGRENADE, "HE Grenade", GetWeaponInfo(WEAPON_HEGRENADE)->price, 0, nullptr);
-      add("smokegrenade", WEAPON_SMOKEGRENADE, "Smoke Grenade", GetWeaponInfo(WEAPON_SMOKEGRENADE)->price, 0, nullptr);
+      const CCSWeaponInfo* mol = GetWeaponInfo(WEAPON_MOLOTOV);
+      const CCSWeaponInfo* inc = GetWeaponInfo(WEAPON_INCGRENADE);
+      const CCSWeaponInfo* fl = GetWeaponInfo(WEAPON_FLASHBANG);
+      const CCSWeaponInfo* he = GetWeaponInfo(WEAPON_HEGRENADE);
+      const CCSWeaponInfo* sm = GetWeaponInfo(WEAPON_SMOKEGRENADE);
+      if (mol) add("molotov", WEAPON_MOLOTOV, "Molotov", mol->price, any ? 0 : TEAM_TERRORIST, nullptr);
+      if (inc) add("incgrenade", WEAPON_INCGRENADE, "Incendiary Grenade", inc->price, any ? 0 : TEAM_CT, nullptr);
+      if (fl) add("flashbang", WEAPON_FLASHBANG, "Flashbang", fl->price, 0, nullptr);
+      if (he) add("hegrenade", WEAPON_HEGRENADE, "HE Grenade", he->price, 0, nullptr);
+      if (sm) add("smokegrenade", WEAPON_SMOKEGRENADE, "Smoke Grenade", sm->price, 0, nullptr);
       break;
     }
-    case LOADOUT_CAT_PISTOLS:
-    case LOADOUT_CAT_HEAVY:
-    case LOADOUT_CAT_SMGS:
-    case LOADOUT_CAT_RIFLES:
-      // Only show weapons that are actually equipped in the loadout
+    case LOADOUT_PISTOLS:
+    case LOADOUT_MIDTIER:
+    case LOADOUT_RIFLES: {
+      // only the weapons actually equipped in the loadout screen
       std::vector<LoadoutSlot2> slots = Loadout_GetSlots2(team);
       for (const auto& s : slots) {
-        if (s.category == cat && s.weaponId != 0) {
-          const CCSWeaponInfo* wi = GetWeaponInfo(s.weaponId);
-          if (wi) out.push_back({ WeaponIdToAlias(s.weaponId), s.weaponId, wi->printName, wi->price, wi->team, nullptr });
-        }
+        if (s.category != cat || s.weaponId == 0) continue;
+        const CCSWeaponInfo* wi = GetWeaponInfo(s.weaponId);
+        if (wi) out.push_back({ WeaponIdToAlias(s.weaponId), s.weaponId, wi->printName, wi->price, wi->team, nullptr });
       }
       break;
+    }
+    default: break;
   }
   if (out.size() > 6) out.resize(6);
   return out;
 }
-static const char* CategoryName(int cat) { return Loadout_CategoryName(cat); }
+static const char* CategoryName(int cat) { return (cat >= 0 && cat < kNumCategories) ? kCategoryNames[cat] : ""; }
 
 void HUD_BuyMenuSetCategory(int cat) { s_buyCategory = cat >= 0 && cat < kNumCategories ? cat : -1; s_hoverItem = -1; }
+static int CategoryId(int wheelIndex) { return (wheelIndex >= 0 && wheelIndex < kNumCategories) ? kCategoryIds[wheelIndex] : -1; }
 static void Buy(const char* alias) { Cbuf_AddText(std::string("buy ") + alias + "\n"); }
 static void CloseBuyMenu() { cl.buyMenuOpen = false; s_buyCategory = -1; }
 
 static const Texture2D* ItemImage(const BuyItem& it) { return it.image ? VGUI_ItemImage(it.image) : VGUI_WeaponImage(it.weaponId); }
+// procedurally drawn category glyphs - always available, even without the CS:S content installed
+static void DrawArmorGlyph(float x, float y, float s, Color c) {
+  DrawRectangleRounded({ x + s * 0.06f, y + s * 0.10f, s * 0.88f, s * 0.52f }, 0.28f, 5, c);
+  surface()->DrawTriangle({ x + s * 0.06f, y + s * 0.52f }, { x + s * 0.94f, y + s * 0.52f }, { x + s * 0.5f, y + s * 0.95f }, c);
+  Color k = { 20, 22, 26, 160 };
+  surface()->DrawFilledRect(x + s * 0.30f, y + s * 0.26f, s * 0.40f, s * 0.10f, k);   // vest strap
+}
+static void DrawGrenadeGlyph(float x, float y, float s, Color c) {
+  DrawRectangleRounded({ x + s * 0.22f, y + s * 0.26f, s * 0.56f, s * 0.66f }, 0.34f, 5, c);
+  surface()->DrawFilledRect(x + s * 0.42f, y + s * 0.06f, std::max(1.f, s * 0.16f), s * 0.24f, c);
+  surface()->DrawFilledRect(x + s * 0.56f, y + s * 0.14f, s * 0.22f, std::max(1.f, s * 0.10f), c);
+}
 static const Texture2D* CategoryImage(int cat, int team) {
   switch (cat) {
     case LOADOUT_CAT_PISTOLS: return VGUI_WeaponImage(WEAPON_DEAGLE);
     case LOADOUT_CAT_HEAVY:
     case LOADOUT_CAT_SMGS: return VGUI_WeaponImage(WEAPON_P90);  // MidTier
     case LOADOUT_CAT_RIFLES: return VGUI_WeaponImage(team == TEAM_CT ? WEAPON_M4A1 : WEAPON_AK47);
-    case LOADOUT_CAT_GEAR: return VGUI_ItemImage("kevlar_helmet");
+    case LOADOUT_CAT_GEAR: return VGUI_ItemImage("kevlar_helmet");   // armor plate
     case LOADOUT_CAT_GRENADES: return VGUI_WeaponImage(WEAPON_HEGRENADE);
     default: return nullptr;
   }
 }
-
 // select by number (1..n) at the current level; returns true when handled
 static bool BuySelect(int n) {
   CCSPlayer* lp = g_pLocalPlayer; if (!lp) return false;
   if (s_buyCategory < 0) { if (n >= 1 && n <= kNumCategories) { s_buyCategory = n - 1; s_hoverItem = -1; return true; } return false; }
-  auto items = GetCategory(s_buyCategory, lp->m_iTeamNum);
+  auto items = GetCategory(CategoryId(s_buyCategory), lp->m_iTeamNum);
   if (n >= 1 && n <= (int)items.size()) { Buy(items[n - 1].alias); return true; }   // stays open (ESC / B / right click closes)
   return false;
 }
@@ -156,14 +180,13 @@ void HUD_DrawBuyMenu() {
   std::vector<Entry> entries;
   std::vector<BuyItem> items;
   
+  const int catId = CategoryId(s_buyCategory);
   if (s_buyCategory < 0) {
-    // 5 categories: 3 weapons + equipment + grenades
-    const char* catNames[] = { "PISTOLS", "MID-TIER", "RIFLES", "EQUIPMENT", "GRENADES" };
-    for (int i = 0; i < 5; i++) {
-      entries.push_back({ catNames[i], "", CategoryImage(i, team), true, i + 1, false });
-    }
+    // 5 categories: 3 weapon categories of the loadout + equipment + grenades
+    for (int i = 0; i < kNumCategories; i++)
+      entries.push_back({ kCategoryNames[i], "", CategoryImage(kCategoryIds[i], team), true, i + 1, false });
   } else {
-    items = GetCategory(s_buyCategory, team);
+    items = GetCategory(catId, team);
     for (size_t i = 0; i < items.size(); i++) {
       const BuyItem& it = items[i];
       entries.push_back({ it.label, it.price > 0 ? TextFormat("$%d", it.price) : "", ItemImage(it), lp->m_iAccount >= it.price, (int)i + 1, false });
@@ -182,7 +205,8 @@ void HUD_DrawBuyMenu() {
     float rel = ang + 90.f + span * 0.5f; while (rel < 0) rel += 360.f; while (rel >= 360.f) rel -= 360.f;
     hover = std::min(n - 1, (int)(rel / span));
   }
-  if (hover != s_hoverItem && hover >= 0 && !entries[hover].isEmpty) EmitSound2D("UI.Rollover");
+  if (hover >= (int)entries.size()) hover = -1;
+  if (hover >= 0 && hover != s_hoverItem && !entries[hover].isEmpty) EmitSound2D("UI.Rollover");
   s_hoverItem = hover;
   
   // Draw radial menu - dark theme, no blue
@@ -206,6 +230,15 @@ void HUD_DrawBuyMenu() {
     Color tint = e.enabled ? (hv ? WHITE : Color{ 200, 200, 200, 240 }) : Color{ 100, 100, 100, 180 };
     
     if (e.img) VGUI_DrawImageFit(*e.img, ex - iw * 0.5f, ey - ih * 0.5f - 8, iw, ih, tint);
+    else {   // no CS:S content / no icon for this entry: draw a glyph
+      float gs = ih * 1.5f;
+      const int iconCat = s_buyCategory < 0 ? kCategoryIds[i] : catId;
+      if (iconCat == LOADOUT_CAT_GEAR) DrawArmorGlyph(ex - gs * 0.5f, ey - gs * 0.5f - 14, gs, tint);
+      else if (iconCat == LOADOUT_CAT_GRENADES) DrawGrenadeGlyph(ex - gs * 0.5f, ey - gs * 0.5f - 14, gs, tint);
+      else if (iconCat == LOADOUT_PISTOLS) DrawWeaponGlyph(WEAPONTYPE_PISTOL, ex - gs * 0.6f, ey - gs * 0.5f - 12, gs * 1.2f, gs * 0.7f, tint);
+      else if (iconCat == LOADOUT_MIDTIER) DrawWeaponGlyph(WEAPONTYPE_SUBMACHINEGUN, ex - gs * 0.6f, ey - gs * 0.5f - 12, gs * 1.2f, gs * 0.7f, tint);
+      else DrawWeaponGlyph(WEAPONTYPE_RIFLE, ex - gs * 0.6f, ey - gs * 0.5f - 12, gs * 1.2f, gs * 0.7f, tint);
+    }
     surface()->DrawTextCentered(FONT_GO_BOLD, e.label.c_str(), ex, ey + ih * 0.5f - 4, e.enabled ? csgo::Text : csgo::TextFaint, true);
     if (!e.price.empty()) surface()->DrawTextCentered(FONT_GO, e.price.c_str(), ex, ey + ih * 0.5f + 14, e.enabled ? csgo::Green : csgo::Red, true);
     
@@ -219,6 +252,7 @@ void HUD_DrawBuyMenu() {
   DrawRing({ cx, cy }, r0 - 3, r0, 0, 360, 48, Color{ 60, 65, 75, 255 });
   surface()->DrawTextCentered(FONT_GO_TITLE, TextFormat("$%d", lp->m_iAccount), cx, cy - 30, csgo::Green, true);
   const char* title = s_buyCategory < 0 ? "BUY MENU" : CategoryName(s_buyCategory);
+  if (s_buyCategory >= 0 && items.empty()) surface()->DrawTextCentered(FONT_GO, "nothing equipped", cx, cy + 58, csgo::TextFaint, true);
   surface()->DrawTextCentered(FONT_GO_BOLD, title, cx, cy - 2, csgo::Text, true);
   surface()->DrawTextCentered(FONT_GO, s_buyCategory < 0 ? "[0] CLOSE" : "[0] BACK", cx, cy + 20, centerHv ? WHITE : csgo::TextDim, true);
   
@@ -228,7 +262,7 @@ void HUD_DrawBuyMenu() {
   }
   
   // Item info on the right for weapons
-  if (s_buyCategory >= 0 && hover >= 0 && hover < (int)items.size()) {
+  if (s_buyCategory >= 0 && hover >= 0 && hover < (int)items.size() && hover < (int)entries.size()) {
     const BuyItem& it = items[hover];
     if (const CCSWeaponInfo* wi = it.weaponId ? GetWeaponInfo(it.weaponId) : nullptr) if (wi->type != WEAPONTYPE_GRENADE && cx + R + 260 < W) {
       float px = cx + R + 30, py = cy - 110, pw = 230;
