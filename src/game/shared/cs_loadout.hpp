@@ -2,6 +2,9 @@
 #pragma once
 #include <vector>
 
+// Legacy compatibility - old category constants still used by hud_menus.cpp
+enum { LOADOUT_CAT_PISTOLS = 0, LOADOUT_CAT_HEAVY, LOADOUT_CAT_SMGS, LOADOUT_CAT_RIFLES, LOADOUT_CAT_GEAR, LOADOUT_CAT_GRENADES, LOADOUT_NUM_CATEGORIES };
+
 // Categories for the new loadout
 enum { LOADOUT_PISTOLS = 0, LOADOUT_MIDTIER, LOADOUT_RIFLES, LOADOUT_NUM_NEW };
 
@@ -28,3 +31,4 @@ bool Loadout_IsEquipped2(int team, int weaponId);
 // Legacy compatibility
 const char* Loadout_CategoryName(int category);
 int Loadout_StartPistol(int team, bool bot);
+std::vector<int> Loadout_CategoryWeapons(int category, int team);

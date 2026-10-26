@@ -126,3 +126,12 @@ int Loadout_StartPistol(int team, bool bot) {
   if (bot) return RandomInt(0, 1) ? WEAPON_USP_SILENCER : WEAPON_HKP2000;
   return WEAPON_HKP2000;
 }
+
+// Legacy compatibility
+std::vector<int> Loadout_CategoryWeapons(int category, int team) {
+  // Map old categories to new ones
+  if (category == LOADOUT_CAT_PISTOLS) return Loadout_CategoryWeapons2(LOADOUT_PISTOLS, team);
+  if (category == LOADOUT_CAT_SMGS || category == LOADOUT_CAT_HEAVY) return Loadout_CategoryWeapons2(LOADOUT_MIDTIER, team);
+  if (category == LOADOUT_CAT_RIFLES) return Loadout_CategoryWeapons2(LOADOUT_RIFLES, team);
+  return {};
+}
