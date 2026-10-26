@@ -86,6 +86,7 @@ public:
   // fight cycle (strafe -> stop -> shoot)
   int m_iFightPhase = 0; float m_flPhaseEnd = 0; int m_iPhaseShots = 0; int m_iPhaseShotsMax = 0;
   bool m_bCrouchSpray = false;
+  bool m_bHumanLike = false;  // human-like: smooth aim, crouch before peek, wait in corners
   // retreat to cover (reload / low hp)
   Vector m_vecCover; float m_flRetreatUntil = 0;
   // grenades

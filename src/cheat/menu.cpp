@@ -115,7 +115,7 @@ static void RegisterVars() {
   R("misc.bhop", m.bhop); R("misc.autostrafe", m.autostrafe); R("misc.edgejump_key", m.edgeJumpKey); R("misc.faststop", m.fastStop); R("misc.buy_primary", m.buyPrimary);
   R("misc.buy_secondary", m.buySecondary); R("misc.buy_armor", m.buyArmor); R("misc.buy_nades", m.buyNades); R("misc.buy_kit", m.buyKit); R("misc.hitsound", m.hitsound);
   R("misc.hitsound_type", m.hitsoundType); R("misc.killsay", m.killsay); R("misc.log_hits", m.logHits); R("misc.log_hurt", m.logHurt); R("misc.log_buy", m.logPurchases);
-  R("misc.clantag", m.clantag); R("misc.accent", m.accent); R("misc.menu_col", m.menuCol); R("misc.menu_key", m.menuKey); R("misc.dpi", m.dpi);
+  R("misc.clantag", m.clantag); R("misc.quickpeek_key", m.quickPeekKey); R("misc.quickpeek_dist", m.quickPeekDist); R("misc.accent", m.accent); R("misc.menu_col", m.menuCol); R("misc.menu_key", m.menuKey); R("misc.dpi", m.dpi);
   g_NamedBinds = { { "Ragebot", &r.key }, { "Minimum damage override", &r.minDamageOverrideKey }, { "Force body aim", &r.forceBaimKey }, { "Force safe point", &r.forceSafeKey },
     { "Double tap", &r.doubletapKey }, { "Hide shots", &r.hideshotsKey }, { "Anti-aim inverter", &a.inverter }, { "Freestanding", &a.freestandKey },
     { "Manual left", &a.manualLeft }, { "Manual right", &a.manualRight }, { "Manual back", &a.manualBack }, { "Duck peek assist", &a.fakeDuckKey },
@@ -607,6 +607,8 @@ static void PaintRage(float x, float y, float w, float h) {
   Combo("Anti-aim correction", r.resolver, { "Off", "Default", "Bruteforce" });
   Checkbox("Double tap", r.doubletap); KeyBindW("rage.dtkey", r.doubletapKey);
   Combo("Double tap mode", r.doubletapMode, { "Offensive", "Defensive" });
+  Combo("Quick Peek", v.misc.quickPeekKey, { "Off", "ALT", "Duck+Shift", "Shift" });
+  SliderInt("Quick Peek dist", v.misc.quickPeekDist, 50, 300, 10, "%d");
   Checkbox("On shot anti-aim", r.hideshots); KeyBindW("rage.hskey", r.hideshotsKey);
   Checkbox("Knifebot", r.knifebot);
   Checkbox("Auto revolver", r.autoRevolver);

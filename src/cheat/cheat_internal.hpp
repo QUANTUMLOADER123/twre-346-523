@@ -124,6 +124,8 @@ struct Vars {
     bool killsay = false;
     bool logHits = true, logHurt = true, logPurchases = false;
     bool clantag = false;
+    int quickPeekKey = 0; // 0 off, 1 ALT, 2 Duck+Shift, 3 Shift
+    int quickPeekDist = 150;
     Col accent = MkCol(150, 200, 60);
     Col menuCol = MkCol(170, 12, 12);          // aimware red
     KeyBind menuKey{ KEY_INSERT, KEYMODE_TOGGLE };

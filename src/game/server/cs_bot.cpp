@@ -362,6 +362,8 @@ void CCSBot::UpdatePerception() {
       m_iFightPhase = (m_iDifficulty >= 2 && RandomFloat(0, 1) < 0.5f) ? 0 : 1; m_flPhaseEnd = now + RandomFloat(0.1f, 0.25f);
       m_bCrouchSpray = m_iDifficulty >= 2 && RandomFloat(0, 1) < 0.4f;
       m_iStrafeDir = RandomInt(0, 1) ? 1 : -1;
+      // human-like: pre-aim common angles, wait in corners, crouch before peeking
+      m_bHumanLike = m_iDifficulty >= 1 && !m_bHvH;
     }
     m_pEnemy = best; m_flEnemyLastSeen = now; m_vecEnemyLastPos = best->m_net.origin; m_iPeek = PEEK_NONE;
   } else if (m_pEnemy) {
@@ -903,10 +905,14 @@ void CCSBot::Fight(CUserCmd& cmd, QAngle& view) {
   // turn speed
   static const float turn[4] = { 220.f, 380.f, 600.f, 900.f };
   float maxStep = turn[Clamp(m_iDifficulty, 0, 3)] * gpGlobals->interval_per_tick;
+  // human-like bots: slower turn, smoother (more realistic)
+  if (m_bHumanLike) maxStep *= 0.55f;
   float dp = AngleDiff(want.x, view.x), dy = AngleDiff(want.y, view.y);
   float len = std::sqrt(dp * dp + dy * dy);
   float k = len > maxStep ? maxStep / len : 1.f;
   k = std::min(1.f, k * (len > 10 ? 1.f : 0.6f + 0.04f * len));   // ease in
+  // human-like: extra smoothing (bezier ease)
+  if (m_bHumanLike) k *= (0.7f + 0.3f * k);
   view.x += dp * k; view.y += dy * k;
   if (!w) return;
   float dist = eye.DistTo(target);
@@ -952,6 +958,8 @@ void CCSBot::Fight(CUserCmd& cmd, QAngle& view) {
       if (now > m_flStrafeChange) { m_iStrafeDir = -m_iStrafeDir; m_flStrafeChange = now + RandomFloat(0.2f, 0.45f); }
       cmd.sidemove = 450.f * m_iStrafeDir; cmd.forwardmove = 0;
       if (m_bCrouchSpray && me->m_iShotsFired > 4) cmd.buttons |= IN_DUCK;
+      // human-like: crouch before shooting (more realistic)
+      if (m_bHumanLike && me->m_iShotsFired == 0 && (type == WEAPONTYPE_RIFLE || type == WEAPONTYPE_SMG)) cmd.buttons |= IN_DUCK;
     }
     if (canShoot && onTarget) PressFire(cmd, w);
     return;

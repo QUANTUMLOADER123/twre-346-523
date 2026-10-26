@@ -224,6 +224,21 @@ void CCSPlayer::PostThink(const CUserCmd& cmd, float ft) {
     if (wantUse && !m_bIsDefusing && !g_pPlantedC4->m_hBombDefuser) g_pPlantedC4->StartDefuse(this);
     else if (!wantUse && m_bIsDefusing && g_pPlantedC4->m_hBombDefuser == this) g_pPlantedC4->AbortDefuse();
   } else m_bIsDefusing = false;
+  
+  // doors: use key opens func_door_rotating nearby
+  if (cmd.buttons & IN_USE) {
+    Vector eye = EyePosition();
+    Vector forward; AngleVectors(v_angle, &forward);
+    Vector traceEnd = eye + forward * 96.f;
+    trace_t tr; UTIL_TraceLine(eye, traceEnd, MASK_SOLID, this, &tr);
+    if (tr.m_pEnt && tr.fraction < 1.f) {
+      const char* cls = tr.m_pEnt->GetClassName();
+      if (cls && (!strcmp(cls, "func_door_rotating") || !strcmp(cls, "func_door"))) {
+        // open the door (simple: toggle state)
+        tr.m_pEnt->Use(this, this, USE_TOGGLE, 1.f);
+      }
+    }
+  }
 
   // animation state (server): every processed command
   float animDuck = cmd.bFakeDuck && (m_fFlags & FL_ONGROUND) ? (cmd.bSendPacket ? 1.f : 0.f) : m_flDuckAmount;

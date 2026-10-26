@@ -11,6 +11,8 @@
 
 extern ConVar sv_maxusrcmdprocessticks;
 extern ConVar sv_maxdtshift;
+static ConVar quickPeekKey("quickpeek_key", "0", FCVAR_ARCHIVE, "Key for Quick Peek Assist (0=off, 1=ALT, 2=CTRL, 3=SHIFT)", true, 0, true, 3);
+static ConVar quickPeekDist("quickpeek_dist", "150", FCVAR_ARCHIVE, "Quick Peek distance (units)", true, 50, true, 300);
 
 namespace cheat {
 void Visuals_AddShotHitboxes(const HitboxSet& hb, int hitbox);
@@ -43,13 +45,32 @@ static bool IsShooting(const CUserCmd& cmd, CCSPlayer* lp) {
   return (cmd.buttons & IN_ATTACK) && now >= w->m_flNextPrimaryAttack && now >= lp->m_flNextAttack && w->m_iClip1 > 0 && !w->IsReloading();
 }
 
+// Defensive DT: position history buffer (0.5s = ~32 ticks)
+static std::vector<Vector> s_posHistory;
+static std::vector<QAngle> s_angHistory;
+static void RecordHistory(const Vector& pos, const QAngle& ang) {
+  s_posHistory.push_back(pos); s_angHistory.push_back(ang);
+  const int maxTicks = (int)(0.5f / gpGlobals->interval_per_tick);
+  while ((int)s_posHistory.size() > maxTicks) { s_posHistory.erase(s_posHistory.begin()); s_angHistory.erase(s_angHistory.begin()); }
+}
+
 void CreateMove(CUserCmd& cmd) {
   CCSPlayer* lp = g_pLocalPlayer;
-  if (!lp || !lp->IsAlive() || lp->m_iTeamNum < TEAM_TERRORIST) { g.choked = 0; cmd.bSendPacket = true; return; }
+  if (!lp || !lp->IsAlive() || lp->m_iTeamNum < TEAM_TERRORIST) { g.choked = 0; cmd.bSendPacket = true; s_posHistory.clear(); s_angHistory.clear(); return; }
   const QAngle view = cmd.viewangles;
   Misc_CreateMove(cmd, lp, view);
   size_t shotsBefore = g.shots.size();
   Rage_CreateMove(cmd, lp, view);
+  
+  // Defensive DT: when choking packets, use old position/angles (fake trail 0.5s behind)
+  if (v.rage.doubletapMode == 1 && g.doubletapping && !cmd.bSendPacket && s_posHistory.size() > 5) {
+    int idx = (int)s_posHistory.size() - 6;
+    if (idx >= 0) {
+      lp->m_vecOrigin = s_posHistory[idx];
+      lp->m_PlayerAnimState.m_flFootYaw = s_angHistory[idx].y;
+    }
+  }
+  RecordHistory(lp->m_vecOrigin, QAngle(0, lp->m_PlayerAnimState.m_flFootYaw, 0));
   if (g.shots.size() != shotsBefore && g.targetValid && g.target && v.vis.hitboxOnShot) {
     // remember the hitboxes we aimed at
     if (!g.target->m_LagRecords.empty()) {
@@ -87,6 +108,38 @@ void CreateMove(CUserCmd& cmd) {
   if (g.doubletapping && v.rage.doubletapMode == 1 && !shooting && g.dtReady && g.targetValid && !s_defUsed && lp->m_vecVelocity.Length2D() > 100.f) {
     cmd.tickbaseShift = maxShift; s_defUsed = true;
   }
+  
+  // Quick Peek Assist: hold key → peek sideways → shoot → return
+  static float s_peekStart = 0;
+  static bool s_peeking = false;
+  static bool s_returning = false;
+  static float s_peekSide = 0;
+  int qpKey = quickPeekKey.GetInt();
+  bool qpHeld = false;
+  if (qpKey == 1) qpHeld = (cmd.buttons & IN_ALT1) != 0;       // ALT
+  else if (qpKey == 2) qpHeld = (cmd.buttons & IN_DUCK) != 0 && (cmd.buttons & IN_SPEED) != 0;  // CTRL (duck+shift combo)
+  else if (qpKey == 3) qpHeld = (cmd.buttons & IN_SPEED) != 0 && !(cmd.buttons & IN_DUCK);  // SHIFT alone
+  
+  float peekDist = quickPeekDist.GetFloat();
+  if (qpHeld && !s_peeking && !s_returning) {
+    s_peeking = true; s_peekStart = ServerTime();
+    s_peekSide = (cmd.sidemove >= 0) ? 1.f : -1.f;
+  }
+  if (s_peeking) {
+    float elapsed = ServerTime() - s_peekStart;
+    float t = std::min(1.f, elapsed / 0.3f);  // 0.3s to reach full peek
+    cmd.sidemove = s_peekSide * 450.f * t;
+    if (elapsed > 0.5f || (shooting && elapsed > 0.1f)) {
+      s_peeking = false; s_returning = true; s_peekStart = ServerTime();
+    }
+  }
+  if (s_returning) {
+    float elapsed = ServerTime() - s_peekStart;
+    float t = std::min(1.f, elapsed / 0.25f);
+    cmd.sidemove = -s_peekSide * 450.f * t;
+    if (elapsed > 0.3f || !qpHeld) { s_returning = false; s_peeking = false; }
+  }
+  if (!qpHeld && !s_peeking && !s_returning) { s_peeking = false; s_returning = false; }
   FixMovement(cmd, view);
   cmd.viewangles.x = Clamp(cmd.viewangles.x, -89.f, 89.f);
   cmd.viewangles.y = AngleNormalize(cmd.viewangles.y);
