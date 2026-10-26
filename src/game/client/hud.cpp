@@ -1075,7 +1075,7 @@ void HUD_Paint() {
   if (con_notifytime_ref.GetBool()) DrawNotify();
   DrawDebugTexts();
   // in-game menus
-  if (cl.showScores) HUD_DrawScoreboard();
+  if (cl.showScores && !cl.buyMenuOpen && !cl.teamMenuOpen) HUD_DrawScoreboard();   // like CS:GO - the menus win
   if (cl.teamMenuOpen) HUD_DrawTeamMenu();
   else if (cl.buyMenuOpen) HUD_DrawBuyMenu();
 }
