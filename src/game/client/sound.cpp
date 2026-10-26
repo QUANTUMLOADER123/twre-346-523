@@ -42,7 +42,7 @@ std::string Lower(std::string x) { for (auto& c : x) c = (char)std::tolower((uns
 void LoadSoundScripts() {
   if (s_scriptsLoaded) return;
   s_scriptsLoaded = true; s_scripts.clear();
-  if (!srcfs::Available()) return;
+  if (!srcfs::AnyContent()) return;
   std::vector<std::string> files;
   std::vector<uint8_t> buf;
   if (srcfs::Read("scripts/game_sounds_manifest.txt", buf)) {
@@ -141,7 +141,7 @@ std::vector<std::string> CssNames(const std::string& name) {
 // CS:S wave files for one of our sound names
 std::vector<std::string> CssFiles(const std::string& name) {
   std::vector<std::string> out;
-  if (!snd_css.GetBool() || !srcfs::Available()) return out;
+  if (!snd_css.GetBool() || !srcfs::AnyContent()) return out;
   LoadSoundScripts();
   for (const std::string& n : CssNames(name)) {
     if (n.rfind("file:", 0) == 0) { if (srcfs::Exists("sound/" + n.substr(5))) out.push_back(n.substr(5)); continue; }
@@ -324,8 +324,8 @@ static ConCommand cmd_snd_restart("snd_restart", [](const CCommand&) {
   if (s_ready) S_FlushSounds();
   s_scriptsLoaded = false; srcfs::Invalidate();
   std::vector<std::string> r = SoundRoots();
-  if (srcfs::Available()) Msg("Sound: CS:S content %s\n", srcfs::Root().c_str());
-  Msg("Sound: %d CS 1.6 sound folder(s) found%s\n", (int)r.size(), (r.empty() && !srcfs::Available()) ? " - no sound files: run tools/get_css_content or css_download" : "");
+  if (srcfs::AnyContent()) Msg("Sound: Source content %s\n", (srcfs::CsgoAvailable() ? srcfs::CsgoRoot() : srcfs::Root()).c_str());
+  Msg("Sound: %d CS 1.6 sound folder(s) found%s\n", (int)r.size(), (r.empty() && !srcfs::AnyContent()) ? " - no sound files: run csgo_download or set csgo_gamedir" : "");
   for (auto& d : r) Msg("  %s\n", d.c_str());
   int have = 0, haveCss = 0;
   for (const char* n : { "Weapon_ak47.Single", "Weapon_awp.Single", "Player.StepConcrete", "Radio.CTWin" }) { have += !OriginalFiles(n).empty(); haveCss += !CssFiles(n).empty(); }

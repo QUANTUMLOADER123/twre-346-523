@@ -264,6 +264,7 @@ std::string Normalize(const std::string& rel) {
 
 bool Available() { Scan(); return !S().root.empty(); }
 bool CsgoAvailable() { Scan(); return !S().goRoot.empty(); }
+bool AnyContent() { Scan(); return !S().goRoot.empty() || !S().root.empty(); }
 const std::string& CsgoRoot() { Scan(); return S().goRoot; }
 const std::string& Root() { Scan(); return S().root; }
 void Invalidate() { S().scanned = false; }

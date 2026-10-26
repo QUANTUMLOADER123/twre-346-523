@@ -30,7 +30,7 @@ const char* CSS_AgentName(int team, int idx) {
   return team == TEAM_CT ? ct[idx & 3] : t[idx & 3];
 }
 
-bool CSS_ModelsActive() { return cl_css_models.GetBool() && srcfs::Available(); }
+bool CSS_ModelsActive() { return cl_css_models.GetBool() && srcfs::AnyContent(); }
 
 namespace {
 struct WeaponModel { const char* model; const char* anim; };
@@ -78,11 +78,24 @@ WeaponModel WeaponInfo(int wid) {
 }
 bool SilencerModel(int wid) { return wid == WEAPON_USP_SILENCER || wid == WEAPON_M4A1_SILENCER; }
 
+const CSrcModel* LoadedOrNull(const CSrcModel* m);
 const char* const s_agentCT[4] = { "ct_urban", "ct_gsg9", "ct_sas", "ct_gign" };
 const char* const s_agentT[4] = { "t_phoenix", "t_leet", "t_arctic", "t_guerilla" };
+// the same four classes as real CS:GO agents (models/player/custom_player/legacy/<name>/<name>.mdl)
+const char* const s_goAgentCT[4] = { "ctm_st6", "ctm_gign", "ctm_sas", "ctm_idf" };
+const char* const s_goAgentT[4] = { "tm_phoenix", "tm_leet", "tm_arctic", "tm_guerilla" };
 const CSrcModel* AgentModel(int team, int idx) {
   idx &= 3;
-  return SrcMdl_Get(std::string("models/player/") + (team == TEAM_CT ? s_agentCT[idx] : s_agentT[idx]) + ".mdl");
+  const char* css = team == TEAM_CT ? s_agentCT[idx] : s_agentT[idx];
+  if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(std::string("models/player/") + css + ".mdl"))) return m;
+  if (!srcfs::CsgoAvailable()) return nullptr;
+  const char* go = team == TEAM_CT ? s_goAgentCT[idx] : s_goAgentT[idx];
+  static const char* goDirs[] = { "models/player/custom_player/legacy/%s/%s.mdl", "models/player/custom_player/legacy/%s.mdl" };
+  for (const char* fmt : goDirs) {
+    char path[256]; snprintf(path, sizeof path, fmt, go, go);
+    if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(path))) return m;
+  }
+  return nullptr;
 }
 const CSrcModel* PlayerModel(CCSPlayer* p) {
   int idx = (p->entindex() + p->m_iPlayerModel) & 3;
@@ -133,7 +146,22 @@ const CSrcModel* WorldWeapon(int wid, bool silencer = false, bool thrown = false
   if (silencer && wid == WEAPON_USP_SILENCER) n += "_silencer";
   if (silencer && wid == WEAPON_M4A1_SILENCER) n += "_silencer";
   if (thrown && IsGrenade(wid)) n += "_thrown";
-  return SrcMdl_Get(n + ".mdl");
+  if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(n + ".mdl"))) return m;
+  // real CS:GO layout: models/weapons/w_models/w_<name>.mdl
+  std::string go = "models/weapons/w_models/w_" + std::string(WeaponInfo(wid).model) + ".mdl";
+  if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(go))) return m;
+  // CS:GO names of the same class (mp9 instead of tmp, hkp2000 instead of p228, ...)
+  static const struct { const char* css; const char* go; } ren[] = {
+    { "smg_tmp", "smg_mp9" }, { "pist_p228", "pist_hkp2000" }, { "smg_ump45", "smg_ump45" }, { "shot_m3super90", "shot_nova" },
+    { "shot_xm1014", "shot_xm1014" }, { "rif_galil", "rif_galilar" }, { "rif_sg552", "rif_sg556" }, { "snip_scout", "snip_ssg08" },
+    { "snip_sg550", "snip_scar20" }, { "smg_mac10", "smg_mac10" }, { "mach_m249para", "mach_m249" }, { "pist_fiveseven", "pist_fiveseven" },
+  };
+  const char* wm = WeaponInfo(wid).model;
+  for (auto& r : ren) if (strcmp(wm, r.css) == 0) {
+    std::string p2 = std::string("models/weapons/w_models/w_") + r.go + ".mdl";
+    if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(p2))) return m;
+  }
+  return nullptr;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -325,11 +353,11 @@ void BoneMerge(const CSrcModel& w, const CSrcModel& parent, const std::vector<ma
 
 static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes);
 void BuildPlayerPose(CCSPlayer* p, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes) {
-  BuildPoseForModel(p && srcfs::Available() ? PlayerModel(p) : nullptr, p, in, out, computeHitboxes);
+  BuildPoseForModel(p && srcfs::AnyContent() ? PlayerModel(p) : nullptr, p, in, out, computeHitboxes);
 }
 
 bool CSS_DrawAgent(int team, int agent, const PlayerPoseInput& in, const StudioDrawParams& p) {
-  if (!srcfs::Available()) return false;
+  if (!srcfs::AnyContent()) return false;
   thread_local PlayerPoseOutput out;
   BuildPoseForModel(AgentModel(team, agent), nullptr, in, out, false);
   if (!out.css) return false;
@@ -477,7 +505,7 @@ SrcSeqRef PickVm(const CSrcModel& m, std::initializer_list<const char*> acts, bo
 }
 
 bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, float bobTime, float bob, const QAngle& sway, float landKick, Vector& muzzleOut) {
-  if (!cl_css_viewmodels.GetBool() || !srcfs::Available()) return false;
+  if (!cl_css_viewmodels.GetBool() || !srcfs::AnyContent()) return false;
   const int wid = w->GetCSWeaponID();
   WeaponModel wi = WeaponInfo(wid); if (!wi.model) return false;
   const CSrcModel* m = nullptr;
@@ -485,7 +513,24 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) { m = LoadedOrNull(SrcMdl_Get(kR8View)); r8 = m && !m->seqs.empty(); if (!r8) m = nullptr; }
   bool csgo = false;
   if (!m) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
-  if (!m) m = SrcMdl_Get(std::string("models/weapons/v_") + wi.model + ".mdl");
+  if (!m) m = LoadedOrNull(SrcMdl_Get(std::string("models/weapons/v_") + wi.model + ".mdl"));
+  if (!m) m = LoadedOrNull(SrcMdl_Get(std::string("models/weapons/v_models/v_") + wi.model + ".mdl"));   // real CS:GO layout
+  if (!m) {
+    static const struct { const char* css; const char* go; } *ren = nullptr; (void)ren;
+    const char* alias = nullptr;
+    switch (wid) {
+      case WEAPON_MP9: alias = "v_smg_mp9"; break;
+      case WEAPON_HKP2000: alias = "v_pist_hkp2000"; break;
+      case WEAPON_GALILAR: alias = "v_rifle_galilar"; break;
+      case WEAPON_SG556: alias = "v_rifle_sg556"; break;
+      case WEAPON_SSG08: alias = "v_snip_ssg08"; break;
+      case WEAPON_SCAR20: alias = "v_snip_scar20"; break;
+      case WEAPON_NOVA: alias = "v_shot_nova"; break;
+      case WEAPON_M249: alias = "v_mach_m249"; break;
+      default: break;
+    }
+    if (alias) m = LoadedOrNull(SrcMdl_Get(std::string("models/weapons/v_models/") + alias + ".mdl"));
+  }
   if (!m || m->meshes.empty() || m->seqs.empty()) return false;
   const bool silenced = SilencerModel(wid) && w->m_bSilencerOn;
   const int act = w->m_iViewActivity;

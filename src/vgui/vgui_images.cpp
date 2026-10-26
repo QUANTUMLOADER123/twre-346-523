@@ -73,7 +73,7 @@ static const Texture2D* LoadImageEx(const std::string& vtf, int flags) {
   if (it == s_images.end()) {
     Texture2D tex{};
     std::vector<uint8_t> rgba; int w = 0, h = 0;
-    if (srcfs::Available() && VTF_Load(vtf, rgba, w, h, 512)) {
+    if (srcfs::AnyContent() && VTF_Load(vtf, rgba, w, h, 512)) {
       int x0 = 0, y0 = 0, x1 = w - 1, y1 = h - 1;
       if (flags & 1) {
         x0 = w; y0 = h; x1 = -1; y1 = -1;

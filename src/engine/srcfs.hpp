@@ -22,6 +22,7 @@ extern ConVar csgo_gamedir;
 namespace srcfs {
 bool Available();                                   // a CS:S content root was found (and css_content is 1)
 bool CsgoAvailable();                               // a local CS:GO install (pak01_dir.vpk) was found - it wins over CS:S
+bool AnyContent();                                  // any real content at all (CS:GO or CS:S) - use this to gate assets
 const std::string& CsgoRoot();                      // CS:GO content folder ("" if none)
 const std::string& Root();                          // detected root folder ("" if none)
 void Invalidate();                                  // re-scan on next access (after css_gamedir changes / download)
