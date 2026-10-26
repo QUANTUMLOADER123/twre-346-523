@@ -983,10 +983,10 @@ void SettingsTab(int tab) {
     RowInfo("Cheat binds", "aimwhere menu: tap a bind -> circle");
     break;
   case 8: { // CONTENT
-    Header("COUNTER-STRIKE: SOURCE CONTENT");
-    RowInfo("Status", srcfs::Available() ? "installed" : "missing");
-    std::string root = srcfs::Root(); if (root.size() > 44) root = "..." + root.substr(root.size() - 41);
-    RowInfo("Folder", root.empty() ? "-" : root.c_str());
+    Header("CS:GO CONTENT");
+    RowInfo("CS:GO", srcfs::CsgoAvailable() ? "installed" : "missing");
+    std::string go = srcfs::CsgoRoot(); if (go.size() > 44) go = "..." + go.substr(go.size() - 41);
+    RowInfo("Folder", go.empty() ? "-  (run csgo_download or set csgo_gamedir)" : go.c_str());
     RowInfo("Maps found", TextFormat("%d", (int)Maps().size()));
     download::Progress pr = download::Get();
     if (download::Busy()) {
@@ -998,8 +998,8 @@ void SettingsTab(int tab) {
       if (pr.state == download::DONE) RowInfo("Last download", "finished - restart the game");
       RowButton("Download / repair content", "DOWNLOAD", [] { download::Start(); });
     }
-    CvToggle("Use CS:S content", "css_content");
-    RowInfo("Source", "github.com/bouletmarc (css_content, css_maps_content)");
+    RowButton("Download real CS:GO content (SteamCMD, ~2 GB)", "CSGO_DOWNLOAD", [] { Cbuf_AddText("csgo_download\n"); });
+    RowInfo("Source", "public CS:GO map mirrors on GitHub + your own CS:GO / CS:GO Dedicated Server");
     break;
   }
   }

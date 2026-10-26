@@ -147,6 +147,8 @@ void Scan() {
       for (const char* steam : { "/Program Files (x86)/Steam", "/Program Files/Steam", "/Steam", "/SteamLibrary" }) {
         goCands.push_back(std::string(drive) + steam + "/steamapps/common/Counter-Strike Global Offensive/game/csgo");
         goCands.push_back(std::string(drive) + steam + "/steamapps/common/Counter-Strike Global Offensive/csgo");
+        goCands.push_back(std::string(drive) + steam + "/steamapps/common/Counter-Strike Global Offensive Dedicated Server/csgo");
+        goCands.push_back(std::string(drive) + steam + "/steamapps/common/Counter-Strike Global Offensive Dedicated Server");
       }
     }
 #else
@@ -154,6 +156,8 @@ void Scan() {
       goCands.push_back(std::string(home) + "/.steam/steam/steamapps/common/Counter-Strike Global Offensive/game/csgo");
       goCands.push_back(std::string(home) + "/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo");
       goCands.push_back(std::string(home) + "/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo");
+      goCands.push_back(std::string(home) + "/.steam/steam/steamapps/common/Counter-Strike Global Offensive Dedicated Server/csgo");
+      goCands.push_back(std::string(home) + "/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive Dedicated Server/csgo");
     }
 #endif
     for (auto& c : goCands) {
@@ -205,7 +209,7 @@ void Scan() {
   if (!s.goRoot.empty()) Msg("CS:GO content: %s (%d files in pak01)\n", s.goRoot.c_str(), (int)s.goVpks.size() ? (int)s.goVpks[0]->files.size() : 0);
   if (s.root.empty()) {
     static bool hinted = false;
-    if (!hinted && s.loose.empty()) { hinted = true; Msg("No Source install found (./content/css) - type content_download in the console to download the content\n"); }
+    if (!hinted && s.loose.empty()) { hinted = true; Msg("No CS:GO content found - run csgo_download (free CS:GO Dedicated Server) or set csgo_gamedir; the maps are downloaded automatically\n"); }
     if (!s.loose.empty()) Msg("Downloaded content: %d files\n", (int)s.loose.size());
     return;
   }
@@ -226,7 +230,7 @@ void Scan() {
   }
   IndexLoose(s.root + "/hl2");
   size_t nv = 0; for (auto& v : s.vpks) nv += v->files.size();
-  Msg("CS:S content: %s (%d loose files, %d VPK files in %d archives)\n", s.root.c_str(), (int)s.loose.size(), (int)nv, (int)s.vpks.size());
+  Msg("Source content: %s (%d loose files, %d VPK files in %d archives)\n", s.root.c_str(), (int)s.loose.size(), (int)nv, (int)s.vpks.size());
 }
 
 bool ReadPak(const std::string& key, std::vector<uint8_t>& out) {
@@ -374,8 +378,36 @@ static ConCommand css_download("css_download", [](const CCommand&) {
   if (std::system(cmd.c_str()) != 0) Warning("could not start %s\n", tool.c_str());
 #endif
 }, "Download Counter-Strike: Source content (free CS:S Dedicated Server via SteamCMD) into content/css");
+static ConCommand csgo_download("csgo_download", [](const CCommand&) {
+#if defined(PLATFORM_ANDROID)
+  std::error_code ec;
+  Msg("SteamCMD does not run on Android. Download the CS:GO content on a PC (tools/get_csgo_content.bat), then copy the\n"
+      "csgo folder (it contains pak01_dir.vpk) to the phone into:\n  %s/content/csgo\n"
+      "and type csgo_rescan (or restart the game).\n", fs::current_path(ec).string().c_str());
+#else
+#if defined(_WIN32)
+  std::string tool = FindTool("get_csgo_content.bat");
+  if (tool.empty()) { Warning("tools/get_csgo_content.bat not found\n"); return; }
+  std::string cmd = "start \"CS:GO content download\" cmd /c \"\"" + tool + "\"\"";
+#else
+  std::string tool = FindTool("get_csgo_content.sh");
+  if (tool.empty()) { Warning("tools/get_csgo_content.sh not found\n"); return; }
+  std::string cmd = "\"" + tool + "\" > content_download.log 2>&1 &";
+#endif
+  Msg("Downloading the free Counter-Strike: Global Offensive Dedicated Server with Valve's SteamCMD (anonymous login, ~2 GB).\n"
+      "This is the real CS:GO content: agents, weapons, textures, sounds and every stock map.\n"
+      "When it is done type csgo_rescan (or restart the game).\n");
+  if (std::system(cmd.c_str()) != 0) Warning("could not start %s\n", tool.c_str());
+#endif
+}, "Download the real CS:GO content (free CS:GO Dedicated Server via SteamCMD) into content/csgo");
+static ConCommand csgo_rescan("csgo_rescan", [](const CCommand&) {
+  srcfs::Invalidate();
+  if (srcfs::CsgoAvailable()) Msg("CS:GO content: %s - reload the map\n", srcfs::CsgoRoot().c_str());
+  else Msg("no CS:GO content found (set csgo_gamedir or run csgo_download)\n");
+}, "Look for CS:GO content again (after csgo_download finished)");
+
 static ConCommand css_rescan("css_rescan", [](const CCommand&) {
   srcfs::Invalidate();
-  if (srcfs::Available()) Msg("CS:S content: %s - reload the map (or snd_restart for sounds)\n", srcfs::Root().c_str());
+  if (srcfs::Available()) Msg("Source content: %s - reload the map (or snd_restart for sounds)\n", srcfs::Root().c_str());
 }, "Look for Counter-Strike: Source content again (after css_download finished)");
 

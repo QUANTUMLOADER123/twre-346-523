@@ -40,7 +40,8 @@ struct Progress {
   std::string error;
 };
 
-bool ContentMissing();      // nothing usable installed (or an earlier download did not finish), or an extra is missing
+bool ContentMissing();      // an extra is missing, or there is no real content yet (shown once)
+void DismissCoreHint();     // "SKIP" on the content screen: do not ask about csgo_download again
 bool CoreContentMissing();  // the CS:S content itself is missing (the extras are optional)
 void Start();               // background thread; packs already finished are skipped
 void Cancel();

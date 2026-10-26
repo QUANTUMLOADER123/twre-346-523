@@ -73,7 +73,7 @@ bool ContentScreen_Run(bool force) {
     // buttons
     float by = py + ph - 52, bh = 36;
     if (p.state == download::RUNNING) {
-      s->DrawText(FONT_UI, coreMissing ? "Wi-Fi recommended. Maps, models and textures - only needed once." : "Only needed once.", x, by + 10, csgo::TextDim);
+      s->DrawText(FONT_UI, coreMissing ? "Optional: real CS:GO agents / weapons / textures come from csgo_download." : "Only needed once.", x, by + 10, csgo::TextDim);
       if (Button("CANCEL", px + pw - 24 - 140, by, 140, bh, csgo::PanelLight, csgo::PanelHover)) download::Cancel();
       if (!coreMissing && Button("SKIP", px + pw - 24 - 290, by, 140, bh, csgo::PanelLight, csgo::PanelHover)) { download::Cancel(); skipped = true; }
     } else if (p.state == download::FAILED || p.state == download::CANCELLED) {
@@ -86,9 +86,10 @@ bool ContentScreen_Run(bool force) {
         float a = t * 4.f + i * 0.785f;
         s->DrawFilledCircle(px + pw - 40 + std::cos(a) * 9, py + 30 + std::sin(a) * 9, 2.2f, csgo::Alpha(csgo::Text, (i + 1) / 8.f));
       }
-    s->DrawTextCentered(FONT_UI, "Files are downloaded from GitHub (bouletmarc/css_content, css_maps_content, EntranceJew/gmod-addons)", W / 2, H - 30, csgo::TextFaint);
+    s->DrawTextCentered(FONT_UI, coreMissing ? "No CS:GO content found: run csgo_download (free CS:GO Dedicated Server) or set csgo_gamedir"
+                                              : "Maps and CS:GO extras are downloaded from public GitHub mirrors", W / 2, H - 30, csgo::TextFaint);
     EndDrawing();
-    if (skipped) break;
+    if (skipped) { if (coreMissing) download::DismissCoreHint(); break; }
   }
   download::Shutdown();
   srcfs::Invalidate();

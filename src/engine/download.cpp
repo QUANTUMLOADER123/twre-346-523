@@ -34,8 +34,6 @@ namespace fs = std::filesystem;
 // (lump 40) come along with them.
 ConVar cl_content_url_maps("cl_content_url_maps", "https://raw.githubusercontent.com/wiktorxxiii/csgo-fastdl/HEAD/csgo/", FCVAR_ARCHIVE, "Base url of the CS:GO maps (maps/*.bsp)");
 ConVar cl_content_url_maps_api("cl_content_url_maps_api", "https://api.github.com/repos/wiktorxxiii/csgo-fastdl/contents/csgo/%s?ref=HEAD", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the CS:GO maps");
-// shared Source assets (player / weapon models, textures, sounds) that no public CS:GO mirror carries
-ConVar cl_content_url_main("cl_content_url_main", "https://codeload.github.com/bouletmarc/css_content/zip/refs/heads/master", FCVAR_ARCHIVE, "Zip archive with the shared Source models / materials / sounds for the first-start download");
 
 // CS:GO R8 Revolver from a Garry's Mod addon (pinned commit): raw.githubusercontent.com first, the GitHub contents API
 // (Accept: application/vnd.github.raw) as the fallback
@@ -127,10 +125,9 @@ Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-constexpr int kPacks = 5;
+constexpr int kPacks = 4;
 Pack s_packs[kPacks] = {
   { "csgomaps", "CS:GO maps", nullptr, 580, s_csgoMapFiles, "content/extras/csgo_maps", false },
-  { "main", "Shared Source textures, models and sounds", nullptr, 700 },
   { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
   { "csgo", "CS:GO SCAR-20, SSG 08, molotov", nullptr, 22, s_csgoFiles, "content/extras/csgo_gsr", false },
   { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
@@ -422,10 +419,9 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
 
 void Worker() {
   s_packs[0].url = cl_content_url_maps.GetString(); s_packs[0].api = cl_content_url_maps_api.GetString();
-  s_packs[1].url = cl_content_url_main.GetString();
-  s_packs[2].url = cl_content_url_r8.GetString(); s_packs[2].api = cl_content_url_r8_api.GetString();
-  s_packs[3].url = cl_content_url_csgo.GetString(); s_packs[3].api = cl_content_url_csgo_api.GetString();
-  s_packs[4].url = cl_content_url_icons.GetString(); s_packs[4].api = cl_content_url_icons_api.GetString();
+  s_packs[1].url = cl_content_url_r8.GetString(); s_packs[1].api = cl_content_url_r8_api.GetString();
+  s_packs[2].url = cl_content_url_csgo.GetString(); s_packs[2].api = cl_content_url_csgo_api.GetString();
+  s_packs[3].url = cl_content_url_icons.GetString(); s_packs[3].api = cl_content_url_icons_api.GetString();
   double expected = 0; for (auto& p : s_packs) if (PackWanted(p)) expected += p.approxMB;
   { std::lock_guard<std::mutex> l(s_mtx); s_prog = Progress(); s_prog.state = RUNNING; s_prog.packCount = kPacks; s_prog.totalExpectedMB = expected; }
   std::error_code ec;
@@ -486,21 +482,13 @@ void Worker() {
 
 const Pack* Packs(int& count) { count = kPacks; return s_packs; }
 
-bool CoreContentMissing() {
-  if (srcfs::CsgoAvailable()) return false;      // a local CS:GO install has every map, model and texture
-  if (!srcfs::Available()) return true;
-  std::error_code ec;
-  fs::path root = fs::path(srcfs::Root());
-  if (fs::exists(root / "cstrike" / "cstrike_pak_dir.vpk", ec)) return false;          // Steam / SteamCMD install
-  if (fs::weakly_canonical(root, ec) != fs::weakly_canonical(fs::path(kDest), ec)) return false;   // user folder
-  for (auto& p : s_packs) if (p.core && !PackDone(p)) return true;                       // our download, unfinished
-  return false;
-}
+bool CoreContentMissing() { return !srcfs::CsgoAvailable() && !srcfs::Available(); }   // no real game content at all
 bool ContentMissing() {
-  if (CoreContentMissing()) return true;
-  for (auto& p : s_packs) if (!p.core && !PackDone(p)) return true;
+  for (auto& p : s_packs) if (!PackDone(p)) return true;
+  if (CoreContentMissing() && !fs::exists("content/.no_content_ok")) return true;   // tell the player once how to get CS:GO
   return false;
 }
+void DismissCoreHint() { std::error_code ec; fs::create_directories("content", ec); std::ofstream("content/.no_content_ok") << "ok\n"; }
 
 void Start() {
   if (s_busy) return;
