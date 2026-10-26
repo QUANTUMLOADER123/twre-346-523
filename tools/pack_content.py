@@ -25,6 +25,8 @@ BASE_URL = "https://raw.githubusercontent.com/bouletmarc/css_content/master/"
 WEAPON_URL = "https://raw.githubusercontent.com/Seulyy/ARC9-GSR/5e16cf9baa37348fc82ba0c824d842dbcb44ab18/"
 MAP_URL = "https://raw.githubusercontent.com/wiktorxxiii/csgo-fastdl/HEAD/csgo/"
 UA = {"User-Agent": "cshvh-content-builder"}
+# on CI an authenticated token lifts the contents-API limit from 60 to 5000 requests per hour
+TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
 
 
 def quoted(path):
@@ -57,6 +59,14 @@ def fetch(url, tries=5, headers=None):
     raise last
 
 
+def auth_headers(extra=None):
+    hdr = {}
+    if TOKEN:
+        hdr["Authorization"] = "Bearer " + TOKEN
+    hdr.update(extra or {})
+    return hdr
+
+
 def api_of(url):
     """raw.githubusercontent.com/<owner>/<repo>/<ref>/<path> -> the contents API (a second chance, and https-only)"""
     m = re.match(r"https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$", url)
@@ -65,22 +75,44 @@ def api_of(url):
     return f"https://api.github.com/repos/{m.group(1)}/{m.group(2)}/contents/{m.group(4)}?ref={m.group(3)}"
 
 
+RAW_MISSES = [0]      # consecutive failures of the raw CDN: switch to the contents API for the rest
+PREFER_API = [False]
+
+
 def download(items, label, workers=8):
     """items: (entry, url) pairs -> dict entry -> bytes; every failure is retried, then reported"""
     data, failed = {}, []
 
+    def api_try(entry, url):
+        alt = api_of(url)
+        if not alt:
+            return None
+        try:
+            return entry, fetch(alt, headers=auth_headers({"Accept": "application/vnd.github.raw"}), tries=6)
+        except Exception as e:  # noqa: BLE001
+            return entry, e
+
+    def raw_try(entry, url):
+        try:
+            data = fetch(url, tries=3)
+            RAW_MISSES[0] = 0
+            return entry, data
+        except Exception:  # noqa: BLE001
+            RAW_MISSES[0] += 1
+            if RAW_MISSES[0] >= 5:
+                PREFER_API[0] = True
+            return None
+
     def one(it):
         entry, url = it
-        try:
-            return entry, fetch(url)
-        except Exception:  # noqa: BLE001 - retried below through the API mirror
-            alt = api_of(url)
-            if alt:
-                try:
-                    return entry, fetch(alt, headers={"Accept": "application/vnd.github.raw"})
-                except Exception as e:  # noqa: BLE001
-                    return entry, e
-            return entry, False
+        first, second = (api_try, raw_try) if PREFER_API[0] else (raw_try, api_try)
+        res = first(entry, url)
+        if res is not None:
+            return res
+        res = second(entry, url)
+        if res is not None:
+            return res
+        return entry, False
 
     t0 = time.time()
     with cf.ThreadPoolExecutor(max_workers=workers) as ex:
@@ -102,9 +134,9 @@ def build(name, items, out_dir):
     report.append((name, len(items), len(data), sorted(f[0] for f in failed)))
     if not data:
         raise SystemExit("nothing downloaded")
-    if len(failed) > max(3, len(items) // 10):
-        # a mostly incomplete archive would be marked as done by the game: skip it and let the
-        # single-file download do the work instead
+    if failed:
+        # the game marks an unpacked archive as complete, so never ship a partial one: the single-file
+        # download (resumable, retried on the next start) handles the pack instead
         raise SystemExit(f"{len(failed)} of {len(items)} files are unreachable")
 
     path = os.path.join(out_dir, name)

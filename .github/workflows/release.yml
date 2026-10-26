@@ -88,6 +88,8 @@ jobs:
       # best effort: if a mirror is down the game falls back to the single-file list, the release must still ship
       - name: Build the content packs
         continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 tools/pack_content.py dist
       - uses: actions/upload-artifact@v4
         continue-on-error: true
