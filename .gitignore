@@ -16,3 +16,7 @@ third_party/raylib-*/
 *.pdb
 /sound/
 /content/
+
+# documentation screenshots are tracked
+!docs/screenshots/
+!docs/screenshots/*.png
