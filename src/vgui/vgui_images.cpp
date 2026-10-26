@@ -115,8 +115,7 @@ static const char* WeaponImageName(int id) {
     case WEAPON_GLOCK: n = "glock18"; break;
     case WEAPON_USP_SILENCER: n = "usp45"; break;
     case WEAPON_P250: n = "p228"; break;
-    case WEAPON_DEAGLE: n = "deserteagle"; break;
-    case WEAPON_REVOLVER: n = "revolver"; break;
+    case WEAPON_DEAGLE: case WEAPON_REVOLVER: n = "deserteagle"; break;
     case WEAPON_MAC10: n = "mac10"; break;
     case WEAPON_MP9: n = "tmp"; break;
     case WEAPON_UMP45: n = "ump45"; break;

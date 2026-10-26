@@ -578,7 +578,7 @@ static float s_dragStartX = 0, s_dragStartY = 0;
 
 void PaintLoadout() {
   const float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
-  float pw = W * 0.65f, px = 10.f, py = TB, ph = H - TB;  // loadout panel: 65% width, left-aligned
+  float pw = W * 0.45f, px = 10.f, py = TB, ph = H - TB;  // loadout panel: 45% width, left-aligned
   float agentW = W - pw - 20.f;
   float agentX = px + pw + 10.f;
   
@@ -667,20 +667,32 @@ void PaintLoadout() {
     if (ay + aRowH > py + ph - 10.f) break;
     
     bool hv = Over(ax, ay, aW, aRowH);
-    HoverSound("avail", hv);
+    std::string hid = "avail_" + std::to_string(w);
+    HoverSound(hid.c_str(), hv);
     bool dragging = s_dragWeapon == w;
-    DrawRectangleRec({ ax, ay, aW, aRowH }, dragging ? csgo::Alpha(csgo::Accent, 0.7f) : hv ? csgo::PanelHover : csgo::Alpha(csgo::Panel, 0.6f));
+    DrawRectangleRec({ ax, ay, aW, aRowH }, dragging ? csgo::Alpha(csgo::Accent, 0.3f) : hv ? csgo::PanelHover : csgo::Alpha(csgo::Panel, 0.6f));
     if (const Texture2D* img = VGUI_WeaponImage(w))
-      VGUI_DrawImageFit(*img, ax + 4.f, ay + 4.f, 42.f, aRowH - 8.f, WHITE);
-    S()->DrawText(FONT_GO, wi->printName, ax + 48.f, ay + aRowH * 0.5f - 8.f, csgo::Text);
+      VGUI_DrawImageFit(*img, ax + 4.f, ay + 4.f, 42.f, aRowH - 8.f, dragging ? csgo::Alpha(WHITE, 0.5f) : WHITE);
+    S()->DrawText(FONT_GO, wi->printName, ax + 48.f, ay + aRowH * 0.5f - 8.f, dragging ? csgo::TextDim : csgo::Text);
     
     // Start drag on hold
     if (In().mouseDown && Over(ax, ay, aW, aRowH) && s_dragWeapon == 0) {
       s_dragWeapon = w;
-      s_dragStartX = ax + aW * 0.5f;
-      s_dragStartY = ay + aRowH * 0.5f;
+      PlayClick();
     }
     ax += aW + 4.f;
+  }
+  
+  // Draw dragged weapon following cursor
+  if (s_dragWeapon != 0) {
+    const CCSWeaponInfo* wi = GetWeaponInfo(s_dragWeapon);
+    if (wi) {
+      float dw = 80.f, dh = 50.f;
+      float dx = In().mouse.x - dw * 0.5f, dy = In().mouse.y - dh * 0.5f;
+      DrawRectangleRec({ dx, dy, dw, dh }, csgo::Alpha(csgo::Accent, 0.8f));
+      if (const Texture2D* img = VGUI_WeaponImage(s_dragWeapon))
+        VGUI_DrawImageFit(*img, dx + 4.f, dy + 4.f, dw - 8.f, dh - 8.f, WHITE);
+    }
   }
   
   // Scroll buttons
@@ -701,6 +713,24 @@ void PaintLoadout() {
   // Agent model preview
   ConVar* agentCv = FindConVar("cl_menu_agent");
   int agent = agentCv ? agentCv->GetInt() : 0;
+  
+  // Agent selector arrows (draw before preview so they're on top)
+  if (FlatButton("<", agentX + 20.f, py + ph - 80.f, 40.f, 40.f, csgo::Panel, csgo::PanelHover)) {
+    if (agentCv) {
+      int newAgent = (agent + 3) % 4;
+      agentCv->SetValue(newAgent);
+      agent = newAgent;  // Update local variable immediately
+    }
+  }
+  S()->DrawText(FONT_GO_BOLD, CSS_AgentName(team, agent), agentX + 70.f, py + ph - 70.f, csgo::Text);
+  if (FlatButton(">", agentX + agentW - 60.f, py + ph - 80.f, 40.f, 40.f, csgo::Panel, csgo::PanelHover)) {
+    if (agentCv) {
+      int newAgent = (agent + 1) % 4;
+      agentCv->SetValue(newAgent);
+      agent = newAgent;  // Update local variable immediately
+    }
+  }
+  
   PlayerPoseInput in;
   in.origin = Vector(agentX + agentW * 0.5f, py + ph * 0.5f, 0);
   in.footYaw = 180.f;
@@ -712,15 +742,6 @@ void PaintLoadout() {
   in.onGround = true;
   in.weaponId = 0;
   CSS_DrawAgent(team, agent, in, {});
-  
-  // Agent selector arrows
-  if (FlatButton("<", agentX + 20.f, py + ph - 80.f, 40.f, 40.f, csgo::Panel, csgo::PanelHover)) {
-    if (agentCv) agentCv->SetValue((agent + 3) % 4);
-  }
-  S()->DrawText(FONT_GO_BOLD, CSS_AgentName(team, agent), agentX + 70.f, py + ph - 70.f, csgo::Text);
-  if (FlatButton(">", agentX + agentW - 60.f, py + ph - 80.f, 40.f, 40.f, csgo::Panel, csgo::PanelHover)) {
-    if (agentCv) agentCv->SetValue((agent + 1) % 4);
-  }
 }
 
 
