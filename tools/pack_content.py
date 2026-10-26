@@ -45,10 +45,11 @@ def map_entries():
     return out
 
 
-def fetch(url, tries=5):
+def fetch(url, tries=5, headers=None):
     for i in range(tries):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
+            hdr = dict(UA); hdr.update(headers or {})
+            with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=120) as r:
                 return r.read()
         except Exception as e:  # noqa: BLE001 - a dead mirror is expected, retried and reported
             last = e
@@ -56,31 +57,55 @@ def fetch(url, tries=5):
     raise last
 
 
-def build(name, items, out_dir):
-    """items: list of (zip entry name, url)"""
-    data = {}
-    failed = []
+def api_of(url):
+    """raw.githubusercontent.com/<owner>/<repo>/<ref>/<path> -> the contents API (a second chance, and https-only)"""
+    m = re.match(r"https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$", url)
+    if not m:
+        return None
+    return f"https://api.github.com/repos/{m.group(1)}/{m.group(2)}/contents/{m.group(4)}?ref={m.group(3)}"
 
-    def work(it):
+
+def download(items, label, workers=8):
+    """items: (entry, url) pairs -> dict entry -> bytes; every failure is retried, then reported"""
+    data, failed = {}, []
+
+    def one(it):
         entry, url = it
         try:
             return entry, fetch(url)
-        except Exception as e:  # noqa: BLE001
-            failed.append((entry, str(e)))
-            return None
+        except Exception:  # noqa: BLE001 - retried below through the API mirror
+            alt = api_of(url)
+            if alt:
+                try:
+                    return entry, fetch(alt, headers={"Accept": "application/vnd.github.raw"})
+                except Exception as e:  # noqa: BLE001
+                    return entry, e
+            return entry, False
 
     t0 = time.time()
-    with cf.ThreadPoolExecutor(max_workers=8) as ex:
-        for i, res in enumerate(ex.map(work, items), 1):
-            if res:
-                data[res[0]] = res[1]
-            if i % 200 == 0:
-                print(f"  {name}: {i}/{len(items)} ({time.time() - t0:.0f}s)", flush=True)
+    with cf.ThreadPoolExecutor(max_workers=workers) as ex:
+        for i, (entry, res) in enumerate(ex.map(one, items), 1):
+            if isinstance(res, (bytes, bytearray)):
+                data[entry] = res
+            else:
+                failed.append((entry, str(res) if res is not False else "download failed"))
+            if i % 100 == 0:
+                print(f"  {label}: {i}/{len(items)} ({time.time() - t0:.0f}s)", flush=True)
+    return data, failed
 
+
+def build(name, items, out_dir):
+    """items: list of (zip entry name, url)"""
+    data, failed = download(items, name)
     if failed:
-        print(f"  {name}: {len(failed)} file(s) missing, e.g. {failed[:3]}", flush=True)
-        if len(failed) > max(5, len(items) // 50):
-            raise SystemExit(f"{name}: too many missing files ({len(failed)}/{len(items)}), not shipping a broken pack")
+        print(f"  {name}: {len(failed)} file(s) could not be downloaded, e.g. {[f[0] for f in failed[:5]]}", flush=True)
+    report.append((name, len(items), len(data), sorted(f[0] for f in failed)))
+    if not data:
+        raise SystemExit("nothing downloaded")
+    if len(failed) > max(3, len(items) // 10):
+        # a mostly incomplete archive would be marked as done by the game: skip it and let the
+        # single-file download do the work instead
+        raise SystemExit(f"{len(failed)} of {len(items)} files are unreachable")
 
     path = os.path.join(out_dir, name)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
@@ -93,11 +118,15 @@ def build(name, items, out_dir):
           f"({sum(len(v) for v in data.values()) / 1048576:.1f} MB raw)", flush=True)
 
 
+report = []
+
+
 def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "dist"
     os.makedirs(out_dir, exist_ok=True)
 
     packs = {}
+
 
     def base_pack():
         # map textures, agents, sounds, sound scripts (unpacked into content/css/cstrike)
@@ -129,6 +158,9 @@ def main():
             print(f"  {name}: skipped ({e})", flush=True)
         except Exception as e:  # noqa: BLE001
             print(f"  {name}: skipped ({e})", flush=True)
+    with open(os.path.join(out_dir, "pack-report.txt"), "w", encoding="utf-8") as f:
+        for name, want, got, failed in report:
+            f.write(f"{name}: {got}/{want} files" + (f", missing {failed}" if failed else ", complete") + "\n")
     if not built:
         raise SystemExit("no content pack could be built")
 
