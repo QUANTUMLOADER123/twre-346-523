@@ -609,7 +609,7 @@ static void PaintRage(float x, float y, float w, float h) {
   Combo("Double tap mode", r.doubletapMode, { "Offensive", "Defensive" });
   Combo("Quick Peek", v.misc.quickPeekKey, { "Off", "ALT", "Duck+Shift", "Shift" });
   float qpDist = (float)v.misc.quickPeekDist;
-  SliderF("Quick Peek dist", qpDist, 50.f, 300.f, 10.f, "%.0f");
+  SliderF("Quick Peek dist", qpDist, 50.f, 300.f, "%.0f", 10.f);
   v.misc.quickPeekDist = (int)qpDist;
   Checkbox("On shot anti-aim", r.hideshots); KeyBindW("rage.hskey", r.hideshotsKey);
   Checkbox("Knifebot", r.knifebot);
