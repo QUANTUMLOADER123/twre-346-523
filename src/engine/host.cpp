@@ -213,6 +213,15 @@ static ConCommand cmd_kill("kill", [](const CCommand&) {
   CTakeDamageInfo info; info.m_flDamage = 1000; info.m_hAttacker = p; info.m_bitsDamageType = DMG_GENERIC; info.m_iWeaponID = WEAPON_NONE;
   p->OnTakeDamage(info);
 }, "Kills the player with generic damage");
+// Source's own "hurtme <amount>": damage yourself, handy for testing HUD states (low hp, death, health drops)
+static ConCommand cmd_hurtme("hurtme", [](const CCommand& a) {
+  if (!RequireCheats()) return;
+  CCSPlayer* p = LP(); if (!p || !p->IsAlive()) return;
+  int dmg = a.ArgC() > 1 ? a.ArgI(1, 10) : 10;
+  if (dmg <= 0) return;
+  CTakeDamageInfo info; info.m_flDamage = (float)dmg; info.m_bitsDamageType = DMG_GENERIC; info.m_iWeaponID = WEAPON_NONE;
+  p->OnTakeDamage(info);
+}, "Apply <amount> damage to yourself.", FCVAR_CHEAT);
 static ConCommand cmd_explode("explode", [](const CCommand&) { CCSPlayer* p = LP(); if (!p || !p->IsAlive()) return; CTakeDamageInfo info; info.m_flDamage = 1000; info.m_bitsDamageType = DMG_BLAST; p->OnTakeDamage(info); }, "Kills the player with explosive damage");
 static ConCommand cmd_noclip("noclip", [](const CCommand&) {
   if (!RequireCheats()) return; CCSPlayer* p = LP(); if (!p || !p->IsAlive()) return;

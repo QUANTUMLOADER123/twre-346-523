@@ -409,7 +409,7 @@ static void DrawVitals(CCSPlayer* p, float sc) {
   // health row
   {
     const float numSize = 27 * sc, ic = 14 * sc, barW = 84 * sc, barH = 3 * sc;
-    float rowY = H - HudBottomInset(sc) - 62 * sc;
+    float rowY = H - HudBottomInset(sc) - 64 * sc;
     IconCross(x, rowY + numSize * 0.42f - ic * 0.5f, ic, hpC);
     const char* t = TextFormat("%d", hp);
     HudText(FONT_GO_HUGE, t, x + ic + 9 * sc, rowY, numSize, hpC);
@@ -419,7 +419,7 @@ static void DrawVitals(CCSPlayer* p, float sc) {
   // armor row
   {
     const float numSize = 20 * sc, ic = 13 * sc, barW = 84 * sc, barH = 3 * sc;
-    float rowY = H - HudBottomInset(sc) - 32 * sc;
+    float rowY = H - HudBottomInset(sc) - 30 * sc;
     Color ac = armor > 0 ? hudgo::Text : Alpha(hudgo::TextFaint, 0.85f);
     IconShield(x, rowY + numSize * 0.42f - ic * 0.62f, ic, ac, p->m_bHasHelmet);
     const char* t = TextFormat("%d", armor);
@@ -579,11 +579,11 @@ static void DrawLowHpVignette(CCSPlayer* p) {
   if (!p->IsAlive() || p->m_iHealth > 40) return;
   int W = surface()->ScreenWide(), H = surface()->ScreenTall();
   float k = Clamp((40.f - p->m_iHealth) / 40.f, 0.f, 1.f);
-  float pulse = 0.75f + 0.25f * std::sin(gpGlobals->realtime * 5.f);
-  unsigned char a = (unsigned char)(70 * k * pulse);
+  float pulse = 0.72f + 0.28f * std::sin(gpGlobals->realtime * 5.f);
+  unsigned char a = (unsigned char)(135 * k * pulse);
   if (!a) return;
-  Color red = { 130, 8, 6, 0 };
-  float th = H * 0.22f;
+  Color red = { 150, 10, 8, 0 };
+  float th = H * 0.26f;
   red.a = a;        surface()->DrawGradientV(0, 0, (float)W, th, red, { 130, 8, 6, 0 });
   red.a = a;        surface()->DrawGradientV(0, H - th, (float)W, th, { 130, 8, 6, 0 }, red);
   red.a = (unsigned char)(a * 0.8f);
