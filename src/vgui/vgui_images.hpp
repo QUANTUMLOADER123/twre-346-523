@@ -8,6 +8,7 @@ const Texture2D* VGUI_Image(const std::string& vtf);        // "materials/vgui/g
 const Texture2D* VGUI_WeaponImage(int weaponId);              // buy menu picture of a weapon (cropped)
 const Texture2D* VGUI_WeaponIcon(int weaponId);               // white silhouette of it (kill feed, HUD), tint when drawing
 const Texture2D* VGUI_ItemImage(const char* name);            // "kevlar", "kevlar_helmet", "defuser", "bullet" ...
+const Texture2D* VGUI_SvgIcon(const char* name);              // CS:GO icon "weapon_c4", "item_defuser" ... (downloaded extras)
 // draw keeping the aspect ratio, centered in the box
 void VGUI_DrawImageFit(const Texture2D& t, float x, float y, float w, float h, Color tint = WHITE);
 void VGUI_ClearImages();

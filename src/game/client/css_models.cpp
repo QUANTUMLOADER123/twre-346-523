@@ -17,6 +17,8 @@ ConVar cl_css_models("cl_css_models", "1", FCVAR_ARCHIVE, "Use the Counter-Strik
 ConVar cl_css_viewmodels("cl_css_viewmodels", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source view models (with hands) when CS:S content is installed");
 ConVar cl_css_anim_layers("cl_css_anim_layers", "255", FCVAR_CHEAT, "debug: 1 jump 2 upper 4 reload 8 aim 16 shoot");
 ConVar cl_r8_model("cl_r8_model", "1", FCVAR_ARCHIVE, "Use the CS:GO R8 Revolver model (downloaded with the game content) instead of the Desert Eagle");
+ConVar cl_csgo_models("cl_csgo_models", "1", FCVAR_ARCHIVE, "Use the downloaded CS:GO models (SCAR-20, SSG 08, molotov, incendiary) instead of the CS:S stand-ins");
+ConVar cl_csgo_viewmodel_fov("cl_csgo_viewmodel_fov", "56", FCVAR_ARCHIVE, "Field of view of the CS:GO SCAR-20 / SSG 08 / molotov view models", true, 40, true, 90);
 ConVar cl_r8_viewmodel_fov("cl_r8_viewmodel_fov", "68", FCVAR_ARCHIVE, "Field of view of the CS:GO R8 view model (CS:GO viewmodel_fov)", true, 40, true, 90);
 ConVar cl_css_viewmodel_fov("cl_css_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
 
@@ -58,6 +60,7 @@ WeaponModel WeaponInfo(int wid) {
     case WEAPON_HEGRENADE: return { "eq_fraggrenade", "GREN" };
     case WEAPON_FLASHBANG: return { "eq_flashbang", "GREN" };
     case WEAPON_SMOKEGRENADE: return { "eq_smokegrenade", "GREN" };
+    case WEAPON_MOLOTOV: case WEAPON_INCGRENADE: return { "eq_fraggrenade", "GREN" };   // without the CS:GO extras
     case WEAPON_C4: return { "c4", "C4" };
     // CS:GO-only guns: the closest CS:S model
     case WEAPON_ELITE: return { "pist_elite", "ELITES" };
@@ -90,9 +93,41 @@ const CSrcModel* PlayerModel(CCSPlayer* p) {
 const char* const kR8World = "models/weapons/w_models/csgo/w_pist_revolver.mdl";
 const char* const kR8View = "models/weapons/v_models/csgo/v_pist_revolver.mdl";
 const CSrcModel* LoadedOrNull(const CSrcModel* m) { return m && !m->meshes.empty() ? m : nullptr; }
+// CS:GO models of the "csgo" extras pack (ARC9 GSR, a Garry's Mod port): c_ view models without hands (the agent's arms
+// are merged on), the guns have no world models - the c_ model itself is drawn in the hand (`mirror`, ARC9 WorldModelOffset)
+// mirror: the gun root bone of the c_ model is put on ValveBiped.weapon_bone of the CS:S stand-in (both frames have the
+// barrel along +z and the top along +y), shifted by `mirrorOffset` (barrel height / grip, measured offline from the meshes)
+struct CsgoModel { int wid; const char* view; const char* world; const char* mirrorRoot; Vector mirrorOffset; };
+const CsgoModel kCsgoModels[] = {
+  { WEAPON_SCAR20, "models/weapons/csgo/c_snip_scar20.mdl", nullptr, "v_weapon.SCAR_Parent", Vector(-1.08f, -5.48f, -3.54f) },
+  { WEAPON_SSG08, "models/weapons/csgo/c_snip_ssg08.mdl", nullptr, "v_weapon.ssg08_parent", Vector(0.28f, -4.28f, -3.f) },
+  { WEAPON_MOLOTOV, "models/weapons/csgo/v_eq_molotov.mdl", "models/weapons/csgo/w_eq_molotov.mdl", nullptr, {} },
+  { WEAPON_INCGRENADE, "models/weapons/csgo/v_eq_incediary.mdl", "models/weapons/csgo/w_eq_incendiary.mdl", nullptr, {} },
+};
+// ARC9 GSR guns have no built-in optics: the scope is a separate model on the gun root bone (SWEP.Attachments "optics":
+// Bone/Pos/Ang + the attachment's ModelOffset/Scale)
+struct CsgoScope { const char* gun; const char* scope; const char* bone; Vector pos; Vector modelOffset; float scale; };
+const CsgoScope kCsgoScopes[] = {
+  { "c_snip_scar20.mdl", "models/weapons/csgo/atts/scopes/scope_scar.mdl", "v_weapon.SCAR_Parent", Vector(0, -6.4f, 3.4f), Vector(0, 0, -0.25f), 1.f },
+  { "c_snip_ssg08.mdl", "models/weapons/csgo/atts/scopes/scope_ssg08.mdl", "v_weapon.ssg08_parent", Vector(0.2f, -3.5f, 9.5f), Vector(0, 0, 0), 1.1f },
+};
 
-const CSrcModel* WorldWeapon(int wid, bool silencer = false, bool thrown = false) {
-  if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) if (const CSrcModel* r8 = LoadedOrNull(SrcMdl_Get(kR8World))) return r8;
+const CsgoModel* CsgoModelFor(int wid) {
+  if (!cl_csgo_models.GetBool()) return nullptr;
+  for (const CsgoModel& c : kCsgoModels) if (c.wid == wid) return &c;
+  return nullptr;
+}
+// gun drawn from its c_ view model in third person (nullptr: use the w_ model)
+const CSrcModel* MirrorWeapon(int wid, const CsgoModel** info = nullptr) {
+  const CsgoModel* c = CsgoModelFor(wid); if (!c || c->world) return nullptr;
+  const CSrcModel* m = LoadedOrNull(SrcMdl_Get(c->view)); if (!m || m->seqs.empty()) return nullptr;
+  if (info) *info = c;
+  return m;
+}
+
+const CSrcModel* WorldWeapon(int wid, bool silencer = false, bool thrown = false, bool cssOnly = false) {
+  if (!cssOnly && wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) if (const CSrcModel* r8 = LoadedOrNull(SrcMdl_Get(kR8World))) return r8;
+  if (!cssOnly) if (const CsgoModel* c = CsgoModelFor(wid)) if (c->world) if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(c->world))) return m;
   WeaponModel wi = WeaponInfo(wid); if (!wi.model) return nullptr;
   std::string n = std::string("models/weapons/w_") + wi.model;
   if (silencer && wid == WEAPON_USP_SILENCER) n += "_silencer";
@@ -162,15 +197,23 @@ void BuildPlayerBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector
   float cycle = moving ? in.moveCycle : std::fmod(now / std::max(0.1f, m.SeqDuration(base)), 1.f);
   m.SampleSeq(base, cycle, pv, pos, q);
   const int lm = cl_css_anim_layers.GetInt();
-  if (!in.onGround && (lm & 1)) {
-    SrcSeqRef j = Seq(m, "Jump");
-    if (j) { m.SampleSeq(j, 0.45f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, std::vector<float>(), 1.f); }
-  }
   // upper body (weapon hold), aim matrix, shoot, reload
   const std::string wpn = WeaponInfo(in.weaponId).anim;
   const std::string st = crouch ? (moving ? "Crouch_Walk_" : "Crouch_Idle_") : (run ? "Run_" : moving ? "Walk_" : "Idle_");
   const std::string aimSt = crouch ? "Crouch_" : (run ? "Run_" : moving ? "Walk_" : "Idle_");
   SrcSeqRef up = Seq(m, st + "Upper_" + wpn);
+  if (!in.onGround && (lm & 1)) {
+    // the jump pose only drives the bones the weapon-hold layer doesn't own (legs / pelvis): applied to the whole body
+    // it bent the spine and arms, and with the aim deltas on top the gun pointed at the sky mid-jump
+    SrcSeqRef j = Seq(m, "Jump");
+    if (j) {
+      thread_local std::vector<float> jw;
+      jw.assign(pos.size(), 1.f);
+      if (up) { m.SampleSeq(up, cycle, pv, lp, lq, &w); for (size_t b = 0; b < jw.size() && b < w.size(); b++) jw[b] = 1.f - Clamp(w[b], 0.f, 1.f); }
+      m.SampleSeq(j, 0.45f, pv, lp, lq, &w);
+      LayerFull(pos, q, lp, lq, jw, 1.f);
+    }
+  }
   if (up && (lm & 2)) { m.SampleSeq(up, cycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   if (in.reloadCycle >= 0 && (lm & 4)) {
     SrcSeqRef r = Seq(m, st + "Reload_" + wpn);
@@ -306,13 +349,41 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
   if (in.deathCycle < 0 && in.weaponId) {
     bool sil = false;
     if (p && SilencerModel(in.weaponId)) { C_WeaponCSBase* w = p->GetActiveCSWeapon(); sil = w && w->GetCSWeaponID() == in.weaponId && w->m_bSilencerOn; }
-    const CSrcModel* wm = WorldWeapon(in.weaponId, sil);
+    const CsgoModel* mi = nullptr;
+    const CSrcModel* mirror = MirrorWeapon(in.weaponId, &mi);
+    const CSrcModel* wm = WorldWeapon(in.weaponId, sil, false, mirror != nullptr);
+    if (mirror && wm && !wm->meshes.empty()) {
+      // place the CS:S stand-in first (bone merge + hand fix below), then hang the c_ gun on its weapon_bone
+      thread_local std::vector<matrix3x4_t> standIn;
+      BoneMerge(*wm, *m, out.cssBones, standIn);
+      int hand = m->FindBone("ValveBiped.Bip01_R_Hand"), grip = m->FindBone("ValveBiped.weapon_bone_RHand");
+      if (hand >= 0 && grip >= 0 && hand < (int)out.cssBones.size() && grip < (int)out.cssBones.size()) {
+        matrix3x4_t gripInv, fix; MatrixInvert(out.cssBones[grip], gripInv);
+        ConcatTransforms(out.cssBones[hand], gripInv, fix);
+        for (auto& b : standIn) { matrix3x4_t t; ConcatTransforms(fix, b, t); b = t; }
+      }
+      int wb = wm->FindBone("ValveBiped.weapon_bone"), root = mirror->FindBone(mi->mirrorRoot);
+      if (wb >= 0 && root >= 0) {
+        thread_local std::vector<Vector> cp; thread_local std::vector<Quat> cq; thread_local std::vector<matrix3x4_t> cb;
+        SrcSeqRef idle = mirror->FindSeq("idle"); if (!idle) idle = { mirror, 0, -1 };
+        mirror->SampleSeq(idle, 0.f, SrcPoseValues(), cp, cq); mirror->BuildBones(cp, cq, cb);
+        matrix3x4_t off; AngleMatrix(QAngle(0, 0, 0), mi->mirrorOffset, off);
+        matrix3x4_t rootInv, a1, toWorld; MatrixInvert(cb[root], rootInv);
+        ConcatTransforms(standIn[wb], off, a1); ConcatTransforms(a1, rootInv, toWorld);
+        out.cssWeaponBones.resize(cb.size());
+        for (size_t i = 0; i < cb.size(); i++) ConcatTransforms(toWorld, cb[i], out.cssWeaponBones[i]);
+        out.cssWeapon = mirror; out.hasWeapon = true;
+        if (!mirror->attachments.empty()) { out.muzzle = mirror->AttachmentPos(0, out.cssWeaponBones, out.cssToWorld); out.hasMuzzle = true; }
+        return;
+      }
+    }
     if (wm && !wm->meshes.empty()) {
       BoneMerge(*wm, *m, out.cssBones, out.cssWeaponBones);
       // the player animations move weapon_bone on their own (CS:S lets IK pull the hands onto the gun, we don't
       // run IK): put the gun into the right hand instead - weapon_bone_RHand is where the hand grips the weapon
       int hand = m->FindBone("ValveBiped.Bip01_R_Hand"), grip = m->FindBone("ValveBiped.weapon_bone_RHand");
-      if (hand >= 0 && grip >= 0 && hand < (int)out.cssBones.size() && grip < (int)out.cssBones.size()) {
+      const bool handRooted = wm->FindBone("ValveBiped.weapon_bone") < 0 && wm->FindBone("ValveBiped.Bip01_R_Hand") >= 0;   // CS:GO w_eq_* ports
+      if (!handRooted && hand >= 0 && grip >= 0 && hand < (int)out.cssBones.size() && grip < (int)out.cssBones.size()) {
         matrix3x4_t gripInv, fix; MatrixInvert(out.cssBones[grip], gripInv);
         ConcatTransforms(out.cssBones[hand], gripInv, fix);
         for (auto& b : out.cssWeaponBones) { matrix3x4_t t; ConcatTransforms(fix, b, t); b = t; }
@@ -324,10 +395,33 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
   }
 }
 
+// draws the optics of a CS:GO (ARC9) gun posed with `bones` (gun model space) under `xf`
+static void DrawCsgoScope(const CSrcModel& gun, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& xf, const StudioDrawParams& p) {
+  for (const CsgoScope& sc : kCsgoScopes) {
+    const size_t gl = strlen(sc.gun);
+    if (gun.name.size() < gl || gun.name.compare(gun.name.size() - gl, gl, sc.gun) != 0) continue;
+    const CSrcModel* s = LoadedOrNull(SrcMdl_Get(sc.scope)); if (!s) return;
+    int b = gun.FindBone(sc.bone); if (b < 0 || b >= (int)bones.size()) return;
+    // GMod bone angles: Forward = +x, Right = -y, Up = +z. Ang(90, 0, -90) turns the attachment to
+    // Forward = bone +z (barrel), Right = bone -x, Up = bone +y (top of the gun); the scope model is drawn in that frame
+    const Vector F(0, 0, 1), R(-1, 0, 0), U(0, 1, 0);
+    Vector org = Vector(sc.pos.x, -sc.pos.y, sc.pos.z) + F * sc.modelOffset.x + R * sc.modelOffset.y + U * sc.modelOffset.z;
+    matrix3x4_t local;
+    const Vector cx = F, cy = R * -1.f, cz = U;   // model axes in the gun frame (checked: eyepiece at the back, objective bell forward)
+    for (int i = 0; i < 3; i++) { local[i][0] = cx[i] * sc.scale; local[i][1] = cy[i] * sc.scale; local[i][2] = cz[i] * sc.scale; local[i][3] = org[i]; }
+    matrix3x4_t att; ConcatTransforms(bones[b], local, att);
+    thread_local std::vector<matrix3x4_t> sb; thread_local std::vector<Vector> pos; thread_local std::vector<Quat> q;
+    s->SampleAnim(-1, 0, pos, q); s->BuildBones(pos, q, sb);
+    for (auto& m : sb) { matrix3x4_t t; ConcatTransforms(att, m, t); m = t; }
+    SrcMdl_Draw(*s, sb, xf, p);
+    return;
+  }
+}
+
 bool CSS_DrawPose(const PlayerPoseOutput& pose, const StudioDrawParams& p, bool drawWeapon) {
   if (!pose.css) return false;
   SrcMdl_Draw(*pose.css, pose.cssBones, pose.cssToWorld, p);
-  if (drawWeapon && pose.cssWeapon) SrcMdl_Draw(*pose.cssWeapon, pose.cssWeaponBones, pose.cssToWorld, p);
+  if (drawWeapon && pose.cssWeapon) { SrcMdl_Draw(*pose.cssWeapon, pose.cssWeaponBones, pose.cssToWorld, p); DrawCsgoScope(*pose.cssWeapon, pose.cssWeaponBones, pose.cssToWorld, p); }
   return true;
 }
 
@@ -387,8 +481,10 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   const int wid = w->GetCSWeaponID();
   WeaponModel wi = WeaponInfo(wid); if (!wi.model) return false;
   const CSrcModel* m = nullptr;
-  bool r8 = false;
+  bool r8 = false;   // CS:GO model: right-handed, hands from the agent model, its own FOV
   if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) { m = LoadedOrNull(SrcMdl_Get(kR8View)); r8 = m && !m->seqs.empty(); if (!r8) m = nullptr; }
+  bool csgo = false;
+  if (!m) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
   if (!m) m = SrcMdl_Get(std::string("models/weapons/v_") + wi.model + ".mdl");
   if (!m || m->meshes.empty() || m->seqs.empty()) return false;
   const bool silenced = SilencerModel(wid) && w->m_bSilencerOn;
@@ -447,7 +543,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   // CS:S v_ models are built left-handed (the game mirrors them for cl_righthand 1), the CS:GO R8 is right-handed
   static ConVar* righthand = FindConVar("cl_righthand");
   const bool wantRight = !righthand || righthand->GetBool();
-  if (wantRight != r8) for (int i = 0; i < 3; i++) xf[i][1] = -xf[i][1];   // mirror along the view's right axis
+  if (wantRight != (r8 || csgo)) for (int i = 0; i < 3; i++) xf[i][1] = -xf[i][1];   // mirror along the view's right axis
 
   StudioLight L;
   if (g_WorldRender.built) { LightSample s = g_WorldRender.SampleLight(view.origin); L.ambient = s.ambient * 1.15f; L.direct = s.direct * 0.8f; L.dir = s.dir; }
@@ -455,11 +551,12 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   if (cl.nightvision) L.ambient = Vector(0.9f, 1.2f, 0.9f);
   StudioDrawParams dp; dp.light = L; dp.eye = view.origin;
 
-  Matrix proj = BuildProjection(view.VerticalFov((r8 ? cl_r8_viewmodel_fov : cl_css_viewmodel_fov).GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
+  Matrix proj = BuildProjection(view.VerticalFov((r8 ? cl_r8_viewmodel_fov : csgo ? cl_csgo_viewmodel_fov : cl_css_viewmodel_fov).GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
   Render_ClearDepth();
   Render_Begin3D(view.view, proj);
   SrcMdl_Draw(*m, bones, xf, dp);
-  if (r8) DrawViewModelArms(*m, bones, PlayerModel(p), xf, dp);
+  if (csgo) DrawCsgoScope(*m, bones, xf, dp);
+  if (r8 || csgo) DrawViewModelArms(*m, bones, PlayerModel(p), xf, dp);
   Render_End3D();
   muzzleOut = m->attachments.empty() ? view.origin + view.forward * 20.f - view.up * 4.f : m->AttachmentPos(0, bones, xf);
   return true;

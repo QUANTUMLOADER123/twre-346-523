@@ -62,6 +62,7 @@ struct ClientState {
   bool removeScope = false, removeVisualRecoil = false, removeFlash = false, removeSmoke = false;
   float viewmodelFov = 68.f;
   float overrideFov = 0;       // 0 = default
+  float unzoomedFov = 0;   // base FOV the view would have without a scope (fov_desired / cheat override) - zoom sensitivity
   float worldBrightness = 1.f;  // nightmode
   bool forceCrosshair = false;
   float thirdpersonDist = 120.f;
@@ -104,6 +105,10 @@ void FX_MuzzleFlash(const Vector& pos, const Vector& dir, float scale);
 void FX_Explosion(const Vector& pos);
 void FX_Blood(const Vector& pos, const Vector& dir);
 void FX_SmokeCloud(const Vector& center, float start, float duration);
+void FX_MolotovBurst(const Vector& pos, bool air);    // glass + fireball (air: no fire follows)
+void FX_SteamPuff(const Vector& pos);                 // fire put out by a smoke
+void FX_FireSmoke(const Vector& pos, float scale);    // dark smoke rising from a flame
+void FX_Ember(const Vector& pos);
 void FX_Spark(const Vector& pos, int count);
 void FX_DebugBox(const Vector& mins, const Vector& maxs, Color c, float life);
 void FX_HitboxCapsules(CCSPlayer* p, const void* hitboxSet, Color c, float life); // cheat "shot capsules"

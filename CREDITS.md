@@ -16,6 +16,17 @@
 ## Fonts
 * **DejaVu** fonts (`assets/fonts/`), Bitstream Vera / DejaVu license (see `assets/fonts/LICENSE_DEJAVU`).
 
+## Additional third-party content
+* **ARC9-GSR** (CS:GO weapon models for Garry's Mod), © Seulyy, used under GMod addon distribution.
+  Commit 5e16cf9baa37348fc82ba0c824d842dbcb44ab18. Runtime download only.
+  https://github.com/Seulyy/ARC9-GSR
+* **csgo_memory_hacking_examples** (CS:GO SVG weapon icons), © atiksoftware, MIT license.
+  Commit 4afd922fd7ae95c8a9b393d423944540182235f8. Runtime download only.
+  https://github.com/atiksoftware/csgo_memory_hacking_examples
+* **nanosvg**, © Mikko Mononen (memononen), zlib license.
+  Commit 239e102. Included in `third_party/nanosvg/`.
+  https://github.com/memononen/nanosvg
+
 ## Everything else
 Code and UI were written for this project.
 Counter-Strike is a trademark of Valve Corporation. This is a non-commercial fan project and is not affiliated with Valve.

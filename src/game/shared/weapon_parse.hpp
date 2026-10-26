@@ -15,6 +15,7 @@ enum CSWeaponID {
   WEAPON_ELITE, WEAPON_FIVESEVEN, WEAPON_TEC9, WEAPON_CZ75A, WEAPON_HKP2000,
   WEAPON_MP7, WEAPON_MP5SD, WEAPON_BIZON,
   WEAPON_MAG7, WEAPON_SAWEDOFF, WEAPON_M249, WEAPON_NEGEV,
+  WEAPON_MOLOTOV, WEAPON_INCGRENADE,
   WEAPON_MAX
 };
 enum CSWeaponType { WEAPONTYPE_KNIFE = 0, WEAPONTYPE_PISTOL, WEAPONTYPE_SUBMACHINEGUN, WEAPONTYPE_RIFLE, WEAPONTYPE_SHOTGUN, WEAPONTYPE_SNIPER_RIFLE, WEAPONTYPE_MACHINEGUN, WEAPONTYPE_C4, WEAPONTYPE_GRENADE };
@@ -62,5 +63,6 @@ const CCSWeaponInfo* GetWeaponInfo(int id);
 const CCSWeaponInfo* GetWeaponInfoByName(const std::string& className); // accepts "ak47" or "weapon_ak47"
 const char* WeaponIdToAlias(int id);
 int AliasToWeaponID(const std::string& alias);
-inline bool IsGrenade(int id) { return id == WEAPON_HEGRENADE || id == WEAPON_FLASHBANG || id == WEAPON_SMOKEGRENADE; }
+inline bool IsFireGrenade(int id) { return id == WEAPON_MOLOTOV || id == WEAPON_INCGRENADE; }
+inline bool IsGrenade(int id) { return id == WEAPON_HEGRENADE || id == WEAPON_FLASHBANG || id == WEAPON_SMOKEGRENADE || IsFireGrenade(id); }
 inline bool IsSniper(int id) { return id == WEAPON_AWP || id == WEAPON_SSG08 || id == WEAPON_G3SG1 || id == WEAPON_SCAR20; }

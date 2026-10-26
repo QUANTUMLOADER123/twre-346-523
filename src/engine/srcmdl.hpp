@@ -94,6 +94,7 @@ public:
 
   // texture of a mesh for a skin family
   Texture2D MeshTexture(const SrcMdlMesh& m, int skin = 0, bool* translucent = nullptr, bool* alphatest = nullptr) const;
+  bool MeshHidden(const SrcMdlMesh& m, int skin = 0) const;
   int FindSequence(const std::string& label) const;      // case-insensitive, -1
   int FindBone(const std::string& name) const;
   // local bone transforms of an animation frame (pos + quaternion per bone)

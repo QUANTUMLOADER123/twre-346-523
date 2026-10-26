@@ -124,6 +124,8 @@ public:
 class CHEGrenade : public CBaseCSGrenade { public: CHEGrenade() : CBaseCSGrenade(WEAPON_HEGRENADE) {} };
 class CFlashbang : public CBaseCSGrenade { public: CFlashbang() : CBaseCSGrenade(WEAPON_FLASHBANG) {} };
 class CSmokeGrenade : public CBaseCSGrenade { public: CSmokeGrenade() : CBaseCSGrenade(WEAPON_SMOKEGRENADE) {} };
+class CMolotovGrenade : public CBaseCSGrenade { public: CMolotovGrenade() : CBaseCSGrenade(WEAPON_MOLOTOV) {} };
+class CIncendiaryGrenade : public CBaseCSGrenade { public: CIncendiaryGrenade() : CBaseCSGrenade(WEAPON_INCGRENADE) {} };
 
 class CC4 : public C_WeaponCSBase {
 public:

@@ -21,6 +21,7 @@ struct Pack {
   const char* const* files = nullptr;   // single files (nullptr-terminated, relative to url) instead of a zip
   const char* dest = nullptr;           // folder of single-file packs (zip packs unpack into content/css/cstrike)
   bool core = true;      // part of the CS:S content (not needed with a Steam / user install)
+  const char* api = nullptr;            // single-file packs: fallback url template (%s = file), GitHub contents API
 };
 const Pack* Packs(int& count);
 

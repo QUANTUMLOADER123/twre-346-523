@@ -25,6 +25,8 @@ C_WeaponCSBase* CreateWeapon(int id) {
     case WEAPON_HEGRENADE: return new CHEGrenade();
     case WEAPON_FLASHBANG: return new CFlashbang();
     case WEAPON_SMOKEGRENADE: return new CSmokeGrenade();
+    case WEAPON_MOLOTOV: return new CMolotovGrenade();
+    case WEAPON_INCGRENADE: return new CIncendiaryGrenade();
     case WEAPON_C4: return new CC4();
     default: return new C_WeaponCSBaseGun(id);
   }
@@ -466,7 +468,7 @@ void CBaseCSGrenade::PrimaryAttack() {
   m_bPinPulled = true; m_flThrowStrength = 1.f;
   SendViewActivity(ACT_VM_PULLPIN, 0.4f);
   m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + 0.3f;
-  if (m_hOwner) EmitSound("Weapon_Grenade.PullPin", m_hOwner->m_vecOrigin, m_hOwner->entindex(), 0.4f);
+  if (m_hOwner) EmitSound(m_iWeaponID == WEAPON_MOLOTOV ? "Molotov.Lighter" : "Weapon_Grenade.PullPin", m_hOwner->m_vecOrigin, m_hOwner->entindex(), 0.4f);
 }
 void CBaseCSGrenade::SecondaryAttack() {
   if (m_bPinPulled || m_fThrowTime > 0) return;
@@ -503,10 +505,11 @@ void CBaseCSGrenade::ThrowGrenade() {
   CBaseCSGrenadeProjectile* proj = nullptr;
   if (m_iWeaponID == WEAPON_HEGRENADE) proj = new CHEGrenadeProjectile(m_iWeaponID, o, src, vel);
   else if (m_iWeaponID == WEAPON_FLASHBANG) proj = new CFlashbangProjectile(m_iWeaponID, o, src, vel);
+  else if (IsFireGrenade(m_iWeaponID)) proj = new CMolotovProjectile(m_iWeaponID, o, src, vel);
   else proj = new CSmokeGrenadeProjectile(m_iWeaponID, o, src, vel);
   g_EntityList.Add(proj);
   o->m_flLastFireTime = gpGlobals->curtime; o->m_bShotThisChoke = true;
-  EmitSound("Weapon_Grenade.Throw", src, o->entindex(), 0.6f);
+  EmitSound(IsFireGrenade(m_iWeaponID) ? "Molotov.Throw" : "Weapon_Grenade.Throw", src, o->entindex(), 0.6f);
   IGameEvent ev("grenade_thrown"); ev.SetInt("userid", o->entindex()).SetString("weapon", WeaponIdToAlias(m_iWeaponID)); gameeventmanager->FireEvent(ev);
   m_iClip1--;
   m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + 0.6f;

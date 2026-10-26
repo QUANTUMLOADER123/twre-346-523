@@ -419,6 +419,7 @@ void CCSBot::Buy() {
     int start = money();
     auto spend = [&]() { return start - money(); };
     if (spend() + 300 <= maxSpend && money() >= 300) me->BuyItem("smokegrenade", true);
+    if (spend() + (ct ? 600 : 400) <= maxSpend && money() >= (ct ? 600 : 400) && RandomInt(0, 2)) me->BuyItem(ct ? "incgrenade" : "molotov", true);
     if (spend() + 200 <= maxSpend && money() >= 200) me->BuyItem("flashbang", true);
     if (spend() + 300 <= maxSpend && money() >= 300) me->BuyItem("hegrenade", true);
     if (spend() + 200 <= maxSpend && money() >= 200 && RandomInt(0, 1)) me->BuyItem("flashbang", true);
@@ -640,6 +641,19 @@ void CCSBot::ThinkGoals() {
     Vector bomb = g_pPlantedC4->m_vecOrigin;
     if (ct) {
       float d = me->m_vecOrigin.DistTo(bomb);
+      // a teammate (bot or human) is already on the kit: cover him instead of stacking on the bomb
+      CCSPlayer* defuser = nullptr;
+      for (CCSPlayer* o : UTIL_GetPlayers(true)) if (o != me && o->m_iTeamNum == me->m_iTeamNum && o->m_bIsDefusing) defuser = o;
+      if (defuser) {
+        if (m_flHoldUntil < now || (m_vecHoldSpot - bomb).Length2D() > 500.f || (m_vecHoldSpot - bomb).Length2D() < 150.f) {
+          m_vecHoldSpot = g_NavMesh.GetRandomWalkablePoint(bomb, 420.f); m_flHoldUntil = now + 6.f;
+          for (int k = 0; k < 6 && (m_vecHoldSpot - bomb).Length2D() < 150.f; k++) m_vecHoldSpot = g_NavMesh.GetRandomWalkablePoint(bomb, 420.f);
+        }
+        Vector out = m_vecHoldSpot - bomb; out.z = 0;
+        m_vecHoldLook = m_vecHoldSpot + out.Normalized() * 600.f + Vector(0, 0, 60);
+        if (me->m_vecOrigin.DistTo(m_vecHoldSpot) > 64.f) { SetState(BOT_MOVE_TO); SetGoal(m_vecHoldSpot); } else SetState(BOT_HOLD);
+        return;
+      }
       if (d < 60.f && (!m_pEnemy || now - m_flEnemyLastSeen > 1.5f)) { SetState(BOT_DEFUSE); return; }
       m_bRushing = g_pPlantedC4->m_flC4Blow - now < 20.f || d > 900.f;
       SetState(BOT_MOVE_TO); SetGoal(bomb);
@@ -810,6 +824,24 @@ void CCSBot::MoveTowardsGoal(CUserCmd& cmd, QAngle& view) {
     }
   }
   if (m_iPathIndex + 1 >= m_Path.size() && dist2 < 24.f) { m_Path.clear(); return; }
+  // fire (molotov / incendiary): get out of it, wait in front of it - unless the bomb can't wait
+  if (!GetActiveInfernos().empty()) {
+    const bool urgent = g_pPlantedC4 && me->m_iTeamNum == TEAM_CT && g_pPlantedC4->GetTimeRemaining() < (me->m_bHasDefuser ? 5.f : 10.f) + 4.f;
+    if (PointInFire(me->m_vecOrigin, 6.f) && !urgent) {
+      Vector away;
+      for (CInferno* f : GetActiveInfernos()) if (f->IsPointBurning(me->m_vecOrigin, 6.f)) { away = me->m_vecOrigin - f->m_vecCenter; break; }
+      away.z = 0; if (away.Length() < 1.f) away = Vector(std::cos(DEG2RADF(view.y + 180.f)), std::sin(DEG2RADF(view.y + 180.f)), 0);
+      away.NormalizeInPlace();
+      float yw = DEG2RADF(view.y); Vector fw(std::cos(yw), std::sin(yw), 0), rt(std::sin(yw), -std::cos(yw), 0);
+      cmd.forwardmove = away.Dot(fw) * 450.f; cmd.sidemove = away.Dot(rt) * 450.f;
+      m_flLastProgress = now; m_flRepathTime = 0;
+      return;
+    }
+    if (!urgent) for (size_t k = m_iPathIndex; k < std::min(m_Path.size(), m_iPathIndex + 3); k++) {
+      if ((m_Path[k] - me->m_vecOrigin).Length2D() > 260.f) break;
+      if (LineCrossesFire(me->m_vecOrigin, m_Path[k], 14.f)) { CounterStrafe(cmd, view); m_flLastProgress = now; m_vecLastPos = me->m_vecOrigin; return; }
+    }
+  }
   to.z = 0; to.NormalizeInPlace();
   float yaw = DEG2RADF(view.y);
   Vector f(std::cos(yaw), std::sin(yaw), 0), r(std::sin(yaw), -std::cos(yaw), 0);
@@ -1067,9 +1099,14 @@ void CCSBot::ThinkUtility() {
       }
     }
   }
-  // enemies the team knows about nearby but we can't see: HE / flash them, CTs smoke the entrance
+  const int fireNade = me->Weapon_OwnsThisType(WEAPON_MOLOTOV) ? WEAPON_MOLOTOV : me->Weapon_OwnsThisType(WEAPON_INCGRENADE) ? WEAPON_INCGRENADE : 0;
+  // post plant: burn the bomb when an enemy is on it (Ts), or the spot the bomb is planted in before the retake (CTs: no)
+  if (fireNade && !ct && g_pPlantedC4 && g_pPlantedC4->m_hBombDefuser && me->m_vecOrigin.DistTo(g_pPlantedC4->m_vecOrigin) < 1200.f &&
+      StartThrow(fireNade, g_pPlantedC4->m_vecOrigin, 110.f, false)) return;
+  // enemies the team knows about nearby but we can't see: fire / HE / flash them, CTs smoke the entrance
   Vector ip; int cnt = 0;
   if (RecentIntel(plan, 2.5f, me->m_vecOrigin, 1300.f, &ip, &cnt) && ip.DistTo(me->m_vecOrigin) > 380.f && !WorldLOS(me->EyePosition(), ip + Vector(0, 0, 50))) {
+    if (fireNade && ip.DistTo(me->m_vecOrigin) < 1000.f && StartThrow(fireNade, ip, 140.f, false)) return;
     if (me->Weapon_OwnsThisType(WEAPON_HEGRENADE) && StartThrow(WEAPON_HEGRENADE, ip, 170.f, false)) return;
     if (cnt >= 2 && me->Weapon_OwnsThisType(WEAPON_FLASHBANG) && StartThrow(WEAPON_FLASHBANG, ip + Vector(0, 0, 90), 260.f, true)) return;
     if (ct && !g_pPlantedC4 && cnt >= 2 && s_map.ok[m_iTargetSite] && plan.smokes < 2 && me->Weapon_OwnsThisType(WEAPON_SMOKEGRENADE) &&

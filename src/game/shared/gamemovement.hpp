@@ -48,6 +48,9 @@ protected:
   void AirAccelerate(const Vector& wishdir, float wishspeed, float accel);
   void StepMove(const Vector& dest, trace_t& trace);
   int TryPlayerMove(Vector* firstDest = nullptr, trace_t* firstTrace = nullptr);
+  int TryPlayerMoveInner(Vector* pFirstDest, trace_t* pFirstTrace);
+  bool GroundInQuadrants(const Vector& origin, float depth);
+  bool CheckStuck();
   int ClipVelocity(const Vector& in, const Vector& normal, Vector& out, float overbounce);
   bool CheckJumpButton();
   void CheckVelocity();

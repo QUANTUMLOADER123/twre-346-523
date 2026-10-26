@@ -53,6 +53,7 @@ const int s_startMoney[] = { 800, 1000, 4000, 10000, 16000 };
 Vector2 s_pressPos{}; bool s_dragScroll = false; bool s_clearDrag = false; const void* s_activeSlider = nullptr;
 Vector2 s_lastMouse{};
 std::string s_lastHover;
+int s_buttonIndex = 0;           // FlatButton call order this frame -> stable hover ids even while panels animate
 const void* s_captureKey = nullptr; std::string s_captureCmd;   // keyboard settings
 
 InputState& In() { return Input(); }
@@ -111,7 +112,7 @@ void IconBack(float cx, float cy, float r, Color c) {
 // widgets
 bool FlatButton(const char* label, float x, float y, float w, float h, Color base, Color hover, Color text = csgo::Text, int font = FONT_GO_BOLD) {
   bool hv = Over(x, y, w, h);
-  HoverSound(label, hv);
+  HoverSound(TextFormat("btn%d:%s", s_buttonIndex++, label), hv);   // unique per widget (two "PLAY" buttons used to fight)
   DrawRectangleRec({ x, y, w, h }, hv ? hover : base);
   float th = (float)S()->GetFontTall(font);
   S()->DrawTextCentered(font, label, x + w * 0.5f, y + (h - th) * 0.5f, text);
@@ -287,7 +288,7 @@ void PaintTopBar(bool ingame) {
   for (const NavItem& n : nav) {
     float tw = (float)S()->GetTextWide(FONT_GO_BOLD, n.label), w = tw + 56;
     bool active = s_panel == n.panel, hv = Over(x, 0, w, TB);
-    HoverSound(n.label, hv);
+    HoverSound(TextFormat("nav:%s", n.label), hv);
     if (hv) DrawRectangleRec({ x, 0, w, TB }, csgo::Alpha(csgo::PanelHover, 0.8f));
     Color c = active || hv ? WHITE : csgo::TextDim;
     n.icon(x + 20, TB * 0.5f, 9, c);
@@ -950,6 +951,7 @@ bool OnEscape() {
 }
 
 void Paint() {
+  s_buttonIndex = 0;
   // input bookkeeping
   if (s_clearDrag) { s_dragScroll = false; s_activeSlider = nullptr; s_clearDrag = false; }
   if (In().mousePressed) { s_pressPos = In().mouse; s_dragScroll = false; s_activeSlider = nullptr; }

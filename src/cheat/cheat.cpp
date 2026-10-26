@@ -103,6 +103,7 @@ void OverrideView(CViewSetup& view) {
   C_WeaponCSBase* w = lp->GetActiveCSWeapon();
   bool zoomed = w && w->IsZoomed();
   float base = v.vis.fov > 0 ? v.vis.fov : FindConVar("fov_desired")->GetFloat();
+  cl.unzoomedFov = base;
   if (!zoomed) { if (v.vis.fov > 0) view.fov = v.vis.fov; }
   else if (v.vis.zoomFov > 0) view.fov = view.fov + (base - view.fov) * (v.vis.zoomFov / 100.f);
 }

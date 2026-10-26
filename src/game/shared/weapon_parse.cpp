@@ -84,6 +84,10 @@ static const CCSWeaponInfo s_weapons[WEAPON_MAX] = {
     0.6f, 0.6f, 4.81f, 6.41f, 400, 80, 7.8f, 140, 4.81f, 6.41f, 0.31f, 0.43f, 0, 30, 30, 1, 0, 90, 90, 5.7f, 1.0f, false, 32, 3, "m249", 0.5f },
   { WEAPON_NEGEV, "weapon_negev", "Negev", M("w_negev"), WEAPONTYPE_MACHINEGUN, WEAPON_SLOT_RIFLE, 0, 1700, 300, 150, 300, 35, 0.71f, 2, 8192, 0.97f, 0.075f, 0.075f, true, 1, 150, 150, 4,
     0.6f, 0.6f, 4.81f, 6.41f, 400, 80, 7.8f, 140, 4.81f, 6.41f, 0.31f, 0.43f, 0, 30, 30, 1, 0, 90, 90, 5.7f, 1.0f, false, 32, 3, "negev", 0.5f },
+  { WEAPON_MOLOTOV, "weapon_molotov", "Molotov", nullptr, WEAPONTYPE_GRENADE, WEAPON_SLOT_GRENADES, 2, 400, 300, -1, 1, 40, 1, 0, 0, 1, 1.0f, 1.0f, false, 1, 245, 245, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 90, 90, 1, 1.0f, false, 6, 0, "inferno", 1 },
+  { WEAPON_INCGRENADE, "weapon_incgrenade", "Incendiary Grenade", nullptr, WEAPONTYPE_GRENADE, WEAPON_SLOT_GRENADES, 3, 600, 300, -1, 1, 40, 1, 0, 0, 1, 1.0f, 1.0f, false, 1, 245, 245, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 90, 90, 1, 1.0f, false, 6, 0, "inferno", 1 },
 };
 #undef M
 
@@ -95,6 +99,7 @@ int AliasToWeaponID(const std::string& a) {
   if (s == "sg553") s = "sg556"; if (s == "scout") s = "ssg08"; if (s == "he") s = "hegrenade"; if (s == "flash") s = "flashbang"; if (s == "smoke") s = "smokegrenade";
   if (s == "r8") s = "revolver"; if (s == "auto") s = "scar20";
   if (s == "p2000") s = "hkp2000"; if (s == "cz75" || s == "cz") s = "cz75a"; if (s == "fn57" || s == "57") s = "fiveseven"; if (s == "dualies" || s == "berettas") s = "elite";
+  if (s == "molly" || s == "molo") s = "molotov"; if (s == "incendiary" || s == "inc" || s == "incgren") s = "incgrenade";
   if (s == "pp-bizon") s = "bizon"; if (s == "sawed-off") s = "sawedoff"; if (s == "mp5") s = "mp5sd";
   for (int i = 1; i < WEAPON_MAX; i++) if (s == WeaponIdToAlias(i)) return i;
   return WEAPON_NONE;

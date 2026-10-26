@@ -73,9 +73,9 @@ static ConCommand cmd_slot4("slot4", [](const CCommand&) {
   // pressing 4 repeatedly cycles grenades
   CCSPlayer* p = g_pLocalPlayer; if (!p) return;
   C_WeaponCSBase* cur = p->GetActiveCSWeapon();
-  int order[3] = { WEAPON_HEGRENADE, WEAPON_FLASHBANG, WEAPON_SMOKEGRENADE };
-  int start = 0; if (cur && cur->GetWeaponType() == WEAPONTYPE_GRENADE) for (int i = 0; i < 3; i++) if (order[i] == cur->GetCSWeaponID()) start = i + 1;
-  for (int k = 0; k < 3; k++) { int id = order[(start + k) % 3]; if (p->Weapon_OwnsThisType(id)) { s_pendingWeaponSelect = 100 + id; return; } }
+  const int order[5] = { WEAPON_HEGRENADE, WEAPON_FLASHBANG, WEAPON_SMOKEGRENADE, WEAPON_MOLOTOV, WEAPON_INCGRENADE };
+  int start = 0; if (cur && cur->GetWeaponType() == WEAPONTYPE_GRENADE) for (int i = 0; i < 5; i++) if (order[i] == cur->GetCSWeaponID()) start = i + 1;
+  for (int k = 0; k < 5; k++) { int id = order[(start + k) % 5]; if (p->Weapon_OwnsThisType(id)) { s_pendingWeaponSelect = 100 + id; return; } }
 }, "");
 static ConCommand cmd_slot5("slot5", [](const CCommand&) { s_pendingWeaponSelect = 5; }, "");
 static ConCommand cmd_lastinv("lastinv", [](const CCommand&) { if (g_pLocalPlayer && g_pLocalPlayer->m_hLastWeapon) s_pendingWeaponSelect = 100 + g_pLocalPlayer->m_hLastWeapon->GetCSWeaponID(); }, "");
@@ -241,7 +241,14 @@ void IN_Frame(float dt) {
     if (m_filter.GetBool()) { float nx = (mx + oldx) * 0.5f, ny = (my + oldy) * 0.5f; oldx = mx; oldy = my; mx = nx; my = ny; }
     float sens = sensitivity.GetFloat();
     CCSPlayer* lp = g_pLocalPlayer;
-    if (lp && lp->m_iFOV != 0 && lp->m_iFOV < 90) sens *= (lp->m_iFOV / 90.f) * zoom_sensitivity_ratio.GetFloat();
+    // only a real zoom slows the mouse down: ratio of the FOV actually rendered to the unzoomed one (fov_desired or the
+    // cheat's FOV) - changing the FOV itself, or a scope with the zoom removed, keeps the sensitivity
+    if (C_WeaponCSBase* w = lp && lp->IsAlive() ? lp->GetActiveCSWeapon() : nullptr; w && w->IsZoomed()) {
+      static ConVar* fovDesired = FindConVar("fov_desired");
+      const float base = cl.unzoomedFov > 0 ? cl.unzoomedFov : (fovDesired ? fovDesired->GetFloat() : 90.f);
+      const float k = cl.view.fov / std::max(1.f, base);
+      if (k < 0.99f) sens *= k * zoom_sensitivity_ratio.GetFloat();
+    }
     cl.viewangles.y -= mx * sens * m_yaw.GetFloat();
     cl.viewangles.x += my * sens * m_pitch.GetFloat() * (m_invert.GetBool() ? -1.f : 1.f);
     cl.mouseDx += mx; cl.mouseDy += my;

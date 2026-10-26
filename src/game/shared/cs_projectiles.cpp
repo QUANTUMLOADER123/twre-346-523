@@ -13,8 +13,29 @@ extern ConVar mp_c4timer;
 ConVar sv_grenade_trajectory("sv_grenade_trajectory", "0", FCVAR_REPLICATED | FCVAR_CHEAT, "Shows grenade trajectory visualization in-game.");
 ConVar ammo_grenade_limit_total("ammo_grenade_limit_total", "4", FCVAR_REPLICATED, "");
 
+ConVar sv_hegrenade_fuse("sv_hegrenade_fuse", "3.5", FCVAR_REPLICATED | FCVAR_ARCHIVE, "Seconds from the throw until an HE grenade explodes", true, 0.5f, true, 10.f);
+ConVar sv_flashbang_fuse("sv_flashbang_fuse", "2.5", FCVAR_REPLICATED | FCVAR_ARCHIVE, "Seconds from the throw until a flashbang pops", true, 0.5f, true, 10.f);
+ConVar sv_smoke_duration("sv_smoke_duration", "25", FCVAR_REPLICATED | FCVAR_ARCHIVE, "How long a smoke grenade cloud lasts (seconds)", true, 3.f, true, 90.f);
+ConVar molotov_throw_detonate_time("molotov_throw_detonate_time", "2.0", FCVAR_REPLICATED | FCVAR_ARCHIVE, "Molotov / incendiary: seconds of flight before it bursts in the air", true, 0.3f, true, 10.f);
+ConVar weapon_molotov_maxdetonateslope("weapon_molotov_maxdetonateslope", "30", FCVAR_REPLICATED, "Maximum slope (degrees) a molotov bursts on - steeper surfaces bounce it", true, 0.f, true, 90.f);
+ConVar inferno_flame_lifetime("inferno_flame_lifetime", "7", FCVAR_REPLICATED | FCVAR_ARCHIVE, "How long a molotov / incendiary fire burns (seconds)", true, 1.f, true, 30.f);
+ConVar inferno_damage("inferno_damage", "40", FCVAR_REPLICATED, "Fire damage per second");
+ConVar inferno_max_range("inferno_max_range", "150", FCVAR_REPLICATED, "How far the fire spreads from the impact point");
+ConVar inferno_max_flames("inferno_max_flames", "16", FCVAR_REPLICATED, "Maximum flames of one fire");
+
 static constexpr float GRENADE_GRAVITY = 0.4f, GRENADE_ELASTICITY = 0.45f, GRENADE_FRICTION = 0.2f;
-static constexpr float SMOKE_DURATION = 18.f, SMOKE_RADIUS = 144.f;
+static constexpr float SMOKE_RADIUS = 144.f;
+static constexpr float FLAME_RADIUS = 30.f;   // one flame covers ~60 units
+float SmokeDuration() { return sv_smoke_duration.GetFloat(); }
+float GrenadeFuseTime(int weaponId) {
+  switch (weaponId) {
+    case WEAPON_HEGRENADE: return sv_hegrenade_fuse.GetFloat();
+    case WEAPON_FLASHBANG: return sv_flashbang_fuse.GetFloat();
+    case WEAPON_MOLOTOV: case WEAPON_INCGRENADE: return molotov_throw_detonate_time.GetFloat();
+    default: return 1e9f;   // smoke: when it stops
+  }
+}
+static bool IsDetonateFloor(const Vector& n) { return n.z >= std::cos(DEG2RADF(weapon_molotov_maxdetonateslope.GetFloat())) - 1e-3f; }
 
 static std::vector<SmokeVolume> s_smokes;
 std::vector<SmokeVolume>& GetActiveSmokes() { return s_smokes; }
@@ -55,7 +76,7 @@ void GetGrenadeThrowParams(CCSPlayer* player, const QAngle& eyeAngles, float str
 
 // one physics step shared by the real projectile and the prediction
 struct GrenadeSim { Vector pos, vel; bool stopped = false; int bounces = 0; };
-static bool StepGrenade(GrenadeSim& g, float dt, const IHandleEntity* skip, Vector* bouncePos, bool hitPlayers) {
+static bool StepGrenade(GrenadeSim& g, float dt, const IHandleEntity* skip, Vector* bouncePos, bool hitPlayers, Vector* bounceNormal = nullptr) {
   if (g.stopped) return false;
   g.vel.z -= 800.f * GRENADE_GRAVITY * dt;
   float timeLeft = dt; bool bounced = false;
@@ -70,6 +91,7 @@ static bool StepGrenade(GrenadeSim& g, float dt, const IHandleEntity* skip, Vect
     if (tr.fraction >= 1.f) break;
     timeLeft *= 1.f - tr.fraction;
     Vector n = tr.plane.normal;
+    if (bounceNormal) *bounceNormal = n;
     float backoff = g.vel.Dot(n) * 2.f;
     g.vel -= n * backoff;
     float elasticity = GRENADE_ELASTICITY * (tr.m_pEnt ? 0.3f : 1.f);
@@ -91,17 +113,19 @@ void PredictGrenadePath(int weaponId, const Vector& src, const Vector& vel, Gren
   out.points.clear(); out.bounces.clear();
   GrenadeSim g; g.pos = src; g.vel = vel;
   float dt = gpGlobals->interval_per_tick, t = 0;
-  float fuse = weaponId == WEAPON_SMOKEGRENADE ? 10.f : 1.5f;
+  const bool fire = IsFireGrenade(weaponId);
+  float fuse = weaponId == WEAPON_SMOKEGRENADE ? 10.f : GrenadeFuseTime(weaponId);
   out.points.push_back(src);
   float stoppedFor = 0;
   while (t < fuse) {
-    Vector bp;
-    if (StepGrenade(g, dt, skip, &bp, false)) out.bounces.push_back(bp);
+    Vector bp, bn;
+    bool bounced = StepGrenade(g, dt, skip, &bp, false, &bn);
     t += dt;
+    if (bounced && fire && IsDetonateFloor(bn)) { out.points.push_back(g.pos); break; }   // bursts on the floor
+    if (bounced) out.bounces.push_back(bp);
     if ((int)(t / dt) % 2 == 0 || g.stopped) out.points.push_back(g.pos);
-    if (g.stopped) { stoppedFor += dt; if (weaponId == WEAPON_SMOKEGRENADE || stoppedFor > 0.2f) break; }
+    if (g.stopped) { stoppedFor += dt; if (weaponId == WEAPON_SMOKEGRENADE || fire || stoppedFor > 0.2f) break; }
   }
-  if (weaponId != WEAPON_SMOKEGRENADE) {}
   out.detonate = g.pos; out.time = t;
 }
 
@@ -111,12 +135,12 @@ CBaseCSGrenadeProjectile::CBaseCSGrenadeProjectile(int weaponId, CCSPlayer* thro
   m_iWeaponID = weaponId; m_hThrower = thrower; m_hOwnerEntity = thrower;
   m_vecOrigin = m_vecOldOrigin = pos; m_vecVelocity = m_vecInitialVelocity = vel;
   m_flSpawnTime = ServerTime();
-  m_flDetonateTime = m_flSpawnTime + (weaponId == WEAPON_SMOKEGRENADE ? 1e9f : 1.5f);
+  m_flDetonateTime = m_flSpawnTime + GrenadeFuseTime(weaponId);
   m_angSpin = QAngle(RandomFloat(-600, 600), RandomFloat(-600, 600), 0);
   m_iTeamNum = thrower ? thrower->m_iTeamNum : 0;
   m_vecMins = { -2, -2, -2 }; m_vecMaxs = { 2, 2, 2 };
   const char* cls[] = { "hegrenade_projectile", "flashbang_projectile", "smokegrenade_projectile" };
-  m_iClassname = cls[std::max(0, std::min(2, weaponId - WEAPON_HEGRENADE))];
+  m_iClassname = IsFireGrenade(weaponId) ? "molotov_projectile" : cls[std::max(0, std::min(2, weaponId - WEAPON_HEGRENADE))];
 }
 
 void CBaseCSGrenadeProjectile::PhysicsSimulate() {
@@ -126,9 +150,11 @@ void CBaseCSGrenadeProjectile::PhysicsSimulate() {
   m_angOldRotation = m_angRotation;
   GrenadeSim g; g.pos = m_vecOrigin; g.vel = m_vecVelocity; g.stopped = m_bStopped; g.bounces = m_nBounces;
   float speedBefore = g.vel.Length();
-  if (StepGrenade(g, dt, m_hThrower, nullptr, true)) {
+  m_bBouncedThisTick = StepGrenade(g, dt, m_hThrower, nullptr, true, &m_vecLastBounceNormal);
+  if (m_bBouncedThisTick) {
     if (speedBefore > 60.f) {
-      const char* snd = m_iWeaponID == WEAPON_HEGRENADE ? "HEGrenade.Bounce" : (m_iWeaponID == WEAPON_FLASHBANG ? "Flashbang.Bounce" : "SmokeGrenade.Bounce");
+      const char* snd = m_iWeaponID == WEAPON_HEGRENADE ? "HEGrenade.Bounce" : m_iWeaponID == WEAPON_FLASHBANG ? "Flashbang.Bounce" :
+                        IsFireGrenade(m_iWeaponID) ? "Molotov.Bounce" : "SmokeGrenade.Bounce";
       EmitSound(snd, g.pos, entindex(), Clamp(speedBefore / 500.f, 0.2f, 1.f));
     }
   }
@@ -199,7 +225,7 @@ void CFlashbangProjectile::Detonate() {
 
 void CSmokeGrenadeProjectile::PhysicsSimulate() {
   if (m_bDidSmokeEffect) {
-    if (ServerTime() > m_flSmokeStart + SMOKE_DURATION) { m_bDetonated = true; Remove(); }
+    if (ServerTime() > m_flSmokeStart + SmokeDuration()) { m_bDetonated = true; Remove(); }
     return;
   }
   CBaseCSGrenadeProjectile::PhysicsSimulate();
@@ -210,15 +236,140 @@ void CSmokeGrenadeProjectile::Detonate() {
   if (m_bDidSmokeEffect) return;
   m_bDidSmokeEffect = true; m_flSmokeStart = ServerTime();
   m_vecSmokeCenter = m_vecOrigin; m_vecVelocity.Init(); m_bStopped = true;
-  s_smokes.push_back({ m_vecOrigin, m_flSmokeStart, m_flSmokeStart + SMOKE_DURATION });
+  s_smokes.push_back({ m_vecOrigin, m_flSmokeStart, m_flSmokeStart + SmokeDuration() });
   EmitSound("BaseSmokeEffect.Sound", m_vecOrigin, entindex(), 1.f);
-  IGameEvent ev("smokegrenade_detonate"); ev.SetInt("userid", m_hThrower ? m_hThrower->entindex() : 0).SetFloat("x", m_vecOrigin.x).SetFloat("y", m_vecOrigin.y).SetFloat("z", m_vecOrigin.z);
+  IGameEvent ev("smokegrenade_detonate"); ev.SetInt("userid", m_hThrower ? m_hThrower->entindex() : 0).SetFloat("x", m_vecOrigin.x).SetFloat("y", m_vecOrigin.y).SetFloat("z", m_vecOrigin.z).SetFloat("duration", SmokeDuration());
   gameeventmanager->FireEvent(ev);
 }
 float CSmokeGrenadeProjectile::GetSmokeRadius() const {
   if (!m_bDidSmokeEffect) return 0;
-  float age = ServerTime() - m_flSmokeStart, left = SMOKE_DURATION - age;
+  float age = ServerTime() - m_flSmokeStart, left = SmokeDuration() - age;
   return SMOKE_RADIUS * Clamp(age / 0.75f, 0.f, 1.f) * Clamp(left / 1.5f, 0.f, 1.f);
+}
+
+// ------------------------------------------------------------------------------------------------
+// molotov / incendiary
+void CMolotovProjectile::PhysicsSimulate() {
+  if (m_bDetonated) return;
+  CBaseCSGrenadeProjectile::PhysicsSimulate();            // air burst after the fuse -> Detonate()
+  if (m_bDetonated || m_bMarkedForDeletion) return;
+  if ((m_bBouncedThisTick && IsDetonateFloor(m_vecLastBounceNormal)) || m_bStopped) DetonateOnGround();
+}
+void CMolotovProjectile::Detonate() {
+  // fuse ran out in the air: the bottle pops, no fire
+  if (m_bDetonated) return;
+  EmitSound(m_iWeaponID == WEAPON_MOLOTOV ? "Molotov.Detonate" : "IncGrenade.Detonate", m_vecOrigin, entindex(), 0.8f);
+  IGameEvent ev("molotov_detonate"); ev.SetInt("userid", m_hThrower ? m_hThrower->entindex() : 0).SetFloat("x", m_vecOrigin.x).SetFloat("y", m_vecOrigin.y).SetFloat("z", m_vecOrigin.z).SetBool("air", true);
+  gameeventmanager->FireEvent(ev);
+  CBaseCSGrenadeProjectile::Detonate();
+}
+void CMolotovProjectile::DetonateOnGround() {
+  if (m_bDetonated) return;
+  EmitSound(m_iWeaponID == WEAPON_MOLOTOV ? "Molotov.Detonate" : "IncGrenade.Detonate", m_vecOrigin, entindex(), 1.f);
+  IGameEvent ev("molotov_detonate"); ev.SetInt("userid", m_hThrower ? m_hThrower->entindex() : 0).SetFloat("x", m_vecOrigin.x).SetFloat("y", m_vecOrigin.y).SetFloat("z", m_vecOrigin.z).SetBool("air", false);
+  gameeventmanager->FireEvent(ev);
+  g_EntityList.Add(new CInferno(m_iWeaponID, m_hThrower, m_vecOrigin));
+  CBaseCSGrenadeProjectile::Detonate();
+}
+
+static std::vector<CInferno*> s_infernos;
+std::vector<CInferno*>& GetActiveInfernos() { return s_infernos; }
+bool PointInFire(const Vector& p, float pad) { for (CInferno* f : s_infernos) if (f->IsPointBurning(p, pad)) return true; return false; }
+bool LineCrossesFire(const Vector& a, const Vector& b, float pad) {
+  float len = (b - a).Length(); int n = std::max(1, (int)(len / 16.f));
+  for (int i = 0; i <= n; i++) if (PointInFire(a + (b - a) * ((float)i / n), pad)) return true;
+  return false;
+}
+
+// ground point under p (nullopt: nothing within `drop`)
+static bool GroundBelow(const Vector& p, float drop, Vector& out) {
+  trace_t tr; UTIL_TraceLine(p + Vector(0, 0, 8), p - Vector(0, 0, drop), MASK_SOLID & ~CONTENTS_MONSTER, nullptr, &tr);
+  if (tr.startsolid || tr.fraction >= 1.f || tr.plane.normal.z < 0.6f) return false;
+  out = tr.endpos + Vector(0, 0, 1); return true;
+}
+
+CInferno::CInferno(int weaponId, CCSPlayer* thrower, const Vector& pos) {
+  m_iClassname = "inferno";
+  m_iWeaponID = weaponId; m_iThrower = thrower ? thrower->entindex() : 0;
+  m_iTeamNum = thrower ? thrower->m_iTeamNum : 0;
+  Vector g = pos; GroundBelow(pos, 48.f, g);
+  m_vecCenter = m_vecOrigin = m_vecOldOrigin = g;
+  m_flStart = ServerTime(); m_flEnd = m_flStart + inferno_flame_lifetime.GetFloat();
+  m_flNextSpread = m_flStart + 0.08f; m_flNextSound = m_flStart + 0.4f;
+  m_Flames.push_back({ g, m_flStart, 1.15f, RandomFloat(0, 6.28f) });
+  s_infernos.push_back(this);
+}
+CInferno::~CInferno() { s_infernos.erase(std::remove(s_infernos.begin(), s_infernos.end(), this), s_infernos.end()); }
+
+float CInferno::Fade() const {
+  float now = ServerTime();
+  if (now >= m_flEnd) return 0.f;
+  return Clamp((m_flEnd - now) / 0.8f, 0.f, 1.f);
+}
+bool CInferno::IsPointBurning(const Vector& p, float pad) const {
+  if (m_bExtinguished || Fade() < 0.3f) return false;
+  float r = FLAME_RADIUS + pad;
+  for (const InfernoFlame& f : m_Flames) {
+    float dz = p.z - f.pos.z; if (dz < -24.f || dz > 56.f) continue;
+    float dx = p.x - f.pos.x, dy = p.y - f.pos.y; if (dx * dx + dy * dy < r * r * f.size * f.size) return true;
+  }
+  return false;
+}
+void CInferno::Extinguish() {
+  if (m_bExtinguished) return;
+  m_bExtinguished = true; m_flEnd = std::min(m_flEnd, ServerTime() + 0.5f);
+  EmitSound("Inferno.Extinguish", m_vecCenter, entindex(), 1.f);
+  IGameEvent ev("inferno_extinguish"); ev.SetInt("userid", m_iThrower).SetFloat("x", m_vecCenter.x).SetFloat("y", m_vecCenter.y).SetFloat("z", m_vecCenter.z);
+  gameeventmanager->FireEvent(ev);
+}
+
+void CInferno::PhysicsSimulate() {
+  const float now = ServerTime(), dt = gpGlobals->interval_per_tick;
+  if (now >= m_flEnd) {
+    IGameEvent ev("inferno_expire"); ev.SetFloat("x", m_vecCenter.x).SetFloat("y", m_vecCenter.y).SetFloat("z", m_vecCenter.z); gameeventmanager->FireEvent(ev);
+    Remove(); return;
+  }
+  // a smoke over the fire puts it out (CS:GO)
+  if (!m_bExtinguished) for (const SmokeVolume& sv : s_smokes) {
+    if (now < sv.start || now > sv.end) continue;
+    for (const InfernoFlame& f : m_Flames) if (f.pos.DistTo(sv.center) < SMOKE_RADIUS) { Extinguish(); break; }
+    if (m_bExtinguished) break;
+  }
+  // spread: new flames hop out from existing ones over the first ~2 seconds, never through walls, flowing down ledges
+  int maxFlames = std::max(1, inferno_max_flames.GetInt());
+  while (!m_bExtinguished && now >= m_flNextSpread && now < m_flStart + 2.2f && (int)m_Flames.size() < maxFlames) {
+    m_flNextSpread += 0.11f;
+    for (int attempt = 0; attempt < 6; attempt++) {
+      const InfernoFlame& par = m_Flames[RandomInt(0, (int)m_Flames.size() - 1)];
+      float a = RandomFloat(0, 6.2832f), d = RandomFloat(34.f, 52.f);
+      Vector cand = par.pos + Vector(std::cos(a) * d, std::sin(a) * d, 0);
+      Vector off = cand - m_vecCenter; off.z = 0;
+      if (off.Length() > inferno_max_range.GetFloat()) continue;
+      trace_t tr; UTIL_TraceHull(par.pos + Vector(0, 0, 12), cand + Vector(0, 0, 12), Vector(-4, -4, -4), Vector(4, 4, 4), MASK_SOLID & ~CONTENTS_MONSTER, nullptr, &tr);
+      if (tr.startsolid || tr.fraction < 1.f) continue;
+      Vector g; if (!GroundBelow(cand + Vector(0, 0, 12), 140.f, g)) continue;
+      bool close = false; for (const InfernoFlame& f : m_Flames) if ((f.pos - g).Length() < 26.f) { close = true; break; }
+      if (close) continue;
+      m_Flames.push_back({ g, now, RandomFloat(0.8f, 1.1f), RandomFloat(0, 6.28f) });
+      break;
+    }
+  }
+  // fire sound (no looping channels: re-trigger the CS:GO loop sample)
+  if (!m_bExtinguished && now >= m_flNextSound) { EmitSound("Inferno.Loop", m_vecCenter, entindex(), 0.7f); m_flNextSound = now + 4.3f; }
+  // damage: inferno_damage per second, in 0.25 s steps, to everybody standing in it (the thrower too; teammates follow friendly fire)
+  if (m_bExtinguished) return;
+  CCSPlayer* thrower = m_iThrower ? UTIL_PlayerByIndex(m_iThrower) : nullptr;
+  for (CCSPlayer* p : UTIL_GetPlayers(true)) {
+    int i = p->entindex(); if (i <= 0 || i >= 65) continue;
+    if (!IsPointBurning(p->m_vecOrigin)) continue;
+    if (now < m_flNextDamage[i]) continue;
+    m_flNextDamage[i] = now + 0.25f;
+    CTakeDamageInfo info; info.m_hAttacker = thrower; info.m_hInflictor = this; info.m_iWeaponID = m_iWeaponID;
+    info.m_flDamage = inferno_damage.GetFloat() * 0.25f; info.m_bitsDamageType = DMG_BURN;
+    info.m_vecDamagePosition = p->m_vecOrigin + Vector(0, 0, 8); info.m_iHitGroup = HITGROUP_GENERIC;
+    p->OnTakeDamage(info);
+  }
+  (void)dt;
 }
 
 // ------------------------------------------------------------------------------------------------

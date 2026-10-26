@@ -32,6 +32,7 @@ static struct {
   float deployStart = -100, deployLen = 0.5f;
   Vector muzzle;
   float landKick = 0; bool wasOnGround = true;
+  float airBob = 0;
 } vm;
 
 void VM_Reset() { vm.lastWeapon = nullptr; vm.lastWeaponId = -1; vm.kick = 0; vm.sway = QAngle(); vm.deployStart = -100; }
@@ -49,6 +50,9 @@ void VM_Update(float dt) {
   if (onGround && !vm.wasOnGround) vm.landKick = 1.f;
   vm.wasOnGround = onGround;
   vm.landKick = std::max(0.f, vm.landKick - dt * 5.f);
+  // CS:GO-like viewmodel lift in air
+  if (!onGround) vm.airBob = std::min(1.f, vm.airBob + dt * 2.f);
+  else vm.airBob = std::max(0.f, vm.airBob - dt * 3.f);
   // sway: lag behind view rotation
   QAngle cur = cl.view.angles;
   QAngle d(AngleDiff(cur.x, vm.lastAngles.x), AngleDiff(cur.y, vm.lastAngles.y), 0);
@@ -72,6 +76,7 @@ static const char* Cs16WeaponModel(int wid) {
     case WEAPON_AK47: return "ak47"; case WEAPON_M4A1: case WEAPON_M4A1_SILENCER: return "m4a1"; case WEAPON_SG556: return "sg552"; case WEAPON_AUG: return "aug";
     case WEAPON_SSG08: return "scout"; case WEAPON_AWP: return "awp"; case WEAPON_G3SG1: return "g3sg1"; case WEAPON_SCAR20: return "sg550";
     case WEAPON_HEGRENADE: return "hegrenade"; case WEAPON_FLASHBANG: return "flashbang"; case WEAPON_SMOKEGRENADE: return "smokegrenade"; case WEAPON_C4: return "c4";
+    case WEAPON_MOLOTOV: case WEAPON_INCGRENADE: return "hegrenade";
     case WEAPON_ELITE: return "elite"; case WEAPON_FIVESEVEN: return "fiveseven"; case WEAPON_TEC9: return "glock18"; case WEAPON_CZ75A: return "p228";
     case WEAPON_HKP2000: return "usp"; case WEAPON_MP7: case WEAPON_MP5SD: return "mp5"; case WEAPON_BIZON: return "ump45";
     case WEAPON_MAG7: return "xm1014"; case WEAPON_SAWEDOFF: return "m3"; case WEAPON_M249: case WEAPON_NEGEV: return "m249";
@@ -145,7 +150,7 @@ static bool DrawOriginalViewModel(const CViewSetup& view, CCSPlayer* p, C_Weapon
   // GoldSrc places the view model at the eye with the view angles; bob and sway on top
   float bt = vm.bobTime * 2.f * (float)M_PI / std::max(0.1f, cl_bobcycle.GetFloat());
   QAngle ang = view.angles; ang.x += vm.sway.x * 0.3f; ang.y += vm.sway.y * 0.3f;
-  Vector org = view.origin + view.forward * (std::sin(bt) * 0.4f * vm.bob) - view.up * (vm.landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * vm.bob);
+  Vector org = view.origin + view.forward * (std::sin(bt) * 0.4f * vm.bob) - view.up * (vm.landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * vm.bob - vm.airBob * 1.5f);
   org += view.right * viewmodel_offset_x.GetFloat() + view.forward * viewmodel_offset_y.GetFloat() + view.up * viewmodel_offset_z.GetFloat();
   matrix3x4_t xf; AngleMatrix(ang, org, xf);
 

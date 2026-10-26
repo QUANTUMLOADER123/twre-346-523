@@ -247,12 +247,24 @@ void CMaterialSystem::Init() {
     uint8_t g = c8(Clamp(shade, 0.f, 1.f) * 255);
     return Color{ g, g, g, c8(Clamp(a, 0.f, 1.f) * 255) };
   });
+  // fire tongue (molotov / incendiary): wide base at the bottom of the sprite, flickering noisy tip, white-yellow core
+  flame = sprite(64, [](float u, float v, int x, int y) {
+    float t = (1.f - v) * 0.5f;                                // 0 bottom -> 1 top
+    float n = fbm(x / 64.f * 5, y / 64.f * 3, 5, 733, 4);
+    float halfw = 0.8f * std::sqrt(Clamp(t * 4.f, 0.f, 1.f)) * std::pow(Clamp(1.f - t, 0.f, 1.f), 0.55f);
+    float uu = u + (n - 0.5f) * 0.32f * t;
+    float inside = halfw > 0.01f ? 1.f - std::fabs(uu) / halfw : 0.f;
+    inside = Clamp(inside + (n - 0.5f) * 0.25f, 0.f, 1.f);
+    float a = std::sqrt(inside) * Clamp(t * 7.f, 0.f, 1.f) * (1.f - 0.35f * t);
+    float core = std::pow(inside, 1.6f) * (1.f - t * 0.7f);
+    return Color{ 255, c8(Clamp(105 + 150 * core, 0.f, 255.f)), c8(Clamp(20 + 170 * core * core, 0.f, 255.f)), c8(Clamp(a, 0.f, 1.f) * 255) };
+  });
   initialized = true;
 }
 void CMaterialSystem::Shutdown() {
   if (!initialized) return;
   for (auto& m : m_mats) if (m.tex.id) UnloadTexture(m.tex);
-  for (Texture2D* t : { &white, &smoke, &spark, &flare, &decalHole, &glowDot, &cloud, &smokePuff }) if (t->id) UnloadTexture(*t);
+  for (Texture2D* t : { &white, &smoke, &spark, &flare, &decalHole, &glowDot, &cloud, &smokePuff, &flame }) if (t->id) UnloadTexture(*t);
   initialized = false;
 }
 int CMaterialSystem::FindByName(const std::string& n) const {

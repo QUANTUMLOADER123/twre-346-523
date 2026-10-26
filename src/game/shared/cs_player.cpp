@@ -394,7 +394,8 @@ void CCSPlayer::Event_Killed(const CTakeDamageInfo& info) {
   C_WeaponCSBase* drop = Weapon_GetSlot(WEAPON_SLOT_RIFLE); if (!drop) drop = Weapon_GetSlot(WEAPON_SLOT_PISTOL);
   if (drop) Weapon_Drop(drop, false);
   if (HasC4()) DropC4();
-  if (C_WeaponCSBase* g = Weapon_OwnsThisType(WEAPON_HEGRENADE)) Weapon_Drop(g, false);
+  for (int id : { WEAPON_HEGRENADE, WEAPON_MOLOTOV, WEAPON_INCGRENADE, WEAPON_FLASHBANG, WEAPON_SMOKEGRENADE })   // the best grenade
+    if (C_WeaponCSBase* g = Weapon_OwnsThisType(id)) { Weapon_Drop(g, false); break; }
   m_bHasDefuser = false;
   // the dead keep their remaining weapons? no: CS strips everything except what was dropped
   RemoveAllItems(false);
@@ -439,6 +440,7 @@ C_WeaponCSBase* CCSPlayer::GiveWeapon(int id) {
       return nullptr;
     }
     if (GetGrenadeCount() >= 4) return nullptr;
+    if (IsFireGrenade(id) && (Weapon_OwnsThisType(WEAPON_MOLOTOV) || Weapon_OwnsThisType(WEAPON_INCGRENADE))) return nullptr;   // one fire grenade
   } else if (wi->slot == WEAPON_SLOT_RIFLE || wi->slot == WEAPON_SLOT_PISTOL || wi->slot == WEAPON_SLOT_KNIFE || wi->slot == WEAPON_SLOT_C4) {
     if (C_WeaponCSBase* old = Weapon_GetSlot(wi->slot)) {
       if (old->GetCSWeaponID() == id && wi->slot != WEAPON_SLOT_C4) { old->m_iClip1 = wi->clipSize; old->m_iPrimaryReserveAmmoCount = wi->reserveAmmo; return old; }
@@ -497,7 +499,7 @@ void CCSPlayer::SelectSlot(int slot) {
   if (slot == WEAPON_SLOT_GRENADES) {
     // cycle through grenades
     std::vector<C_WeaponCSBase*> nades;
-    for (int id : { WEAPON_HEGRENADE, WEAPON_FLASHBANG, WEAPON_SMOKEGRENADE }) if (auto* g = Weapon_OwnsThisType(id)) nades.push_back(g);
+    for (int id : { WEAPON_HEGRENADE, WEAPON_FLASHBANG, WEAPON_SMOKEGRENADE, WEAPON_MOLOTOV, WEAPON_INCGRENADE }) if (auto* g = Weapon_OwnsThisType(id)) nades.push_back(g);
     if (nades.empty()) return;
     size_t cur = 0; for (size_t i = 0; i < nades.size(); i++) if (nades[i] == m_hActiveWeapon) cur = i + 1;
     Weapon_Switch(nades[cur % nades.size()]);
@@ -564,6 +566,7 @@ bool CCSPlayer::BuyItem(const char* alias, bool silent) {
     if (have->m_iClip1 >= maxCount) { if (!silent) Msg("You cannot carry any more.\n"); return false; }
   }
   if (IsGrenade(wi->id) && GetGrenadeCount() >= 4) { if (!silent) Msg("You cannot carry any more grenades.\n"); return false; }
+  if (IsFireGrenade(wi->id) && (Weapon_OwnsThisType(WEAPON_MOLOTOV) || Weapon_OwnsThisType(WEAPON_INCGRENADE))) { if (!silent) Msg("You cannot carry any more.\n"); return false; }
   if (!charge(wi->price)) return false;
   C_WeaponCSBase* w = GiveWeapon(wi->id);
   if (!w) { m_iAccount += wi->price; return false; }

@@ -8,7 +8,7 @@ ConVar sv_friction("sv_friction", "5.2", FCVAR_REPLICATED | FCVAR_NOTIFY, "World
 ConVar sv_stopspeed("sv_stopspeed", "80", FCVAR_REPLICATED | FCVAR_NOTIFY, "Minimum stopping speed when on ground");
 ConVar sv_accelerate("sv_accelerate", "5.5", FCVAR_REPLICATED | FCVAR_NOTIFY, "Linear acceleration amount");
 ConVar sv_airaccelerate("sv_airaccelerate", "12", FCVAR_REPLICATED | FCVAR_NOTIFY, "Air acceleration");
-ConVar sv_air_max_wishspeed("sv_air_max_wishspeed", "30", FCVAR_REPLICATED, "Max wish speed in air");
+ConVar sv_air_max_wishspeed("sv_air_max_wishspeed", "46", FCVAR_REPLICATED, "Max wish speed in air (air strafe gain per tick; 46 -> about 250 to 400 u/s in one jump)");
 ConVar sv_maxspeed("sv_maxspeed", "320", FCVAR_REPLICATED | FCVAR_NOTIFY, "Maximum speed");
 ConVar sv_maxvelocity("sv_maxvelocity", "3500", FCVAR_REPLICATED, "Maximum speed any ballistically moving object is allowed to attain per axis");
 ConVar sv_stepsize("sv_stepsize", "18", FCVAR_REPLICATED, "Step height");
@@ -111,7 +111,27 @@ void CGameMovement::CheckVelocity() {
   }
 }
 
+// Source CGameMovement::CheckStuck: the box ended up a hair inside the world (slope seams, displacement edges) - every
+// trace then starts solid and the player freezes. Nudge it out to the nearest free spot (up first, then sideways)
+bool CGameMovement::CheckStuck() {
+  trace_t t; TracePlayerBBox(mv->m_vecAbsOrigin, mv->m_vecAbsOrigin, MASK_PLAYERSOLID, t);
+  if (!t.startsolid) return false;
+  static const float kUp[] = { 0.125f, 0.25f, 0.5f, 1.f, 2.f, 4.f };
+  static const float kSide[] = { 0.125f, 0.5f, 1.f, 2.f };
+  const Vector org = mv->m_vecAbsOrigin;
+  auto tryAt = [&](const Vector& p) { trace_t s; TracePlayerBBox(p, p, MASK_PLAYERSOLID, s); if (s.startsolid) return false; mv->m_vecAbsOrigin = p; return true; };
+  for (float u : kUp) if (tryAt(org + Vector(0, 0, u))) return true;
+  for (float d : kSide)
+    for (int dx = -1; dx <= 1; dx++)
+      for (int dy = -1; dy <= 1; dy++) {
+        if (!dx && !dy) continue;
+        for (float u : { 0.f, 0.5f, 2.f }) if (tryAt(org + Vector(dx * d, dy * d, u))) return true;
+      }
+  return true;   // really stuck (inside a brush / player) - leave it, the slide code handles the rest
+}
+
 void CGameMovement::FullWalkMove() {
+  CheckStuck();
   StartGravity();
   if (mv->m_nButtons & IN_JUMP) CheckJumpButton();
   else mv->m_nOldButtons &= ~IN_JUMP;
@@ -224,6 +244,11 @@ void CGameMovement::StepMove(const Vector& vecDestination, trace_t& trace) {
   vecEndPos = mv->m_vecAbsOrigin; vecEndPos.z -= sv_stepsize.GetFloat() + DIST_EPSILON;
   TracePlayerBBox(mv->m_vecAbsOrigin, vecEndPos, MASK_PLAYERSOLID, trace);
   if (!trace.startsolid && !trace.allsolid) mv->m_vecAbsOrigin = trace.endpos;
+  if (trace.fraction != 1.f && trace.plane.normal.z < 0.7f && GroundInQuadrants(mv->m_vecAbsOrigin, sv_stepsize.GetFloat() + DIST_EPSILON)) {
+    // the step-down landed on a steep seam plane of a slope / brush edge, but part of the box stands on walkable ground
+    // (Source's TryTouchGroundInQuadrants): keep the stepped position instead of freezing at the seam
+    trace.plane.normal.z = 1.f;
+  }
   if (trace.fraction != 1.f && trace.plane.normal.z < 0.7f) { mv->m_vecAbsOrigin = vecDownPos; mv->m_vecVelocity = vecDownVel; return; }
   Vector vecUpPos = mv->m_vecAbsOrigin;
   float flDownDist = (vecDownPos.x - vecPos.x) * (vecDownPos.x - vecPos.x) + (vecDownPos.y - vecPos.y) * (vecDownPos.y - vecPos.y);
@@ -245,7 +270,35 @@ int CGameMovement::ClipVelocity(const Vector& in, const Vector& normal, Vector& 
   return blocked;
 }
 
+bool CGameMovement::GroundInQuadrants(const Vector& origin, float depth) {
+  Vector mins = GetMins(), maxs = GetMaxs(), end = origin; end.z -= depth;
+  const Vector q[4][2] = { { mins, Vector(0, 0, maxs.z) }, { Vector(0, 0, mins.z), maxs }, { Vector(mins.x, 0, mins.z), Vector(0, maxs.y, maxs.z) }, { Vector(0, mins.y, mins.z), Vector(maxs.x, 0, maxs.z) } };
+  for (int i = 0; i < 4; i++) {
+    Ray_t ray; ray.Init(origin, end, q[i][0], q[i][1]); CTraceFilter f(player); trace_t t;
+    g_EngineTrace.TraceRay(ray, MASK_PLAYERSOLID, &f, &t);
+    if (!t.startsolid && t.fraction < 1.f && t.plane.normal.z >= 0.7f) return true;
+  }
+  return false;
+}
+
 int CGameMovement::TryPlayerMove(Vector* pFirstDest, trace_t* pFirstTrace) {
+  const Vector startOrigin = mv->m_vecAbsOrigin, startVel = mv->m_vecVelocity;
+  int r = TryPlayerMoveInner(pFirstDest, pFirstTrace);
+  // on the ground and not moved at all although we wanted to (the trace reports several planes at fraction 0 on seams of
+  // slopes / displacement edges): lift the box by a hair and slide once more instead of freezing in place
+  if ((player->m_fFlags & FL_ONGROUND) && mv->m_vecAbsOrigin == startOrigin && startVel.Length2D() > 1.f && mv->m_vecVelocity.Length2D() < 1.f) {
+    Vector lifted = startOrigin; lifted.z += DIST_EPSILON * 4.f;
+    trace_t t; TracePlayerBBox(lifted, lifted, MASK_PLAYERSOLID, t);
+    if (!t.startsolid && !t.allsolid) {
+      mv->m_vecAbsOrigin = lifted; mv->m_vecVelocity = startVel;
+      r = TryPlayerMoveInner(nullptr, nullptr);
+      if (mv->m_vecAbsOrigin == lifted) { mv->m_vecAbsOrigin = startOrigin; mv->m_vecVelocity.Init(); }
+    }
+  }
+  return r;
+}
+
+int CGameMovement::TryPlayerMoveInner(Vector* pFirstDest, trace_t* pFirstTrace) {
   int bumpcount, numbumps = 4, blocked = 0, numplanes = 0;
   Vector planes[MAX_CLIP_PLANES];
   Vector original_velocity = mv->m_vecVelocity, primal_velocity = mv->m_vecVelocity, new_velocity;
@@ -310,9 +363,12 @@ bool CGameMovement::CheckJumpButton() {
     float maxscaledspeed = 1.1f * player->m_flMaxspeed;
     if (maxscaledspeed > 0) { float spd = mv->m_vecVelocity.Length(); if (spd > maxscaledspeed) mv->m_vecVelocity *= maxscaledspeed / spd; }
   }
-  if (sv_bhop_reset.GetBool() && player->m_flMaxspeed > 0) {
+  if (sv_bhop_reset.GetBool()) {
+    // reset to the RUNNING speed of the weapon: m_flMaxspeed is the cropped ground speed (duck / walk), using it made a
+    // crouch bhop (duck held while landing) drop to ~85 u/s every jump
+    const float runSpeed = player->GetPlayerMaxSpeed();
     float spd = mv->m_vecVelocity.Length2D();
-    if (spd > player->m_flMaxspeed) { float k = player->m_flMaxspeed / spd; mv->m_vecVelocity.x *= k; mv->m_vecVelocity.y *= k; }
+    if (runSpeed > 0 && spd > runSpeed) { float k = runSpeed / spd; mv->m_vecVelocity.x *= k; mv->m_vecVelocity.y *= k; }
   }
   player->m_fFlags &= ~FL_ONGROUND;
   player->m_hGroundEntity = nullptr;
@@ -365,12 +421,20 @@ void CGameMovement::CategorizePosition() {
         if (t2.fraction < 1.f && t2.plane.normal.z >= 0.7f) { pm = t2; found = true; }
       }
       if (found) { SetGroundEntity(&pm); return; }
-      // wedged on a steep face (velocity gets cleared every tick instead of sliding): after a few ticks
-      // let it count as ground so the player can walk / jump off instead of hanging in the air forever
-      bool wedged = mv->m_vecVelocity.z <= 0.f && mv->m_vecVelocity.z > -20.f && pm.plane.normal.z > 0.05f &&
-                    (player->m_nWedgedTicks > 6 || mv->m_vecVelocity.Length2D() < 2.f);   // once wedged, stay "grounded" until we leave the face
+      // wedged in a crease of steep faces (velocity gets cleared every tick instead of sliding): after a few ticks let
+      // it count as ground so the player can walk / jump off. Only when sliding down the face is really blocked -
+      // pressing into a single steep wall / slope near the jump apex used to "stick" the player to it (he became
+      // grounded, vz was zeroed every tick and he hung there)
+      bool wedged = false;
+      if (mv->m_vecVelocity.z <= 0.f && mv->m_vecVelocity.z > -20.f && pm.plane.normal.z > 0.05f) {
+        const Vector n = pm.plane.normal;
+        Vector slide = Vector(0, 0, -1) - n * (-n.z); slide.NormalizeInPlace();   // gravity projected onto the face
+        trace_t st; TracePlayerBBox(mv->m_vecAbsOrigin, mv->m_vecAbsOrigin + slide * 2.f, MASK_PLAYERSOLID, st);
+        trace_t dn; TracePlayerBBox(mv->m_vecAbsOrigin, mv->m_vecAbsOrigin + Vector(0, 0, -2.f), MASK_PLAYERSOLID, dn);
+        wedged = !st.startsolid && st.fraction < 0.1f && dn.fraction < 0.1f;
+      }
       player->m_nWedgedTicks = wedged ? player->m_nWedgedTicks + 1 : 0;
-      if (player->m_nWedgedTicks > 6) { SetGroundEntity(&pm); return; }
+      if (player->m_nWedgedTicks > 3) { SetGroundEntity(&pm); return; }
     } else player->m_nWedgedTicks = 0;
     SetGroundEntity(nullptr);
   } else {

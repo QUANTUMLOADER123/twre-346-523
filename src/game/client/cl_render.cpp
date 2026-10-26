@@ -280,6 +280,66 @@ void CBaseCSGrenadeProjectile::DrawModel(const CViewSetup&) {
 void CBaseCSGrenadeProjectile::DrawTranslucent(const CViewSetup&) {}
 void CSmokeGrenadeProjectile::DrawTranslucent(const CViewSetup&) {}
 
+// fire: camera-facing vertical tongues per flame (additive), a soft glow on the ground, rising smoke and embers
+void CInferno::DrawTranslucent(const CViewSetup& v) {
+  if (!g_MaterialSystem.initialized || m_Flames.empty()) return;
+  const float now = ServerTime(), fade = Fade();
+  if (fade <= 0.f) return;
+  if (gpGlobals->realtime >= m_flNextFx && !m_bExtinguished) {
+    m_flNextFx = gpGlobals->realtime + 0.05f;
+    const InfernoFlame& f = m_Flames[RandomInt(0, (int)m_Flames.size() - 1)];
+    FX_Ember(f.pos + Vector(RandomFloat(-12, 12), RandomFloat(-12, 12), 10));
+    if (RandomInt(0, 2) == 0) FX_FireSmoke(f.pos + Vector(RandomFloat(-10, 10), RandomFloat(-10, 10), 40), 1.f + 0.4f * fade);
+  }
+  rlDrawRenderBatchActive(); BeginBlendMode(BLEND_ADDITIVE); rlDisableDepthMask(); rlDisableBackfaceCulling();
+  // ground glow
+  rlSetTexture(g_MaterialSystem.glowDot.id); rlBegin(RL_QUADS);
+  for (const InfernoFlame& f : m_Flames) {
+    float grow = Clamp((now - f.born) / 0.35f, 0.f, 1.f); float r = 46.f * f.size * grow;
+    float flick = 0.8f + 0.2f * std::sin(now * 11.f + f.phase * 3.f);
+    rlColor4ub(255, 120, 30, (uint8_t)(110 * fade * flick)); Vector c = f.pos + Vector(0, 0, 1.5f);
+    rlTexCoord2f(0, 0); rlVertex3f(c.x - r, c.y - r, c.z); rlTexCoord2f(1, 0); rlVertex3f(c.x + r, c.y - r, c.z);
+    rlTexCoord2f(1, 1); rlVertex3f(c.x + r, c.y + r, c.z); rlTexCoord2f(0, 1); rlVertex3f(c.x - r, c.y + r, c.z);
+  }
+  rlEnd();
+  // tongues: vertical quads turned towards the camera around the z axis
+  rlSetTexture(g_MaterialSystem.flame.id); rlBegin(RL_QUADS);
+  for (const InfernoFlame& f : m_Flames) {
+    float grow = Clamp((now - f.born) / 0.35f, 0.f, 1.f);
+    float die = m_bExtinguished ? fade : Clamp(fade * 1.4f, 0.f, 1.f);
+    for (int k = 0; k < 5; k++) {
+      float ph = f.phase + k * 1.257f;
+      float rr = k == 0 ? 0.f : 13.f;
+      Vector base = f.pos + Vector(std::cos(ph) * rr * f.size, std::sin(ph) * rr * f.size, -1.f);
+      float h = (k == 0 ? 44.f : 30.f) * f.size * grow * (0.4f + 0.6f * die) * (0.8f + 0.2f * std::sin(now * 9.f + ph * 1.7f));
+      float w = h * 0.62f;
+      Vector to = v.origin - base; to.z = 0; float l = to.Length(); if (l < 1.f) continue; to = to / l;
+      Vector right(-to.y, to.x, 0); right = right * w;
+      Vector top = base + Vector(std::sin(now * 5.f + ph) * 3.f, std::cos(now * 4.f + ph) * 3.f, h);   // the tip sways
+      uint8_t a = (uint8_t)(235 * die);
+      rlColor4ub(255, 255, 255, a);
+      rlTexCoord2f(0, 1); rlVertex3f(base.x - right.x, base.y - right.y, base.z);
+      rlTexCoord2f(1, 1); rlVertex3f(base.x + right.x, base.y + right.y, base.z);
+      rlTexCoord2f(1, 0); rlVertex3f(top.x + right.x, top.y + right.y, top.z);
+      rlTexCoord2f(0, 0); rlVertex3f(top.x - right.x, top.y - right.y, top.z);
+    }
+  }
+  rlEnd();
+  // hot glow in the middle of every flame
+  rlSetTexture(g_MaterialSystem.glowDot.id); rlBegin(RL_QUADS);
+  for (const InfernoFlame& f : m_Flames) {
+    float grow = Clamp((now - f.born) / 0.35f, 0.f, 1.f), s = 22.f * f.size * grow;
+    Vector c = f.pos + Vector(0, 0, 14.f * f.size);
+    rlColor4ub(255, 140, 40, (uint8_t)(120 * fade * (0.85f + 0.15f * std::sin(now * 13.f + f.phase))));
+    Vector r = v.right * s, u = v.up * s;
+    rlTexCoord2f(0, 1); rlVertex3f(c.x - r.x - u.x, c.y - r.y - u.y, c.z - r.z - u.z);
+    rlTexCoord2f(1, 1); rlVertex3f(c.x + r.x - u.x, c.y + r.y - u.y, c.z + r.z - u.z);
+    rlTexCoord2f(1, 0); rlVertex3f(c.x + r.x + u.x, c.y + r.y + u.y, c.z + r.z + u.z);
+    rlTexCoord2f(0, 0); rlVertex3f(c.x - r.x + u.x, c.y - r.y + u.y, c.z - r.z + u.z);
+  }
+  rlEnd(); rlSetTexture(0); rlDrawRenderBatchActive(); rlEnableDepthMask(); rlEnableBackfaceCulling(); EndBlendMode();
+}
+
 void CPlantedC4::DrawModel(const CViewSetup&) {
   matrix3x4_t rot; AngleMatrix(QAngle(0, m_flYaw, 0), rot); rot.SetOrigin(m_vecOrigin + Vector(0, 0, 0.5f));
   StudioDrawParams p; p.modelToWorld = rot; p.light = LightAt(m_vecOrigin + Vector(0, 0, 8));
@@ -310,6 +370,8 @@ void CL_DrawEntities(const CViewSetup& view) {
     if ((c - view.origin).Dot(view.forward) < -80.f) continue;
     e->DrawModel(view);
   }
+  // translucent pass (fire): after every opaque model, before the particles / smoke
+  for (CInferno* f : GetActiveInfernos()) if (f && !f->m_bMarkedForDeletion) f->DrawTranslucent(view);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -352,7 +414,11 @@ static void OnGameEvent(const IGameEvent& e) {
     for (int i = 0; i < 4; i++) FX_Explosion(pos + Vector(RandomFloat(-80, 80), RandomFloat(-80, 80), RandomFloat(0, 120)));
     s_shakeAmount = 6.f; s_shakeEnd = gpGlobals->realtime + 2.f;
   } else if (e.IsEvent("smokegrenade_detonate")) {
-    FX_SmokeCloud(Vector(e.GetFloat("x"), e.GetFloat("y"), e.GetFloat("z")), ServerTime(), 18.f);
+    FX_SmokeCloud(Vector(e.GetFloat("x"), e.GetFloat("y"), e.GetFloat("z")), ServerTime(), e.GetFloat("duration") > 0 ? e.GetFloat("duration") : SmokeDuration());
+  } else if (e.IsEvent("molotov_detonate")) {
+    FX_MolotovBurst(Vector(e.GetFloat("x"), e.GetFloat("y"), e.GetFloat("z")), e.GetBool("air"));
+  } else if (e.IsEvent("inferno_extinguish")) {
+    Vector pos(e.GetFloat("x"), e.GetFloat("y"), e.GetFloat("z")); FX_SteamPuff(pos);
   } else if (e.IsEvent("flashbang_detonate")) {
     Vector pos(e.GetFloat("x"), e.GetFloat("y"), e.GetFloat("z")); FX_Spark(pos, 25);
   } else if (e.IsEvent("player_hurt")) {

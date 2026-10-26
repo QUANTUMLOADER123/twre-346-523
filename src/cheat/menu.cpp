@@ -481,7 +481,8 @@ static void ColorPickerW(const char* idLabel, Col& col, float rightOffset = 0) {
   Rect(x, y, w, h, MkCol(255, 255, 255)); Rect(x, y, w / 2, h / 2, MkCol(200, 200, 200)); Rect(x + w / 2, y + h / 2, w / 2, h / 2, MkCol(200, 200, 200));
   Rect(x, y, w, h, col);
   Outline(x, y, w, h, hv ? MkCol(60, 60, 60) : FieldBorder());
-  if (hv && mPressed) openPopup = openPopup == id ? 0 : id;
+  bool justOpened = false;
+  if (hv && mPressed) { openPopup = openPopup == id ? 0 : id; justOpened = openPopup == id; }
   if (openPopup == id) {
     Col* pc = &col; float px = x + w + 6, py = y;
     deferred.push_back([=]() {
@@ -511,7 +512,8 @@ static void ColorPickerW(const char* idLabel, Col& col, float rightOffset = 0) {
       surface()->DrawGradientH(sx, sy + sz + 5, sz, 9 * S, { pc->r, pc->g, pc->b, 0 }, { pc->r, pc->g, pc->b, 255 });
       Outline(sx - 1, sy + sz + 4, sz + 2, 9 * S + 2, MkCol(110, 110, 110));
       Rect(sx + pc->a / 255.f * sz - 1, sy + sz + 4, 3, 9 * S + 2, MkCol(20, 20, 20));
-      if (mPressed && !Hover(qx, py, pw, ph) && !drag) { openPopup = 0; lastId = 0; }
+      // the click that opened the picker lands on the swatch, outside the popup: don't treat it as "click away"
+      if (mPressed && !justOpened && !Hover(qx, py, pw, ph) && !drag) { openPopup = 0; lastId = 0; }
     });
   }
 }

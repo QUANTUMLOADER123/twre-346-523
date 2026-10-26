@@ -115,6 +115,46 @@ void FX_Explosion(const Vector& pos) {
   s_decals.push_back({ pos + Vector(0, 0, 0.3f), Vector(0, 0, 1), 60.f, gpGlobals->realtime, false });
 }
 
+void FX_MolotovBurst(const Vector& pos, bool air) {
+  for (int i = 0; i < (air ? 22 : 14); i++) {
+    Particle p; p.pos = pos + Vector(0, 0, 6); p.vel = Vector(RandomFloat(-1, 1), RandomFloat(-1, 1), RandomFloat(air ? -0.6f : 0.f, 1.f)).Normalized() * RandomFloat(60, 240);
+    p.size = RandomFloat(14, 26); p.sizeVel = 50; p.life = p.maxLife = RandomFloat(0.25f, 0.5f); p.color = { 255, (unsigned char)RandomInt(110, 170), 30, 255 };
+    p.drag = 4.f; p.gravity = -0.1f; p.tex = 2; p.additive = true; p.rot = RandomFloat(0, 360); p.rotVel = RandomFloat(-90, 90);
+    AddParticle(p);
+  }
+  for (int i = 0; i < 8; i++) {   // glass shards
+    Particle p; p.pos = pos + Vector(0, 0, 4); p.vel = Vector(RandomFloat(-1, 1), RandomFloat(-1, 1), RandomFloat(0.3f, 1.2f)).Normalized() * RandomFloat(120, 260);
+    p.size = 0.9f; p.life = p.maxLife = RandomFloat(0.3f, 0.6f); p.color = { 200, 230, 210, 220 }; p.gravity = 1.f; p.drag = 0.5f; p.tex = 1; p.additive = true; p.stretch = true;
+    AddParticle(p);
+  }
+  for (int i = 0; i < 6; i++) {
+    Particle p; p.pos = pos + Vector(RandomFloat(-16, 16), RandomFloat(-16, 16), RandomFloat(8, 30)); p.vel = Vector(RandomFloat(-20, 20), RandomFloat(-20, 20), RandomFloat(30, 70));
+    p.size = RandomFloat(16, 26); p.sizeVel = 22; p.life = p.maxLife = RandomFloat(1.f, 1.8f); unsigned char g = (unsigned char)RandomInt(35, 60); p.color = { g, g, g, 160 };
+    p.drag = 1.2f; p.tex = 0; p.rot = RandomFloat(0, 360); p.rotVel = RandomFloat(-30, 30);
+    AddParticle(p);
+  }
+}
+void FX_SteamPuff(const Vector& pos) {
+  for (int i = 0; i < 18; i++) {
+    Particle p; p.pos = pos + Vector(RandomFloat(-90, 90), RandomFloat(-90, 90), RandomFloat(0, 20)); p.vel = Vector(RandomFloat(-15, 15), RandomFloat(-15, 15), RandomFloat(40, 90));
+    p.size = RandomFloat(18, 32); p.sizeVel = 25; p.life = p.maxLife = RandomFloat(1.2f, 2.2f); p.color = { 210, 210, 210, 150 };
+    p.drag = 1.f; p.tex = 0; p.rot = RandomFloat(0, 360); p.rotVel = RandomFloat(-25, 25);
+    AddParticle(p);
+  }
+}
+void FX_FireSmoke(const Vector& pos, float scale) {
+  Particle p; p.pos = pos; p.vel = Vector(RandomFloat(-8, 8), RandomFloat(-8, 8), RandomFloat(50, 90));
+  p.size = RandomFloat(10, 16) * scale; p.sizeVel = 18 * scale; p.life = p.maxLife = RandomFloat(1.3f, 2.2f); unsigned char g = (unsigned char)RandomInt(25, 45); p.color = { g, g, g, 120 };
+  p.drag = 0.6f; p.tex = 0; p.rot = RandomFloat(0, 360); p.rotVel = RandomFloat(-20, 20);
+  AddParticle(p);
+}
+void FX_Ember(const Vector& pos) {
+  Particle p; p.pos = pos; p.vel = Vector(RandomFloat(-25, 25), RandomFloat(-25, 25), RandomFloat(60, 140));
+  p.size = RandomFloat(0.5f, 0.9f); p.life = p.maxLife = RandomFloat(0.5f, 1.1f); p.color = { 255, (unsigned char)RandomInt(140, 200), 60, 255 };
+  p.gravity = -0.05f; p.drag = 0.8f; p.tex = 1; p.additive = true; p.stretch = true;
+  AddParticle(p);
+}
+
 void FX_Blood(const Vector& pos, const Vector& dir) {
   if (!r_drawparticles.GetBool()) return;
   for (int i = 0; i < 6; i++) {

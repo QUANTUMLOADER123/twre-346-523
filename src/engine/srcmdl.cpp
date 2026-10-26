@@ -1,4 +1,5 @@
 // srcmdl.cpp - Source studio model loader
+#include <cctype>
 #include "srcmdl.hpp"
 #include "srcfs.hpp"
 #include "srcmaterial.hpp"
@@ -131,13 +132,21 @@ bool CSrcModel::Load(const std::string& path) {
     }
   } else for (int i = 0; i < numLod0; i++) verts.push_back(vertAt(i));
 
+  // body group choices that differ from 0 (the CS:GO view models from ARC9 carry attachment variants as body groups)
+  std::vector<int> bodygroups;
+  {
+    std::string base = path.substr(path.find_last_of("/\\") + 1);
+    for (auto& ch : base) ch = (char)std::tolower((unsigned char)ch);
+    if (base == "c_snip_ssg08.mdl") bodygroups = { 0, 0, 0, 0, 0, 2 };   // CS:GO SSG 08: no bipod
+    if (base == "c_snip_scar20.mdl") bodygroups = { 0, 2, 0, 0, 0, 1 };  // CS:GO SCAR-20: scope mount (ARC9 element "mount")
+  }
   int vtxBodyParts = Rd<int>(vtx, 28), vtxBpOff = Rd<int>(vtx, 32);
   int numBp = Rd<int>(d, 232), bpIdx = Rd<int>(d, 236);
   for (int bp = 0; bp < numBp && bp < vtxBodyParts; bp++) {
     size_t mbp = (size_t)bpIdx + bp * 16; int nModels = Rd<int>(d, mbp + 4); size_t mModels = mbp + Rd<int>(d, mbp + 12);
     size_t vbp = (size_t)vtxBpOff + bp * 8; size_t vModels = vbp + Rd<int>(vtx, vbp + 4);
     if (nModels <= 0) continue;
-    int mi = 0;   // body group 0
+    int mi = bp < (int)bodygroups.size() ? std::min(bodygroups[bp], nModels - 1) : 0;
     size_t mm = mModels + (size_t)mi * 148;
     int nMeshes = Rd<int>(d, mm + 72); size_t mMeshes = mm + Rd<int>(d, mm + 76); int modelVertIndex = Rd<int>(d, mm + 84) / 48;
     size_t vm = vModels + (size_t)mi * 8; size_t vLods = vm + Rd<int>(vtx, vm + 4);
@@ -201,6 +210,16 @@ Texture2D CSrcModel::MeshTexture(const SrcMdlMesh& m, int skin, bool* translucen
   if (translucent) *translucent = c.translucent;
   if (alphatest) *alphatest = c.alphatest;
   return c.tex;
+}
+
+// ARC9 render-target scope glass (needs a second view render) - not drawn
+bool CSrcModel::MeshHidden(const SrcMdlMesh& m, int skin) const {
+  int fam = (skin >= 0 && skin < (int)skins.size()) ? skin : 0;
+  int tex = m.skinRef;
+  if (fam < (int)skins.size() && m.skinRef < (int)skins[fam].size()) tex = skins[fam][m.skinRef];
+  if (tex < 0 || tex >= (int)textures.size()) return false;
+  const std::string& t = textures[tex];
+  return t.size() >= 7 && srcfs::Normalize(t.substr(t.size() - 7)) == "rtglass";
 }
 
 int CSrcModel::FindNamed(const std::string& q, bool bone) const {

@@ -78,15 +78,22 @@ static ConCommand cmd_hud_testkillfeed("hud_testkillfeed", [](const CCommand&) {
   for (const T& x : t) { DeathNotice d; d.killer = x.k; d.victim = x.v; d.weapon = x.w; d.kteam = x.kt; d.vteam = x.vt; d.hs = x.hs; d.wallbang = x.wb; d.smoke = x.smk; d.noscope = x.ns; d.blind = x.bl; d.localInvolved = x.local; d.time = gpGlobals->realtime; s_deaths.push_back(d); }
 }, "Fill the kill feed with sample entries");
 
+std::vector<std::pair<int, int>> g_HudRoundHistory;   // (winner team, RoundEndReason_t) per played round - scoreboard
 static void OnEvent(const IGameEvent& e) {
   CCSPlayer* lp = g_pLocalPlayer;
+  if (e.IsEvent("round_end")) {
+    int w = e.GetInt("winner"), r = e.GetInt("reason");
+    if ((w == TEAM_TERRORIST || w == TEAM_CT) && r != Game_Commencing) g_HudRoundHistory.push_back({ w, r });
+  } else if (e.IsEvent("round_start")) {
+    if (CCSGameRules* gr = CSGameRules()) if ((int)g_HudRoundHistory.size() > gr->m_iTotalRoundsPlayed) g_HudRoundHistory.resize(gr->m_iTotalRoundsPlayed);
+  }
   if (e.IsEvent("player_death")) {
     CCSPlayer* v = UTIL_PlayerByIndex(e.GetInt("userid")); CCSPlayer* a = UTIL_PlayerByIndex(e.GetInt("attacker")); CCSPlayer* as = UTIL_PlayerByIndex(e.GetInt("assister"));
     DeathNotice d;
     d.killer = (a && a != v) ? a->GetPlayerName() : ""; d.kteam = a ? a->m_iTeamNum : 0;
     d.victim = v ? v->GetPlayerName() : "?"; d.vteam = v ? v->m_iTeamNum : 0;
     d.assister = as ? as->GetPlayerName() : "";
-    d.weapon = e.GetString("weapon"); d.hs = e.GetBool("headshot"); d.wallbang = e.GetInt("penetrated") > 0; d.smoke = e.GetBool("thrusmoke"); d.noscope = e.GetBool("noscope"); d.blind = e.GetBool("attackerblind");
+    d.weapon = e.GetString("weapon"); if (d.weapon == "inferno") d.weapon = "weapon_molotov"; d.hs = e.GetBool("headshot"); d.wallbang = e.GetInt("penetrated") > 0; d.smoke = e.GetBool("thrusmoke"); d.noscope = e.GetBool("noscope"); d.blind = e.GetBool("attackerblind");
     d.localInvolved = lp && (a == lp || v == lp);
     d.time = gpGlobals->realtime;
     s_deaths.push_back(d); while (s_deaths.size() > 6) s_deaths.pop_front();
@@ -239,7 +246,7 @@ void HUD_Init() {
   if (!s_listener) s_listener = gameeventmanager->AddListener(nullptr, OnEvent);
 }
 void HUD_LevelInit() {
-  s_deaths.clear(); s_chat.clear(); s_lastMoney = -1;
+  s_deaths.clear(); s_chat.clear(); s_lastMoney = -1; g_HudRoundHistory.clear();
   if (IsWindowReady()) { BuildRadarTexture(); if (!s_scopeTex.id) BuildScopeTexture(); }
 }
 
@@ -431,59 +438,133 @@ static void DrawProgressBar(CCSPlayer* p, float sc) {
   surface()->DrawTextCentered(FONT_HUD_SMALL, label, W * 0.5f, y - 22 * sc, HUD, true);
 }
 
+// CS:GO-style round radar: the map is a triangle fan whose texture coordinates come from the inverse of the
+// world -> radar transform (both affine), so the circle is exact without a stencil
 static void DrawRadar(CCSPlayer* lp, float sc) {
   if (!cl_radar.GetBool() || !s_radarTex.id) return;
   const CMapInfo& m = g_MapInfo;
-  float size = 180 * sc, x0 = 12 * sc, y0 = 12 * sc;
+  const float size = 190 * sc, R = size * 0.5f, cx = 14 * sc + R, cy = 14 * sc + R;
   Vector center = cl.viewEntity ? cl.viewEntity->m_vecOrigin : cl.viewOrigin;
   float yaw = cl_radar_rotate.GetBool() ? cl.view.angles.y : 90.f;
   float unitsPerPx = 1.f / (cl_radar_scale.GetFloat() * 0.14f) * (1.f / sc);   // ~ world units per screen px
-  surface()->DrawFilledRect(x0, y0, size, size, { 0, 0, 0, 110 });
-  surface()->PushClip((int)x0, (int)y0, (int)size, (int)size);
-  float cx = x0 + size / 2, cy = y0 + size / 2;
+  const float a = DEG2RADF(yaw - 90.f), ca = std::cos(a), sa = std::sin(a);
   auto toRadar = [&](const Vector& p, Vector2& out) {
-    Vector d = p - center; float a = DEG2RADF(yaw - 90.f);
-    float rx = d.x * std::cos(a) + d.y * std::sin(a), ry = -d.x * std::sin(a) + d.y * std::cos(a);
+    Vector d = p - center;
+    float rx = d.x * ca + d.y * sa, ry = -d.x * sa + d.y * ca;
     out = { cx + rx / unitsPerPx, cy - ry / unitsPerPx };
   };
-  { // map image: its four corners through the same world -> radar transform (any overview orientation)
-    float W = (float)s_radarTex.width, H = (float)s_radarTex.height;
-    const float uv[4][2] = { { 0, 0 }, { 0, 1 }, { 1, 1 }, { 1, 0 } };
-    Vector2 sp[4];
-    for (int k = 0; k < 4; k++) toRadar(s_radarW0 + s_radarDU * (uv[k][0] * W) + s_radarDV * (uv[k][1] * H), sp[k]);
-    rlSetTexture(s_radarTex.id);
-    rlBegin(RL_QUADS);
-    rlColor4ub(255, 255, 255, 220);
-    for (int k = 0; k < 4; k++) { rlTexCoord2f(uv[k][0], uv[k][1]); rlVertex2f(sp[k].x, sp[k].y); }
+  // radar px -> world xy -> texture uv (solve world = W0 + DU*u + DV*v in the xy plane)
+  const float W = (float)s_radarTex.width, H = (float)s_radarTex.height;
+  const float det = s_radarDU.x * s_radarDV.y - s_radarDU.y * s_radarDV.x;
+  auto toUV = [&](float sx, float sy, float& u, float& v) {
+    float rx = (sx - cx) * unitsPerPx, ry = -(sy - cy) * unitsPerPx;
+    float wx = center.x + rx * ca - ry * sa - s_radarW0.x, wy = center.y + rx * sa + ry * ca - s_radarW0.y;
+    float pu = (wx * s_radarDV.y - wy * s_radarDV.x) / det, pv = (s_radarDU.x * wy - s_radarDU.y * wx) / det;
+    u = pu / W; v = pv / H;
+  };
+  const int N = 64;
+  // backdrop disc + map
+  for (int pass = 0; pass < 2; pass++) {
+    if (pass == 1 && std::fabs(det) < 1e-6f) break;
+    if (pass == 1) rlSetTexture(s_radarTex.id);
+    rlBegin(RL_TRIANGLES);
+    for (int i = 0; i < N; i++) {
+      float a0 = i * 2.f * (float)M_PI / N, a1 = (i + 1) * 2.f * (float)M_PI / N;
+      float px[3] = { cx, cx + R * std::cos(a1), cx + R * std::cos(a0) }, py[3] = { cy, cy + R * std::sin(a1), cy + R * std::sin(a0) };
+      for (int k = 0; k < 3; k++) {
+        if (pass == 0) rlColor4ub(10, 12, 14, 170);
+        else { float u, v; toUV(px[k], py[k], u, v); rlColor4ub(255, 255, 255, 225); rlTexCoord2f(u, v); }
+        rlVertex2f(px[k], py[k]);
+      }
+    }
     rlEnd();
-    rlSetTexture(0);
+    if (pass == 1) rlSetTexture(0);
   }
-  // players
+  auto inside = [&](const Vector2& s, float margin) { float dx = s.x - cx, dy = s.y - cy; return dx * dx + dy * dy <= (R - margin) * (R - margin); };
+  // bombsite letters
+  for (auto& z : m.zones) { if (z.type > ZONE_BOMBSITE_B) continue; Vector2 s; toRadar(z.Center(), s); if (inside(s, 8 * sc)) surface()->DrawTextCentered(FONT_GO_BOLD, z.type == ZONE_BOMBSITE_A ? "A" : "B", s.x, s.y - 8 * sc, { 255, 220, 120, 210 }, true); }
+  // players: teammates always (clamped to the rim like CS:GO), enemies while spotted
   for (CCSPlayer* p : UTIL_GetPlayers(true)) {
     if (p == cl.viewEntity) continue;
     bool friendly = lp->m_iTeamNum < TEAM_TERRORIST || p->m_iTeamNum == lp->m_iTeamNum;
     bool spotted = gpGlobals->realtime - p->m_flSpottedTime < 0.3f;
     if (!friendly && !spotted) continue;
     Vector2 s; toRadar(p->m_LagRecords.empty() ? p->m_vecOrigin : p->m_LagRecords.front().origin, s);
-    Color c = friendly ? (p->m_iTeamNum == TEAM_CT ? Color{ 90, 160, 255, 255 } : Color{ 255, 90, 60, 255 }) : Color{ 255, 40, 40, 255 };
+    if (!inside(s, 4 * sc)) {
+      if (!friendly) continue;
+      float dx = s.x - cx, dy = s.y - cy, l = std::sqrt(dx * dx + dy * dy); s = { cx + dx / l * (R - 4 * sc), cy + dy / l * (R - 4 * sc) };
+    }
+    Color c = friendly ? (p->m_iTeamNum == TEAM_CT ? Color{ 93, 152, 230, 255 } : Color{ 230, 168, 60, 255 }) : Color{ 240, 50, 50, 255 };
     if (p->HasC4() && (lp->m_iTeamNum == TEAM_TERRORIST || spotted)) c = { 255, 60, 200, 255 };
-    surface()->DrawFilledRect(s.x - 2.5f * sc, s.y - 2.5f * sc, 5 * sc, 5 * sc, BLACK);
-    surface()->DrawFilledRect(s.x - 2 * sc, s.y - 2 * sc, 4 * sc, 4 * sc, c);
+    // dot with a facing notch
+    float yawp = DEG2RADF(p->m_angEyeAngles.y - yaw);
+    Vector2 f = { -std::sin(yawp), -std::cos(yawp) };
+    surface()->DrawFilledCircle(s.x, s.y, 3.6f * sc, BLACK);
+    surface()->DrawFilledCircle(s.x, s.y, 2.8f * sc, c);
+    surface()->DrawLine(s.x, s.y, s.x + f.x * 6 * sc, s.y + f.y * 6 * sc, c);
   }
   // bomb
   Vector bombPos; bool bomb = false;
   if (g_pPlantedC4) { bombPos = g_pPlantedC4->m_vecOrigin; bomb = true; }
   else g_EntityList.ForEach([&](C_BaseEntity* e) { if (e->IsWeapon()) { auto* w = static_cast<C_WeaponCSBase*>(e); if (w->GetCSWeaponID() == WEAPON_C4 && !w->m_hOwner) { bombPos = w->m_vecOrigin; bomb = true; } } });
-  if (bomb && (lp->m_iTeamNum == TEAM_TERRORIST || g_pPlantedC4)) { Vector2 s; toRadar(bombPos, s); Color bc = std::fmod(gpGlobals->realtime, 0.6f) < 0.3f ? Color{ 255, 40, 40, 255 } : Color{ 255, 200, 0, 255 }; surface()->DrawFilledRect(s.x - 3 * sc, s.y - 2 * sc, 6 * sc, 4 * sc, bc); }
-  // bombsite letters
-  for (auto& z : m.zones) { if (z.type > ZONE_BOMBSITE_B) continue; Vector2 s; toRadar(z.Center(), s); surface()->DrawTextCentered(FONT_HUD_SMALL, z.type == ZONE_BOMBSITE_A ? "A" : "B", s.x, s.y - 8, { 255, 220, 120, 230 }, true); }
-  // local
-  surface()->DrawTriangle({ cx, cy - 6 * sc }, { cx - 4 * sc, cy + 4 * sc }, { cx + 4 * sc, cy + 4 * sc }, { 255, 255, 255, 240 });
-  surface()->PopClip();
-  surface()->DrawOutlinedRect(x0, y0, size, size, { 255, 176, 0, 120 });
-  // place name under radar
+  if (bomb && (lp->m_iTeamNum == TEAM_TERRORIST || g_pPlantedC4)) {
+    Vector2 s; toRadar(bombPos, s);
+    if (inside(s, 4 * sc)) {
+      Color bc = g_pPlantedC4 && std::fmod(gpGlobals->realtime, 0.6f) < 0.3f ? Color{ 255, 40, 40, 255 } : Color{ 255, 200, 0, 255 };
+      if (const Texture2D* ic = VGUI_SvgIcon("weapon_c4")) { float ih = 11 * sc, iw = ih * ic->width / (float)std::max(1, ic->height); DrawTexturePro(*ic, { 0, 0, (float)ic->width, (float)ic->height }, { s.x - iw / 2, s.y - ih / 2, iw, ih }, { 0, 0 }, 0, bc); }
+      else surface()->DrawFilledRect(s.x - 3 * sc, s.y - 2 * sc, 6 * sc, 4 * sc, bc);
+    }
+  }
+  // local player: white arrow in the centre
+  surface()->DrawTriangle({ cx, cy - 7 * sc }, { cx - 4.5f * sc, cy + 5 * sc }, { cx + 4.5f * sc, cy + 5 * sc }, { 255, 255, 255, 245 });
+  // rim
+  for (int i = 0; i < N; i++) {
+    float a0 = i * 2.f * (float)M_PI / N, a1 = (i + 1) * 2.f * (float)M_PI / N;
+    surface()->DrawLine(cx + R * std::cos(a0), cy + R * std::sin(a0), cx + R * std::cos(a1), cy + R * std::sin(a1), { 200, 205, 215, 150 });
+  }
+  // place name under the radar
   const char* place = g_MapInfo.GetPlaceName(center);
-  if (place && *place) surface()->DrawTextCentered(FONT_HUD_SMALL, place, x0 + size / 2, y0 + size + 4, { 120, 220, 120, 230 }, true);
+  if (place && *place) surface()->DrawTextCentered(FONT_GO_BOLD, place, cx, cy + R + 6 * sc, { 235, 235, 235, 220 }, true);
+}
+
+// CS:GO overheads: teammate weapon icon, name and a down arrow above the head (half transparent, close range only)
+ConVar cl_teamid_overhead("cl_teamid_overhead", "1", FCVAR_ARCHIVE, "Show teammate names / weapons above their heads");
+ConVar cl_teamid_overhead_maxdist("cl_teamid_overhead_maxdist", "700", FCVAR_ARCHIVE, "Overheads are hidden beyond this distance");
+ConVar cl_teamid_overhead_alpha("cl_teamid_overhead_alpha", "0.5", FCVAR_ARCHIVE, "Overhead opacity", true, 0.1f, true, 1.f);
+static void DrawOverheads(CCSPlayer* lp, float sc) {
+  if (!cl_teamid_overhead.GetBool() || lp->m_iTeamNum < TEAM_TERRORIST) return;
+  const float maxd = cl_teamid_overhead_maxdist.GetFloat(), fade = maxd * 0.8f, base = cl_teamid_overhead_alpha.GetFloat();
+  // far ones first so the closest teammate's overhead ends up on top; a bit smaller with distance
+  std::vector<std::pair<float, CCSPlayer*>> list;
+  for (CCSPlayer* p : UTIL_GetPlayers(true)) {
+    if (p == lp || p == cl.viewEntity || p->m_iTeamNum != lp->m_iTeamNum) continue;
+    float d = (p->m_bRenderPoseValid ? p->m_vecRenderOrigin : p->m_vecOrigin).DistTo(cl.view.origin);
+    if (d <= maxd) list.push_back({ d, p });
+  }
+  std::sort(list.begin(), list.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+  const float sc0 = sc;
+  for (auto& [dist, p] : list) {
+    Vector o = p->m_bRenderPoseValid ? p->m_vecRenderOrigin : p->m_vecOrigin;
+    const float sc = sc0 * Clamp(1.15f - dist / 1200.f, 0.7f, 1.f);
+    float al = base * (dist > fade ? 1.f - (dist - fade) / (maxd - fade) : 1.f);
+    Vector head = o + Vector(0, 0, 64.f - 18.f * Clamp(p->m_flDuckAmount, 0.f, 1.f) + 14.f);
+    Vector2D s; if (!cl.view.WorldToScreen(head, s)) continue;
+    Color tc = p->m_iTeamNum == TEAM_CT ? Color{ 110, 170, 245, 255 } : Color{ 240, 180, 70, 255 };
+    auto A = [&](Color c, float k = 1.f) { c.a = (unsigned char)Clamp(c.a * al * k, 0.f, 255.f); return c; };
+    // arrow (bottom)
+    float ay = s.y - 4 * sc;
+    surface()->DrawTriangle({ s.x - 7 * sc, ay - 8 * sc }, { s.x, ay }, { s.x + 7 * sc, ay - 8 * sc }, A(tc));   // counter-clockwise on screen
+    // name
+    const char* name = p->GetPlayerName();
+    float ny = ay - 26 * sc;
+    surface()->DrawTextCentered(FONT_GO_BOLD, name, s.x, ny, A({ 255, 255, 255, 255 }), true);
+    // weapon icon (top)
+    if (C_WeaponCSBase* w = p->GetActiveCSWeapon())
+      if (const Texture2D* ic = VGUI_WeaponIcon(w->GetCSWeaponID())) {
+        float ih = 16 * sc, iw = std::min(ih * ic->width / (float)std::max(1, ic->height), 70 * sc);
+        DrawTexturePro(*ic, { 0, 0, (float)ic->width, (float)ic->height }, { s.x - iw / 2, ny - ih - 3 * sc, iw, ih }, { 0, 0 }, 0, A({ 255, 255, 255, 255 }));
+      }
+  }
 }
 
 // CS:GO-style kill feed icons: weapon silhouettes from the CS:S buy menu pictures, small vector glyphs for the flags
@@ -690,6 +771,7 @@ void HUD_Paint() {
   } else if (vp != lp && vp->IsAlive()) {
     DrawHealthArmor(vp, sc);
   }
+  if (!cl.showScores) DrawOverheads(lp, sc);
   if (lp->m_iTeamNum != TEAM_UNASSIGNED || lp->IsAlive()) DrawTimer(sc);
   DrawRadar(lp, sc);
   DrawDeathNotices(sc);

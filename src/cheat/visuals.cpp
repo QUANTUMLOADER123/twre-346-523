@@ -186,7 +186,7 @@ void Visuals_DrawWorld3D(const CViewSetup& view) {
         for (size_t i = 1; i < path.points.size(); i++) { const Vector &a = path.points[i - 1], &b = path.points[i]; DrawLine3D({ a.x, a.y, a.z }, { b.x, b.y, b.z }, s.grenadeCol); }
         for (const Vector& b : path.bounces) DrawCubeWires({ b.x, b.y, b.z }, 3, 3, 3, { 255, 255, 255, 200 });
         const Vector& d = path.detonate;
-        float r = w->GetCSWeaponID() == WEAPON_HEGRENADE ? 350.f * 0.4f : w->GetCSWeaponID() == WEAPON_SMOKEGRENADE ? 144.f : 40.f;
+        float r = w->GetCSWeaponID() == WEAPON_HEGRENADE ? 350.f * 0.4f : w->GetCSWeaponID() == WEAPON_SMOKEGRENADE ? 144.f : IsFireGrenade(w->GetCSWeaponID()) ? 120.f : 40.f;
         for (int i = 0; i < 32; i++) { float a0 = i * 2 * M_PI_F / 32, a1 = (i + 1) * 2 * M_PI_F / 32; DrawLine3D({ d.x + std::cos(a0) * r, d.y + std::sin(a0) * r, d.z + 2 }, { d.x + std::cos(a1) * r, d.y + std::sin(a1) * r, d.z + 2 }, Col(s.grenadeCol).Alpha(160)); }
         rlDrawRenderBatchActive(); rlEnableDepthTest();
       }
@@ -338,8 +338,10 @@ static void DrawWorldESP() {
       CBaseCSGrenadeProjectile* gp = (CBaseCSGrenadeProjectile*)e;
       if (gp->m_bDetonated && gp->m_iWeaponID != WEAPON_SMOKEGRENADE) continue;
       if (!W2S(e->m_vecOrigin, sp)) continue;
-      const char* n = gp->m_iWeaponID == WEAPON_HEGRENADE ? "HE" : gp->m_iWeaponID == WEAPON_FLASHBANG ? "FLASH" : "SMOKE";
-      Col c = gp->m_iWeaponID == WEAPON_HEGRENADE ? MkCol(255, 80, 80) : gp->m_iWeaponID == WEAPON_FLASHBANG ? MkCol(255, 255, 120) : MkCol(180, 180, 180);
+      const char* n = gp->m_iWeaponID == WEAPON_HEGRENADE ? "HE" : gp->m_iWeaponID == WEAPON_FLASHBANG ? "FLASH" : gp->m_iWeaponID == WEAPON_MOLOTOV ? "MOLOTOV" :
+                      gp->m_iWeaponID == WEAPON_INCGRENADE ? "INCENDIARY" : "SMOKE";
+      Col c = gp->m_iWeaponID == WEAPON_HEGRENADE ? MkCol(255, 80, 80) : gp->m_iWeaponID == WEAPON_FLASHBANG ? MkCol(255, 255, 120) :
+              IsFireGrenade(gp->m_iWeaponID) ? MkCol(255, 150, 40) : MkCol(180, 180, 180);
       TxtC(FONT_ICONS_SMALL, n, sp.x, sp.y - 4, c);
     } else if (e->m_iEntClass == ENTCLASS_PLANTED_C4 && s.bombEsp) {
       CPlantedC4* c4 = (CPlantedC4*)e;
@@ -347,6 +349,15 @@ static void DrawWorldESP() {
       float left = std::max(0.f, c4->m_flC4Blow - ServerTime());
       TxtC(FONT_CHEAT_BOLD, TextFormat("BOMB %c  %.1fs", c4->m_nBombSite == 1 ? 'B' : 'A', left), sp.x, sp.y, left < 10 ? MkCol(255, 60, 60) : MkCol(255, 255, 255));
     }
+  }
+  // fire timers + outline
+  if (s.grenadeEsp) for (CInferno* f : GetActiveInfernos()) {
+    if (!f || f->m_bMarkedForDeletion) continue;
+    Vector2D sp; if (!W2S(f->m_vecCenter + Vector(0, 0, 30), sp)) continue;
+    float left = f->m_flEnd - ServerTime(), tot = f->m_flEnd - f->m_flStart;
+    TxtC(FONT_ICONS_SMALL, "FIRE", sp.x, sp.y - 12, MkCol(255, 150, 40));
+    surface()->DrawFilledRect(sp.x - 20, sp.y, 40, 4, { 0, 0, 0, 150 });
+    surface()->DrawFilledRect(sp.x - 19, sp.y + 1, 38 * Clamp(left / std::max(0.1f, tot), 0.f, 1.f), 2, { 255, 140, 40, 230 });
   }
   // smoke timers
   if (s.grenadeEsp) for (const SmokeVolume& sv : GetActiveSmokes()) {

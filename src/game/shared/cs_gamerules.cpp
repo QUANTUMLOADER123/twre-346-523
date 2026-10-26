@@ -303,7 +303,7 @@ void CCSGameRules::PlayerKilled(CCSPlayer* victim, const CTakeDamageInfo& info) 
       if (headshot) { attacker->m_iHeadshots++; attacker->m_iNumRoundKillsHeadshots++; }
       const CCSWeaponInfo* wi = GetWeaponInfo(weaponId);
       int award = wi ? wi->killAward : 300;
-      if (weaponId == WEAPON_HEGRENADE) award = 300;
+      if (weaponId == WEAPON_HEGRENADE || weaponId == WEAPON_MOLOTOV || weaponId == WEAPON_INCGRENADE) award = 300;
       attacker->m_iAccount = std::min(mp_maxmoney_value(), attacker->m_iAccount + (IsDeathmatch() ? 0 : award));
     }
   } else if (!attacker || attacker == victim) {

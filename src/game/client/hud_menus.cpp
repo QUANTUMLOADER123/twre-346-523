@@ -86,13 +86,16 @@ static std::vector<BuyItem> GetCategory(int cat, int team) {
     case LOADOUT_CAT_GEAR:
       add("vest", 0, "Kevlar Vest", 650, 0, "kevlar"); add("vesthelm", 0, "Kevlar + Helmet", 1000, 0, "kevlar_helmet");
       add("defuser", 0, "Defuse Kit", 400, FindConVar("mp_buy_anyteam")->GetBool() ? 0 : TEAM_CT, "defuser");
-      add("primammo", 0, "Primary Ammo", 0, 0, "bullet"); add("secammo", 0, "Secondary Ammo", 0, 0, "cartridge");
       break;
-    case LOADOUT_CAT_GRENADES:
+    case LOADOUT_CAT_GRENADES: {
+      const bool any = FindConVar("mp_buy_anyteam")->GetBool();
+      add("molotov", WEAPON_MOLOTOV, "Molotov", GetWeaponInfo(WEAPON_MOLOTOV)->price, any ? 0 : TEAM_TERRORIST, nullptr);
+      add("incgrenade", WEAPON_INCGRENADE, "Incendiary Grenade", GetWeaponInfo(WEAPON_INCGRENADE)->price, any ? 0 : TEAM_CT, nullptr);
       add("flashbang", WEAPON_FLASHBANG, "Flashbang", GetWeaponInfo(WEAPON_FLASHBANG)->price, 0, nullptr);
       add("hegrenade", WEAPON_HEGRENADE, "HE Grenade", GetWeaponInfo(WEAPON_HEGRENADE)->price, 0, nullptr);
       add("smokegrenade", WEAPON_SMOKEGRENADE, "Smoke Grenade", GetWeaponInfo(WEAPON_SMOKEGRENADE)->price, 0, nullptr);
       break;
+    }
     default:
       for (int id : Loadout_CategoryWeapons(cat, team)) {
         const CCSWeaponInfo* wi = GetWeaponInfo(id); if (!wi) continue;
@@ -126,7 +129,7 @@ static bool BuySelect(int n) {
   CCSPlayer* lp = g_pLocalPlayer; if (!lp) return false;
   if (s_buyCategory < 0) { if (n >= 1 && n <= kNumCategories) { s_buyCategory = n - 1; s_hoverItem = -1; return true; } return false; }
   auto items = GetCategory(s_buyCategory, lp->m_iTeamNum);
-  if (n >= 1 && n <= (int)items.size()) { Buy(items[n - 1].alias); CloseBuyMenu(); return true; }
+  if (n >= 1 && n <= (int)items.size()) { Buy(items[n - 1].alias); return true; }   // stays open (ESC / B / right click closes)
   return false;
 }
 
@@ -226,48 +229,126 @@ void HUD_DrawBuyMenu() {
 
 // ------------------------------------------------------------------------------------------------
 // scoreboard
-void HUD_DrawScoreboard() {
-  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  float w = std::min(900.f, W - 40.f), h = std::min(620.f, H - 80.f), x = (W - w) / 2, y = (H - h) / 2;
-  surface()->DrawFilledRect(x, y, w, h, { 0, 0, 0, 185 });
-  surface()->DrawOutlinedRect(x, y, w, h, { 255, 176, 0, 110 });
-  CCSGameRules* gr = CSGameRules();
-  surface()->DrawText(FONT_MENU_TITLE, "Counter-Strike: HvH", x + 16, y + 10, MENU_ORANGE);
-  surface()->DrawTextRight(FONT_UI, TextFormat("%s   |   Round %d / %d", g_MapInfo.name.c_str(), gr->m_iTotalRoundsPlayed + 1, FindConVar("mp_maxrounds")->GetInt()), x + w - 16, y + 16, { 220, 200, 150, 255 });
-  float colScore = x + w - 250, colDeaths = x + w - 180, colAssist = x + w - 120, colPing = x + w - 60;
-  float ty = y + 48;
-  CCSPlayer* lp = g_pLocalPlayer;
-  for (int team : { TEAM_TERRORIST, TEAM_CT }) {
-    std::vector<CCSPlayer*> ps;
-    for (CCSPlayer* p : UTIL_GetPlayers()) if (p->m_iTeamNum == team) ps.push_back(p);
-    std::sort(ps.begin(), ps.end(), [](CCSPlayer* a, CCSPlayer* b) { return a->m_iKills != b->m_iKills ? a->m_iKills > b->m_iKills : a->m_iDeaths < b->m_iDeaths; });
-    Color tc = TeamColor(team);
-    int alive = 0; for (auto* p : ps) alive += p->IsAlive();
-    surface()->DrawText(FONT_DEFAULT_BOLD, TextFormat("%s   -   %d players (%d alive)", team == TEAM_TERRORIST ? "TERRORISTS" : "COUNTER-TERRORISTS", (int)ps.size(), alive), x + 16, ty, tc);
-    surface()->DrawTextRight(FONT_MENU_TITLE, TextFormat("%d", team == TEAM_TERRORIST ? gr->m_iNumTerroristWins : gr->m_iNumCTWins), colScore - 40, ty - 4, tc);
-    surface()->DrawTextRight(FONT_UI, "Score", colScore, ty, tc); surface()->DrawTextRight(FONT_UI, "Deaths", colDeaths, ty, tc);
-    surface()->DrawTextRight(FONT_UI, "Assists", colAssist, ty, tc); surface()->DrawTextRight(FONT_UI, "Latency", colPing, ty, tc);
-    ty += 20; surface()->DrawFilledRect(x + 12, ty, w - 24, 1, tc); ty += 4;
-    for (CCSPlayer* p : ps) {
-      if (p == lp) surface()->DrawFilledRect(x + 12, ty - 1, w - 24, 18, { 255, 255, 255, 30 });
-      Color c = tc; if (!p->IsAlive()) c.a = 120;
-      surface()->DrawText(FONT_UI, p->GetPlayerName(), x + 20, ty, c);
-      float sx = x + 20 + surface()->GetTextWide(FONT_UI, p->GetPlayerName()) + 12;
-      if (!p->IsAlive()) { surface()->DrawText(FONT_UI, "Dead", sx, ty, { 200, 200, 200, 160 }); sx += 40; }
-      if (p->HasC4() && lp && lp->m_iTeamNum == TEAM_TERRORIST) { surface()->DrawText(FONT_UI, "Bomb", sx, ty, { 255, 120, 120, 220 }); sx += 40; }
-      if (p->m_bHasDefuser && lp && lp->m_iTeamNum == TEAM_CT) { surface()->DrawText(FONT_UI, "Defuser", sx, ty, { 120, 200, 255, 220 }); sx += 50; }
-      if (p->m_iMVPs > 0) surface()->DrawText(FONT_UI, TextFormat("*%d", p->m_iMVPs), sx, ty, { 255, 220, 80, 220 });
-      surface()->DrawTextRight(FONT_UI, TextFormat("%d", p->m_iKills), colScore, ty, c);
-      surface()->DrawTextRight(FONT_UI, TextFormat("%d", p->m_iDeaths), colDeaths, ty, c);
-      surface()->DrawTextRight(FONT_UI, TextFormat("%d", p->m_iAssists), colAssist, ty, c);
-      surface()->DrawTextRight(FONT_UI, p->IsBot() ? "BOT" : TextFormat("%d", p->m_iPing), colPing, ty, c);
-      ty += 18;
-    }
-    ty += 18;
+extern std::vector<std::pair<int, int>> g_HudRoundHistory;
+namespace {
+constexpr Color kSbCT = { 93, 121, 174, 255 }, kSbT = { 222, 155, 53, 255 };   // CS:GO scoreboard team colours
+Color SbTeam(int team) { return team == TEAM_CT ? kSbCT : kSbT; }
+void SbIcon(const char* svg, float x, float y, float h, Color c) {
+  if (const Texture2D* ic = VGUI_SvgIcon(svg)) { float w = h * ic->width / (float)std::max(1, ic->height); DrawTexturePro(*ic, { 0, 0, (float)ic->width, (float)ic->height }, { x - w / 2, y - h / 2, w, h }, { 0, 0 }, 0, c); }
+}
+void SbRoundGlyph(int reason, float x, float y, float s, Color c) {
+  if (reason == Target_Bombed) { if (VGUI_SvgIcon("weapon_c4")) SbIcon("weapon_c4", x, y, s, c); else surface()->DrawFilledRect(x - s * 0.4f, y - s * 0.3f, s * 0.8f, s * 0.6f, c); }
+  else if (reason == Bomb_Defused) { if (VGUI_SvgIcon("item_defuser")) SbIcon("item_defuser", x, y, s, c); else surface()->DrawFilledRect(x - s * 0.4f, y - s * 0.15f, s * 0.8f, s * 0.3f, c); }
+  else if (reason == Target_Saved) {   // clock
+    surface()->DrawFilledCircle(x, y, s * 0.42f, c); surface()->DrawFilledCircle(x, y, s * 0.30f, { 20, 22, 26, 255 });
+    surface()->DrawLine(x, y, x, y - s * 0.24f, c, 1.5f); surface()->DrawLine(x, y, x + s * 0.18f, y, c, 1.5f);
+  } else {   // elimination: skull
+    surface()->DrawFilledCircle(x, y - s * 0.06f, s * 0.36f, c); surface()->DrawFilledRect(x - s * 0.2f, y + s * 0.12f, s * 0.4f, s * 0.26f, c);
+    Color e = { 20, 22, 26, 255 }; surface()->DrawFilledCircle(x - s * 0.14f, y - s * 0.04f, s * 0.09f, e); surface()->DrawFilledCircle(x + s * 0.14f, y - s * 0.04f, s * 0.09f, e);
   }
+}
+}
+
+// CS:GO scoreboard: header with the match score, CT and T panels (ping, name, money, K / A / D, MVPs, HS %, score)
+// and the round history strip between them
+void HUD_DrawScoreboard() {
+  using namespace csgo;
+  const int W = surface()->ScreenWide(), H = surface()->ScreenTall();
+  CCSGameRules* gr = CSGameRules(); CCSPlayer* lp = g_pLocalPlayer;
+  const float sc = std::clamp(H / 900.f, 0.7f, 1.4f);
+  const float w = std::min(1040.f * sc, W - 30.f), x = (W - w) / 2;
+  const float rowH = 26 * sc, headH = 54 * sc, histH = 34 * sc;
+  std::vector<CCSPlayer*> teams[2];
+  for (CCSPlayer* p : UTIL_GetPlayers()) { if (p->m_iTeamNum == TEAM_CT) teams[0].push_back(p); else if (p->m_iTeamNum == TEAM_TERRORIST) teams[1].push_back(p); }
+  for (auto& t : teams) std::sort(t.begin(), t.end(), [](CCSPlayer* a, CCSPlayer* b) { return a->m_iScore != b->m_iScore ? a->m_iScore > b->m_iScore : a->m_iKills != b->m_iKills ? a->m_iKills > b->m_iKills : a->m_iDeaths < b->m_iDeaths; });
+  const int rowsCT = std::max<int>(5, (int)teams[0].size()), rowsT = std::max<int>(5, (int)teams[1].size());
+  const float colHeadH = 20 * sc;
+  float totalH = headH + 8 * sc + (colHeadH + rowsCT * rowH) + histH + (colHeadH + rowsT * rowH) + 30 * sc;
+  float y = std::max(10.f, (H - totalH) / 2);
+  // header: map, score, round
+  surface()->DrawFilledRect(x, y, w, headH, { 12, 14, 17, 225 });
+  const int ctWins = gr ? gr->m_iNumCTWins : 0, tWins = gr ? gr->m_iNumTerroristWins : 0;
+  const float mx = x + w / 2;
+  surface()->DrawFilledRect(mx - 150 * sc, y, 120 * sc, headH, Alpha(kSbCT, 0.85f));
+  surface()->DrawFilledRect(mx + 30 * sc, y, 120 * sc, headH, Alpha(kSbT, 0.85f));
+  surface()->DrawTextCentered(FONT_GO_HUGE, TextFormat("%d", ctWins), mx - 90 * sc, y + headH / 2 - 24 * sc, Text, true);
+  surface()->DrawTextCentered(FONT_GO_HUGE, TextFormat("%d", tWins), mx + 90 * sc, y + headH / 2 - 24 * sc, Text, true);
+    surface()->DrawTextCentered(FONT_GO_TITLE, ":", mx, y + headH / 2 - 12 * sc, TextDim);
+  surface()->DrawText(FONT_GO_TITLE, g_MapInfo.name.c_str(), x + 16 * sc, y + 10 * sc, Text);
+  surface()->DrawText(FONT_GO, "Competitive  |  Counter-Strike: HvH", x + 16 * sc, y + 32 * sc, TextDim);
+  if (gr) surface()->DrawTextRight(FONT_GO_BOLD, TextFormat("ROUND %d / %d", gr->m_iTotalRoundsPlayed + 1, FindConVar("mp_maxrounds")->GetInt()), x + w - 16 * sc, y + 19 * sc, Text);
+  y += headH + 8 * sc;
+
+  // columns (right aligned, from the right edge)
+  const float cScore = x + w - 14 * sc, cHs = cScore - 78 * sc, cMvp = cHs - 62 * sc, cD = cMvp - 56 * sc, cA = cD - 44 * sc, cK = cA - 44 * sc, cMoney = cK - 76 * sc;
+  const float cPing = x + 100 * sc, cName = x + 146 * sc;
+  auto teamPanel = [&](int ti, int team, int rows) {
+    const Color tc = SbTeam(team);
+    const bool showMoney = lp && lp->m_iTeamNum == team;
+    // column header
+    surface()->DrawFilledRect(x, y, w, colHeadH, { 12, 14, 17, 215 });
+    surface()->DrawFilledRect(x, y, 4 * sc, colHeadH + rows * rowH, tc);
+    const float hy = y + 3 * sc; const Color hc = TextDim;
+    surface()->DrawText(FONT_GO_BOLD, team == TEAM_CT ? "COUNTER-TERRORISTS" : "TERRORISTS", cName, hy, tc);
+    surface()->DrawTextRight(FONT_GO, "PING", cPing, hy, hc);
+    if (showMoney) surface()->DrawTextRight(FONT_GO, "MONEY", cMoney, hy, hc);
+    surface()->DrawTextRight(FONT_GO, "K", cK, hy, hc); surface()->DrawTextRight(FONT_GO, "A", cA, hy, hc); surface()->DrawTextRight(FONT_GO, "D", cD, hy, hc);
+    surface()->DrawTextRight(FONT_GO, "MVP", cMvp, hy, hc); surface()->DrawTextRight(FONT_GO, "HS%", cHs, hy, hc); surface()->DrawTextRight(FONT_GO, "SCORE", cScore, hy, hc);
+    y += colHeadH;
+    // big team score block on the left
+    surface()->DrawFilledRect(x + 4 * sc, y, 50 * sc, rows * rowH, Alpha(tc, 0.28f));
+    surface()->DrawTextCentered(FONT_GO_HUGE, TextFormat("%d", team == TEAM_CT ? ctWins : tWins), x + 29 * sc, y + rows * rowH / 2 - 16 * sc, tc, true);
+    for (int r = 0; r < rows; r++) {
+      const float ry = y + r * rowH;
+      Color bg = (r & 1) ? Color{ 34, 37, 43, 215 } : Color{ 26, 29, 34, 215 };
+      CCSPlayer* p = r < (int)teams[ti].size() ? teams[ti][r] : nullptr;
+      if (p && p == lp) bg = { 64, 70, 82, 235 };
+      surface()->DrawFilledRect(x + 54 * sc, ry, w - 54 * sc, rowH - 1, bg);
+      if (!p) continue;
+      const bool dead = !p->IsAlive();
+      Color c = dead ? Color{ 130, 134, 142, 255 } : Text;
+      const float ty = ry + (rowH - 15 * sc) / 2;
+      surface()->DrawTextRight(FONT_GO, p->IsBot() ? "BOT" : TextFormat("%d", p->m_iPing), cPing, ty, TextDim);
+      // avatar square in team colour
+      surface()->DrawFilledRect(cName - 30 * sc, ry + 3 * sc, rowH - 6 * sc, rowH - 6 * sc, Alpha(tc, dead ? 0.35f : 0.9f));
+      if (dead) SbRoundGlyph(CTs_Win, cName - 30 * sc + (rowH - 6 * sc) / 2, ry + rowH / 2, rowH * 0.55f, { 230, 230, 230, 200 });
+      surface()->DrawText(FONT_GO_BOLD, p->GetPlayerName(), cName, ty, c);
+      float sx = cName + surface()->GetTextWide(FONT_GO_BOLD, p->GetPlayerName()) + 10 * sc;
+      if (p->HasC4() && lp && lp->m_iTeamNum == TEAM_TERRORIST) { SbIcon("weapon_c4", sx + 9 * sc, ry + rowH / 2, 14 * sc, { 255, 120, 120, 240 }); sx += 24 * sc; }
+      if (p->m_bHasDefuser && lp && lp->m_iTeamNum == TEAM_CT) { SbIcon("item_defuser", sx + 9 * sc, ry + rowH / 2, 14 * sc, { 140, 200, 255, 240 }); sx += 24 * sc; }
+      if (showMoney) surface()->DrawTextRight(FONT_GO, TextFormat("$%d", p->m_iAccount), cMoney, ty, { 140, 210, 120, 255 });
+      surface()->DrawTextRight(FONT_GO_BOLD, TextFormat("%d", p->m_iKills), cK, ty, c);
+      surface()->DrawTextRight(FONT_GO, TextFormat("%d", p->m_iAssists), cA, ty, c);
+      surface()->DrawTextRight(FONT_GO, TextFormat("%d", p->m_iDeaths), cD, ty, c);
+      if (p->m_iMVPs > 0) surface()->DrawTextRight(FONT_GO, TextFormat("\xE2\x98\x85%d", p->m_iMVPs), cMvp, ty, Gold);
+      surface()->DrawTextRight(FONT_GO, p->m_iKills ? TextFormat("%d%%", (int)std::lround(100.0 * p->m_iHeadshots / p->m_iKills)) : "0%", cHs, ty, c);
+      surface()->DrawTextRight(FONT_GO_BOLD, TextFormat("%d", p->m_iScore), cScore, ty, c);
+    }
+    y += rows * rowH;
+  };
+  teamPanel(0, TEAM_CT, rowsCT);
+  // round history: one cell per round of the half/match, coloured by the winner with the win reason glyph
+  {
+    surface()->DrawFilledRect(x, y, w, histH, { 12, 14, 17, 200 });
+    const int maxRounds = std::max(1, FindConVar("mp_maxrounds")->GetInt());
+    const float cell = std::min(26.f * sc, (w - 120 * sc) / maxRounds), hx = x + 110 * sc;
+    surface()->DrawText(FONT_GO, "ROUNDS", x + 16 * sc, y + histH / 2 - 8 * sc, TextDim);
+    for (int i = 0; i < maxRounds; i++) {
+      const float cx = hx + i * cell + cell / 2, cy = y + histH / 2;
+      if (i == maxRounds / 2 && maxRounds > 1) surface()->DrawFilledRect(hx + i * cell - 1, y + 4 * sc, 2, histH - 8 * sc, TextFaint);
+      if (i < (int)g_HudRoundHistory.size()) {
+        const auto& h = g_HudRoundHistory[i];
+        const Color wc = SbTeam(h.first);
+        surface()->DrawFilledRect(cx - cell * 0.42f, cy + (h.first == TEAM_CT ? -cell * 0.5f : 0.f), cell * 0.84f, cell * 0.5f, Alpha(wc, 0.25f));
+        SbRoundGlyph(h.second, cx, cy + (h.first == TEAM_CT ? -cell * 0.25f : cell * 0.25f), cell * 0.5f, wc);
+      } else surface()->DrawFilledCircle(cx, cy, 1.6f * sc, TextFaint);
+    }
+    y += histH;
+  }
+  teamPanel(1, TEAM_TERRORIST, rowsT);
   // spectators
   std::string specs; for (CCSPlayer* p : UTIL_GetPlayers()) if (p->m_iTeamNum <= TEAM_SPECTATOR) { if (!specs.empty()) specs += ", "; specs += p->GetPlayerName(); }
-  if (!specs.empty()) surface()->DrawText(FONT_UI, ("Spectators: " + specs).c_str(), x + 16, y + h - 24, { 200, 200, 200, 200 });
+  if (!specs.empty()) surface()->DrawText(FONT_GO, ("Spectators: " + specs).c_str(), x + 16 * sc, y + 8 * sc, TextDim);
 }
 
 // ------------------------------------------------------------------------------------------------

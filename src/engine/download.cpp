@@ -37,6 +37,13 @@ ConVar cl_content_url_main("cl_content_url_main", "https://codeload.github.com/b
 ConVar cl_content_url_r8("cl_content_url_r8", "https://raw.githubusercontent.com/EntranceJew/gmod-addons/48675a7f3a5a06d826bebba97078e24d0124f728/weapon_ttt_csgo_r8revolver/gamemodes/terrortown/content/", FCVAR_ARCHIVE, "Base url of the CS:GO R8 Revolver files (view / world model, textures, sounds)");
 ConVar cl_content_url_r8_api("cl_content_url_r8_api", "https://api.github.com/repos/EntranceJew/gmod-addons/contents/weapon_ttt_csgo_r8revolver/gamemodes/terrortown/content/%s?ref=48675a7f3a5a06d826bebba97078e24d0124f728", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the R8 Revolver files");
 
+// CS:GO SCAR-20 / SSG 08 view models, molotov + incendiary (models, sounds) from the ARC9 GSR Garry's Mod addon (pinned commit)
+ConVar cl_content_url_csgo("cl_content_url_csgo", "https://raw.githubusercontent.com/Seulyy/ARC9-GSR/5e16cf9baa37348fc82ba0c824d842dbcb44ab18/", FCVAR_ARCHIVE, "Base url of the CS:GO model / sound extras");
+ConVar cl_content_url_csgo_api("cl_content_url_csgo_api", "https://api.github.com/repos/Seulyy/ARC9-GSR/contents/%s?ref=5e16cf9baa37348fc82ba0c824d842dbcb44ab18", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the CS:GO extras");
+// CS:GO weapon / equipment icons (SVG, rasterized at load time)
+ConVar cl_content_url_icons("cl_content_url_icons", "https://raw.githubusercontent.com/atiksoftware/csgo_memory_hacking_examples/4afd922fd7ae95c8a9b393d423944540182235f8/csgo_weapon_icons/", FCVAR_ARCHIVE, "Base url of the CS:GO weapon icons (SVG)");
+ConVar cl_content_url_icons_api("cl_content_url_icons_api", "https://api.github.com/repos/atiksoftware/csgo_memory_hacking_examples/contents/csgo_weapon_icons/%s?ref=4afd922fd7ae95c8a9b393d423944540182235f8", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the CS:GO weapon icons");
+
 namespace download {
 namespace {
 const char* kDest = "content/css";
@@ -54,16 +61,53 @@ const char* const s_r8Files[] = {
   "sound/weapons/csgo/revolver/revolver_siderelease.wav",
   nullptr };
 
+const char* const s_csgoFiles[] = {
+  "models/weapons/csgo/c_snip_scar20.mdl", "models/weapons/csgo/c_snip_scar20.vvd", "models/weapons/csgo/c_snip_scar20.dx90.vtx",
+  "models/weapons/csgo/c_snip_ssg08.mdl", "models/weapons/csgo/c_snip_ssg08.vvd", "models/weapons/csgo/c_snip_ssg08.dx90.vtx",
+  "models/weapons/csgo/v_eq_molotov.mdl", "models/weapons/csgo/v_eq_molotov.vvd", "models/weapons/csgo/v_eq_molotov.dx90.vtx",
+  "models/weapons/csgo/v_eq_incediary.mdl", "models/weapons/csgo/v_eq_incediary.vvd", "models/weapons/csgo/v_eq_incediary.dx90.vtx",
+  "models/weapons/csgo/w_eq_molotov.mdl", "models/weapons/csgo/w_eq_molotov.vvd", "models/weapons/csgo/w_eq_molotov.dx90.vtx",
+  "models/weapons/csgo/w_eq_incendiary.mdl", "models/weapons/csgo/w_eq_incendiary.vvd", "models/weapons/csgo/w_eq_incendiary.dx90.vtx",
+  "materials/models/csgo/scar20/snip_scar20.vmt", "materials/models/csgo/scar20/snip_scar20_body.vmt", "materials/models/csgo/scar20/snip_scar202.vtf",
+  "materials/models/csgo/ssg08/snip_ssg08.vmt", "materials/models/csgo/ssg08/snip_ssg08_body.vmt", "materials/models/csgo/ssg08/snip_ssg08_scope.vmt",
+  "materials/models/csgo/ssg08/snip_ssg082.vtf", "materials/models/csgo/ssg08/snip_ssg08_scope2.vtf",
+  "models/weapons/csgo/atts/scopes/scope_scar.mdl", "models/weapons/csgo/atts/scopes/scope_scar.vvd", "models/weapons/csgo/atts/scopes/scope_scar.dx90.vtx",
+  "models/weapons/csgo/atts/scopes/scope_ssg08.mdl", "models/weapons/csgo/atts/scopes/scope_ssg08.vvd", "models/weapons/csgo/atts/scopes/scope_ssg08.dx90.vtx",
+  "materials/models/csgo/scar20/scope_scar20.vmt", "materials/models/csgo/shared/scope.vtf",
+  "materials/models/csgo/shared/scope_lens_dirt.vmt", "materials/models/csgo/shared/scope_lens_dirt.vtf",
+  "materials/models/csgo/molotov/v_eq_molotov_bottle.vmt", "materials/models/csgo/molotov/v_eq_molotov_rag.vmt",
+  "materials/models/csgo/molotov/v_eq_molotov_lighter_flame.vmt", "materials/models/csgo/molotov/v_eq_molotov_bottle.vtf",
+  "materials/models/csgo/molotov/w_eq_molotov_bottle.vmt", "materials/models/csgo/molotov/w_eq_molotov_rag.vmt",
+  "materials/models/csgo/smoke/incendiary_grenade.vmt", "materials/models/csgo/smoke/incendiary_grenade.vtf",
+  "sound/weapons/csgo/molotov/molotov_detonate_1.wav", "sound/weapons/csgo/molotov/fire_loop_1.wav", "sound/weapons/csgo/molotov/molotov_extinguish.wav",
+  "sound/weapons/csgo/molotov/grenade_throw.wav", "sound/weapons/csgo/molotov/lighter_open.wav",
+  "sound/weapons/csgo/incgrenade/inc_grenade_detonate_1.wav", "sound/weapons/csgo/incgrenade/inc_grenade_bounce-1.wav",
+  nullptr };
+#define ICON(n) "svg_normal/" n ".svg"
+const char* const s_iconFiles[] = {
+  ICON("weapon_ak47"), ICON("weapon_aug"), ICON("weapon_awp"), ICON("weapon_bizon"), ICON("weapon_c4"), ICON("weapon_cz75a"), ICON("weapon_deagle"),
+  ICON("weapon_elite"), ICON("weapon_famas"), ICON("weapon_fiveseven"), ICON("weapon_flashbang"), ICON("weapon_g3sg1"), ICON("weapon_galilar"),
+  ICON("weapon_glock"), ICON("weapon_hegrenade"), ICON("weapon_hkp2000"), ICON("weapon_incgrenade"), ICON("weapon_knife"), ICON("weapon_knife_t"),
+  ICON("weapon_m249"), ICON("weapon_m4a1"), ICON("weapon_m4a1_silencer"), ICON("weapon_mac10"), ICON("weapon_mag7"), ICON("weapon_molotov"),
+  ICON("weapon_mp7"), ICON("weapon_mp9"), ICON("weapon_negev"), ICON("weapon_nova"), ICON("weapon_p250"), ICON("weapon_p90"), ICON("weapon_revolver"),
+  ICON("weapon_sawedoff"), ICON("weapon_scar20"), ICON("weapon_sg556"), ICON("weapon_smokegrenade"), ICON("weapon_ssg08"), ICON("weapon_tec9"),
+  ICON("weapon_ump45"), ICON("weapon_usp_silencer"), ICON("weapon_xm1014"), ICON("weapon_decoy"), ICON("weapon_taser"),
+  ICON("item_assaultsuit"), ICON("item_defuser"), ICON("item_kevlar"),
+  nullptr };
+#undef ICON
+
 std::mutex s_mtx;
 Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-constexpr int kPacks = 3;
+constexpr int kPacks = 5;
 Pack s_packs[kPacks] = {
   { "maps", "CS:S maps", nullptr, 105 },
   { "main", "CS:S models, textures and sounds", nullptr, 700 },
   { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
+  { "csgo", "CS:GO SCAR-20, SSG 08, molotov", nullptr, 22, s_csgoFiles, "content/extras/csgo_gsr", false },
+  { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
 };
 bool s_needCore = true;   // decided on the main thread in Start()
 
@@ -310,7 +354,7 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
     bool ok = HttpGet(std::string(p.url) + *f, sink, e1);
     if (!ok && !s_cancel) {
       data.clear();
-      char url[1024]; snprintf(url, sizeof(url), cl_content_url_r8_api.GetString(), *f);
+      char url[1024]; snprintf(url, sizeof(url), p.api ? p.api : cl_content_url_r8_api.GetString(), *f);
       ok = HttpGet(url, sink, e2, "application/vnd.github.raw");
     }
     if (!ok || data.empty()) { err = std::string(*f) + ": " + (e2.empty() ? e1 : e2); return false; }
@@ -324,7 +368,9 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
 void Worker() {
   s_packs[0].url = cl_content_url_maps.GetString();
   s_packs[1].url = cl_content_url_main.GetString();
-  s_packs[2].url = cl_content_url_r8.GetString();
+  s_packs[2].url = cl_content_url_r8.GetString(); s_packs[2].api = cl_content_url_r8_api.GetString();
+  s_packs[3].url = cl_content_url_csgo.GetString(); s_packs[3].api = cl_content_url_csgo_api.GetString();
+  s_packs[4].url = cl_content_url_icons.GetString(); s_packs[4].api = cl_content_url_icons_api.GetString();
   double expected = 0; for (auto& p : s_packs) if (PackWanted(p)) expected += p.approxMB;
   { std::lock_guard<std::mutex> l(s_mtx); s_prog = Progress(); s_prog.state = RUNNING; s_prog.packCount = kPacks; s_prog.totalExpectedMB = expected; }
   std::error_code ec;

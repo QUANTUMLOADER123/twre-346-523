@@ -27,6 +27,7 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
   // opaque meshes first, translucent ones after
   for (int pass = 0; pass < 2; pass++) {
     for (const SrcMdlMesh& me : m.meshes) {
+      if (m.MeshHidden(me, skin)) continue;
       bool translucent = false, alphatest = false;
       Texture2D tex = m.MeshTexture(me, skin, &translucent, &alphatest);
       if ((pass == 1) != translucent) continue;

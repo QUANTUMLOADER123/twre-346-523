@@ -16,6 +16,8 @@ public:
   bool m_bDetonated = false;
   bool m_bStopped = false;
   float m_flStoppedTime = 0;
+  bool m_bBouncedThisTick = false;      // StepGrenade result of the last tick (molotov: floor hit -> burst)
+  Vector m_vecLastBounceNormal;
   std::vector<Vector> m_Trail;          // client trail
   void PhysicsSimulate() override;
   virtual void Detonate();
@@ -45,6 +47,43 @@ public:
   void DrawTranslucent(const CViewSetup& view) override;
   float GetSmokeRadius() const;    // current (grows in / fades out)
 };
+// molotov / incendiary: bursts on the first floor hit (slope <= weapon_molotov_maxdetonateslope) and spreads an inferno,
+// after molotov_throw_detonate_time in the air it pops without fire
+class CMolotovProjectile : public CBaseCSGrenadeProjectile {
+public:
+  using CBaseCSGrenadeProjectile::CBaseCSGrenadeProjectile;
+  void PhysicsSimulate() override;
+  void Detonate() override;
+  void DetonateOnGround();
+};
+struct InfernoFlame { Vector pos; float born = 0; float size = 1; float phase = 0; };
+class CInferno : public C_BaseEntity {
+public:
+  CInferno(int weaponId, CCSPlayer* thrower, const Vector& pos);
+  ~CInferno() override;
+  int m_iWeaponID = 0;
+  int m_iThrower = 0;                   // entindex (the thrower may leave while it burns)
+  Vector m_vecCenter;
+  float m_flStart = 0, m_flEnd = 0;
+  float m_flNextSpread = 0, m_flNextSound = 0;
+  bool m_bExtinguished = false;
+  std::vector<InfernoFlame> m_Flames;
+  float m_flNextDamage[65] = {};
+  float m_flNextFx = 0;                 // client particles (realtime)
+  void PhysicsSimulate() override;
+  void DrawTranslucent(const CViewSetup& view) override;
+  bool IsSolidForTrace(unsigned) const override { return false; }
+  bool IsPointBurning(const Vector& p, float pad = 0.f) const;   // feet position inside a flame
+  float Fade() const;                   // 1 burning -> 0 gone
+  void Extinguish();
+};
+std::vector<CInferno*>& GetActiveInfernos();
+// bots / ESP: a point (feet) or a straight walk a -> b through fire
+bool PointInFire(const Vector& p, float pad = 0.f);
+bool LineCrossesFire(const Vector& a, const Vector& b, float pad = 0.f);
+float GrenadeFuseTime(int weaponId);
+float SmokeDuration();
+
 // smoke volumes for visibility tests (bots, ESP "visible" checks, kill feed "through smoke")
 bool LineGoesThroughSmoke(const Vector& a, const Vector& b);
 // the smoke system keeps active volumes
