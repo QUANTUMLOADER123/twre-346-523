@@ -81,6 +81,15 @@ bool CSrcModel::Load(const std::string& path) {
     size_t hs = Rd<int>(d, 176); int nh = Rd<int>(d, hs + 4); size_t hb = hs + Rd<int>(d, hs + 8);
     for (int i = 0; i < nh; i++) { size_t h = hb + i * 68; SrcMdlHitbox x; x.bone = Rd<int>(d, h); x.group = Rd<int>(d, h + 4); x.mins = Rd<Vector>(d, h + 8); x.maxs = Rd<Vector>(d, h + 20); hitboxes.push_back(x); }
   }
+  // ---- pose parameters / include models
+  int numPose = Rd<int>(d, 300), poseIdx = Rd<int>(d, 304);
+  for (int i = 0; i < numPose && i < 64; i++) {
+    size_t pp = (size_t)poseIdx + i * 20; SrcMdlPoseParam q; q.name = Str(d, pp + Rd<int>(d, pp));
+    q.flags = Rd<int>(d, pp + 4); q.start = Rd<float>(d, pp + 8); q.end = Rd<float>(d, pp + 12); q.loop = Rd<float>(d, pp + 16);
+    poseParams.push_back(q);
+  }
+  int numInc = Rd<int>(d, 336), incIdx = Rd<int>(d, 340);
+  for (int i = 0; i < numInc && i < 32; i++) { size_t g = (size_t)incIdx + i * 8; includeModels.push_back(srcfs::Normalize(Str(d, g + Rd<int>(d, g + 4)))); }
   // ---- animations / sequences
   int numAnim = Rd<int>(d, 180), animIdx = Rd<int>(d, 184);
   for (int i = 0; i < numAnim; i++) {
@@ -298,3 +307,18 @@ CSrcModel* SrcMdl_Get(const std::string& path) {
   CSrcModel* r = m.get(); s_models[key] = std::move(m); return r;
 }
 void SrcMdl_Clear() { for (auto& [k, m] : s_models) if (m) m->Unload(); s_models.clear(); }
+
+// console: dump a model (sequences / activities / pose parameters / attachments)
+static ConCommand mdl_info("mdl_info", [](const CCommand& c) {
+  if (c.ArgC() < 2) { Msg("usage: mdl_info models/player/ct_urban.mdl\n"); return; }
+  CSrcModel* m = SrcMdl_Get(c.Arg(1));
+  if (!m) { Msg("can't load %s\n", c.Arg(1)); return; }
+  Msg("%s v%d: %d bones %d meshes %d anims %d seqs %d attachments %d textures\n", m->name.c_str(), m->version, (int)m->bones.size(), (int)m->meshes.size(), (int)m->anims.size(), (int)m->seqs.size(), (int)m->attachments.size(), (int)m->textures.size());
+  for (auto& i : m->includeModels) Msg("  include %s\n", i.c_str());
+  for (auto& p : m->poseParams) Msg("  pose %s [%g..%g] loop %g\n", p.name.c_str(), p.start, p.end, p.loop);
+  for (auto& a : m->attachments) Msg("  attachment %s bone %d\n", a.name.c_str(), a.bone);
+  for (size_t i = 0; i < m->seqs.size(); i++) {
+    auto& s = m->seqs[i]; const SrcMdlAnim* a = s.anims.empty() || s.anims[0] < 0 || s.anims[0] >= (int)m->anims.size() ? nullptr : &m->anims[s.anims[0]];
+    Msg("  seq %3d %-28s %-30s flags %x grid %dx%d frames %d fps %g%s\n", (int)i, s.label.c_str(), s.activity.c_str(), s.flags, s.groupSize[0], s.groupSize[1], a ? a->numFrames : 0, a ? a->fps : 0, a && !a->valid ? " (animblock)" : "");
+  }
+}, "Print the sequences / pose parameters / attachments of a Source model");

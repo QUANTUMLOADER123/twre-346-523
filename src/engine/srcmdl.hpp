@@ -40,6 +40,7 @@ struct SrcMdlSeq {
   float fadeIn = 0.2f, fadeOut = 0.2f;
   bool looping = false;
 };
+struct SrcMdlPoseParam { std::string name; int flags = 0; float start = 0, end = 1, loop = 0; };
 struct SrcMdlAttachment { std::string name; int bone = 0; matrix3x4_t local; };
 struct SrcMdlHitbox { int bone = 0, group = 0; Vector mins, maxs; };
 
@@ -59,6 +60,8 @@ public:
   std::vector<SrcMdlSeq> seqs;
   std::vector<SrcMdlAttachment> attachments;
   std::vector<SrcMdlHitbox> hitboxes;
+  std::vector<SrcMdlPoseParam> poseParams;
+  std::vector<std::string> includeModels;  // $includemodel (animation libraries, e.g. cs_player_shared.mdl)
   std::vector<uint8_t> data;             // the .mdl file (animation data is decoded on demand)
 
   // texture of a mesh for a skin family

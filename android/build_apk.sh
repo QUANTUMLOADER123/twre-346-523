@@ -52,13 +52,23 @@ for ABI in $ABIS; do
   } | xargs -P "$JOBS" -L 1 bash -c '
     lang=$0; src=$1; obj="$O/$(echo "$src" | tr "/" "_").o"
     if [ -f "$obj" ] && [ "$obj" -nt "$src" ] && [ -z "${FORCE:-}" ] && [ "$lang" = c ]; then exit 0; fi
-    if [ "$lang" = c ]; then "$CC" -O2 -std=gnu11 -w $COMMON $ARCHF -I. -c "$src" -o "$obj"
-    else "$CXX" -O2 -std=c++17 $COMMON $ARCHF -c "$src" -o "$obj"; fi || { echo "FAILED: $src"; exit 255; }'
+    if [ "$lang" = c ]; then "$CC" -O2 -std=gnu11 -w $COMMON $ARCHF -I. -c "$src" -o "$obj" > "$obj.log" 2>&1
+    else "$CXX" -O2 -std=c++17 $COMMON $ARCHF -c "$src" -o "$obj" > "$obj.log" 2>&1; fi
+    rc=$?; cat "$obj.log"
+    if [ $rc -ne 0 ]; then
+      echo "FAILED: $src"
+      android/annotate.sh "compile $src" "$obj.log"
+      exit 255
+    fi'
   echo ">> [$ABI] linking libmain.so"
   mkdir -p "$STAGE/lib/$ABI"
-  "$CXX" -shared -o "$STAGE/lib/$ABI/libmain.so" "$O"/*.o \
+  if ! "$CXX" -shared -o "$STAGE/lib/$ABI/libmain.so" "$O"/*.o \
     -u ANativeActivity_onCreate -Wl,--no-undefined -Wl,--gc-sections -Wl,-z,max-page-size=16384 -s \
-    -static-libstdc++ -landroid -llog -lEGL -lGLESv3 -lOpenSLES -lm -ldl
+    -static-libstdc++ -landroid -llog -lEGL -lGLESv3 -lOpenSLES -lm -ldl > $OUT/link.log 2>&1; then
+    cat $OUT/link.log
+    android/annotate.sh "link $ABI" $OUT/link.log
+    exit 1
+  fi
   ls -la "$STAGE/lib/$ABI/libmain.so"
 done
 
