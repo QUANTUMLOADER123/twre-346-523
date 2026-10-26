@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Counter-Strike: HvH - Android APK build (native C++ / raylib NativeActivity, no Java)
 #
-#   android/build_apk.sh            -> bin/cshvh.apk  (arm64-v8a + armeabi-v7a)
+#   android/build_apk.sh            -> bin/cshvh.apk  (arm64-v8a + armeabi-v7a + x86_64)
 #
 # Needs the Android SDK (build-tools + a platform) and NDK:
 #   ANDROID_SDK_ROOT / ANDROID_HOME, ANDROID_NDK_ROOT / ANDROID_NDK_LATEST_HOME (GitHub ubuntu runners have all of them)
@@ -19,7 +19,7 @@ BT=$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)
 PLATFORM_JAR=$(ls -d "$SDK"/platforms/android-*/android.jar | sort -V | tail -1)
 TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
 API=24
-ABIS="${ABIS:-arm64-v8a armeabi-v7a}"
+ABIS="${ABIS:-arm64-v8a armeabi-v7a x86_64}"
 JOBS="${JOBS:-$(nproc)}"
 VERSION_CODE="${VERSION_CODE:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
 VERSION_NAME="${VERSION_NAME:-1.0.$VERSION_CODE}"
@@ -96,4 +96,11 @@ if [ -n "${ANDROID_KEYSTORE_B64:-}" ]; then
 fi
 "$BT/apksigner" sign --ks "$KS" --ks-type PKCS12 --ks-pass "pass:$KSPASS" --out bin/cshvh.apk $OUT/aligned.apk
 "$BT/apksigner" verify --print-certs bin/cshvh.apk | head -3
+"$BT/aapt2" dump badging bin/cshvh.apk | head -5
+unzip -l bin/cshvh.apk | grep -v "assets/assets/" ; unzip -l bin/cshvh.apk | tail -1
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  { "$BT/aapt2" dump badging bin/cshvh.apk | head -4; unzip -l bin/cshvh.apk | grep -v "assets/assets/models" | tail -25
+    for a in $ABIS; do echo "$a: $("$TC/llvm-nm" -D --defined-only "$STAGE/lib/$a/libmain.so" | grep -c ANativeActivity_onCreate) ANativeActivity_onCreate"; done; } > $OUT/apkinfo.txt
+  echo "::notice title=apk contents::$(sed -e 's/%/%25/g' $OUT/apkinfo.txt | awk '{printf "%s%%0A", $0}')"
+fi
 ls -la bin/cshvh.apk
