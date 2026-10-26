@@ -21,8 +21,12 @@
 #include <string>
 #include <vector>
 #include <unistd.h>
+#include <cstdio>
 
 extern "C" struct android_app* GetAndroidApp(void);
+// raylib's optional APK fopen wrapper (-Wl,--wrap=fopen) calls __real_fopen. We don't wrap fopen (the data is
+// unpacked to the files folder instead), so __real_fopen is just fopen.
+extern "C" FILE* __real_fopen(const char* name, const char* mode) { return fopen(name, mode); }
 namespace fs = std::filesystem;
 
 static bool ReadAsset(AAssetManager* am, const std::string& name, std::string& out) {

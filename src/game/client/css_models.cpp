@@ -246,7 +246,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     case ACT_VM_PLANT: seq = PickVm(*m, { "ACT_VM_PRIMARYATTACK" }, false, 0); stretch = true; break;
     default: break;
   }
-  if (IsGrenade(wid)) { auto* g = static_cast<CBaseCSGrenade*>(w); if (g->m_bPinPulled && act != ACT_VM_THROW) { seq = PickVm(*m, { "ACT_VM_PULLPIN" }, false, 0); elapsed = 99.f; } }
+  if (IsGrenade(wid)) { auto* g = static_cast<CBaseCSGrenade*>(w); if (g->m_bPinPulled && act != ACT_VM_THROW) { seq = PickVm(*m, { "ACT_VM_PULLPIN" }, false, 0); if (act != ACT_VM_PULLPIN) elapsed = 99.f; } }
   float cycle = 0;
   bool shotgunLoop = act == ACT_VM_RELOAD && m->FindSeq("insert");
   if (seq) {
