@@ -282,25 +282,54 @@ static void HudNumber(int font, const char* t, float x, float y, Color c) {
 
 // ------------------------------------------------------------------------------------------------
 static void DrawHealthArmor(CCSPlayer* p, float sc) {
-  int H = surface()->ScreenTall();
-  float y = H - 52 * sc, x = 20 * sc, isz = 26 * sc;
+  // CS:GO style: HP/Armor at bottom RIGHT
+  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
+  float y = H - 52 * sc, isz = 26 * sc;
   int hp = std::max(0, p->m_iHealth);
+  
+  // Calculate width
+  char hpStr[32], armorStr[32];
+  snprintf(hpStr, sizeof(hpStr), "%d", hp);
+  snprintf(armorStr, sizeof(armorStr), "%d", p->m_ArmorValue);
+  float hpW = surface()->GetTextSize(FONT_HUD_NUMBERS, hpStr).x;
+  float armorW = surface()->GetTextSize(FONT_HUD_NUMBERS, armorStr).x;
+  float totalW = isz + 10 * sc + hpW + 30 * sc + isz + 10 * sc + armorW;
+  float startX = W - 20 * sc - totalW;
+  
+  // Background
+  surface()->DrawSetColor(0, 0, 0, 160);
+  surface()->DrawFilledRect(startX - 8 * sc, y - 4 * sc, startX + totalW + 8 * sc, y + isz + 12 * sc);
+  
+  // HP icon + number
   Color c = HUD; if (hp <= 25) { c = scheme::HudRed; if (std::fmod(gpGlobals->realtime, 0.6f) < 0.3f) c.a = 140; }
   c.a = (unsigned char)(c.a * 0.86f);
-  BeginBlendMode(BLEND_ADDITIVE); IconCross(x, y + 6 * sc, isz, c); EndBlendMode();
-  HudNumber(FONT_HUD_NUMBERS, TextFormat("%d", hp), x + isz + 10 * sc, y, c);
-  float ax = x + 150 * sc; Color ac = HUD; ac.a = 220;
+  BeginBlendMode(BLEND_ADDITIVE); IconCross(startX, y + 6 * sc, isz, c); EndBlendMode();
+  HudNumber(FONT_HUD_NUMBERS, hpStr, startX + isz + 10 * sc, y, c);
+  
+  // Armor icon + number
+  float ax = startX + isz + 10 * sc + hpW + 30 * sc;
+  Color ac = HUD; ac.a = 220;
   BeginBlendMode(BLEND_ADDITIVE); IconShield(ax, y + 5 * sc, isz, ac, p->m_bHasHelmet); EndBlendMode();
-  HudNumber(FONT_HUD_NUMBERS, TextFormat("%d", p->m_ArmorValue), ax + isz + 10 * sc, y, ac);
+  HudNumber(FONT_HUD_NUMBERS, armorStr, ax + isz + 10 * sc, y, ac);
 }
 
 static void DrawTimer(float sc) {
   CCSGameRules* gr = CSGameRules();
   int W = surface()->ScreenWide(), H = surface()->ScreenTall();
+  
+  // CS:GO style: score at top center (CT | TIMER | T)
+  int ctScore = 0, tScore = 0;
+  for (int i = 1; i <= gpGlobals->maxClients; i++) {
+    CCSPlayer* p = (CCSPlayer*)Player::GetByIndex(i);
+    if (!p || !p->IsConnected()) continue;
+    if (p->m_iTeamNum == TEAM_CT) ctScore += p->m_iFrags;
+    else if (p->m_iTeamNum == TEAM_TERRORIST) tScore += p->m_iFrags;
+  }
+  
   float t;
   if (gr->m_bBombPlanted) {
-    // CS 1.6 hides the timer and shows a flashing C4 icon
-    if (std::fmod(gpGlobals->realtime, 1.f) < 0.6f) { BeginBlendMode(BLEND_ADDITIVE); IconC4(W * 0.5f - 18 * sc, H - 46 * sc, 28 * sc, scheme::HudRed); EndBlendMode(); }
+    // Bomb planted: flashing C4 icon at top
+    if (std::fmod(gpGlobals->realtime, 1.f) < 0.6f) { BeginBlendMode(BLEND_ADDITIVE); IconC4(W * 0.5f - 18 * sc, 10 * sc, 28 * sc, scheme::HudRed); EndBlendMode(); }
     return;
   }
   t = gr->IsFreezePeriod() ? gr->GetFreezeTimeRemaining() : gr->GetRoundRemainingTime();
@@ -308,11 +337,34 @@ static void DrawTimer(float sc) {
   t = std::max(0.f, t);
   int m = (int)t / 60, s = (int)t % 60;
   Color c = HUD; c.a = 220; if (t < 10 && !gr->IsFreezePeriod()) c = scheme::HudRed;
-  const char* txt = TextFormat("%d:%02d", m, s);
-  float w = surface()->GetTextSize(FONT_HUD_NUMBERS, txt).x;
-  float x = W * 0.5f - (w + 34 * sc) * 0.5f, y = H - 52 * sc;
-  BeginBlendMode(BLEND_ADDITIVE); IconClock(x, y + 6 * sc, 26 * sc, c); EndBlendMode();
-  HudNumber(FONT_HUD_NUMBERS, txt, x + 34 * sc, y, c);
+  const char* timerTxt = TextFormat("%d:%02d", m, s);
+  float timerW = surface()->GetTextSize(FONT_HUD_NUMBERS, timerTxt).x;
+  
+  // Draw score at top: CT [score] | TIMER | [score] T
+  float topY = 10 * sc;
+  const char* ctTxt = TextFormat("CT %d", ctScore);
+  const char* tTxt = TextFormat("%d T", tScore);
+  float ctW = surface()->GetTextSize(FONT_HUD_NUMBERS, ctTxt).x;
+  float tW = surface()->GetTextSize(FONT_HUD_NUMBERS, tTxt).x;
+  float totalW = ctW + 20 * sc + timerW + 34 * sc + 20 * sc + tW;
+  float startX = W * 0.5f - totalW * 0.5f;
+  
+  // Background panel
+  surface()->DrawSetColor(0, 0, 0, 180);
+  surface()->DrawFilledRect(startX - 10 * sc, topY, startX + totalW + 10 * sc, topY + 40 * sc);
+  
+  // CT score
+  Color ctColor = {100, 150, 255, 255};
+  HudNumber(FONT_HUD_NUMBERS, ctTxt, startX, topY + 6 * sc, ctColor);
+  
+  // Timer with clock icon
+  float timerX = startX + ctW + 20 * sc;
+  BeginBlendMode(BLEND_ADDITIVE); IconClock(timerX, topY + 10 * sc, 20 * sc, c); EndBlendMode();
+  HudNumber(FONT_HUD_NUMBERS, timerTxt, timerX + 28 * sc, topY + 6 * sc, c);
+  
+  // T score
+  Color tColor = {255, 200, 80, 255};
+  HudNumber(FONT_HUD_NUMBERS, tTxt, timerX + timerW + 34 * sc + 20 * sc, topY + 6 * sc, tColor);
 }
 
 static void DrawAmmoMoney(CCSPlayer* p, float sc) {

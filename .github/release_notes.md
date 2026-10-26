@@ -6,6 +6,13 @@
 | **cshvh.exe** | Только exe (класть рядом с папкой `assets` из архива / репозитория) |
 | **cshvh.apk** | Android (arm64 / armv7, Android 7.0+, OpenGL ES 3) |
 
+### Что нового в 1.2.34
+* **HUD CS:GO-style**: счёт сверху по центру (CT | ТАЙМЕР | T), HP/Armor справа внизу
+* **Buy Menu**: 5 категорий (Pistols, Mid-Tier, Rifles, Equipment, Grenades) + пустой 6-й, тёмная тема без синего
+* **Loadout**: прижат влево (65% ширины), агент справа с выбором команды, AVAILABLE снизу (5 в ряд, скролл), drag-and-drop на слот
+* **REVOLVER icon**: отдельная иконка для R8 Revolver
+* **Слоты выше**: увеличена высота слотов до 75px
+
 ### Что нового в 1.2.26
 * **Loadout redesign**: новый экран снаряжения в стиле CS2
   - Слева: 3 колонки (Pistols / Mid-Tier / Rifles) × 5 слотов
