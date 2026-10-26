@@ -10,6 +10,8 @@
 namespace vgui {
 using namespace scheme;
 static InputState s_input;
+static std::vector<int> s_injected;
+void InjectKey(int k) { s_injected.push_back(k); }
 InputState& Input() { return s_input; }
 int g_KeyboardFocus = 0;
 
@@ -26,7 +28,9 @@ void BeginInput() {
   if (in.mousePressed) { double t = GetTime(); if (t - lastClick < 0.35 && std::fabs(lastPos.x - in.mouse.x) < 4 && std::fabs(lastPos.y - in.mouse.y) < 4) in.doubleClick = true; lastClick = t; lastPos = in.mouse; }
   in.chars.clear(); in.keys.clear();
   for (int c = GetCharPressed(); c; c = GetCharPressed()) in.chars.push_back(c);
-  for (int k = GetKeyPressed(); k; k = GetKeyPressed()) in.keys.push_back(k);
+  for (int k = GetKeyPressed(); k; k = GetKeyPressed()) in.keys.push_back(k == KEY_BACK ? KEY_ESCAPE : k);   // Android Back = Esc
+  for (int k : s_injected) in.keys.push_back(k);
+  s_injected.clear();
   // key repeat for editing keys
   static const int rep[] = { KEY_BACKSPACE, KEY_DELETE, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_PAGE_UP, KEY_PAGE_DOWN };
   for (int k : rep) if (IsKeyPressedRepeat(k)) in.keys.push_back(k);

@@ -20,6 +20,7 @@ struct InputState {
 InputState& Input();
 void BeginInput();            // poll raylib once per frame (call at the start of the frame)
 void ConsumeKey(int k);
+void InjectKey(int k);        // queue a key press for the next frame (touch buttons, Android Back)
 void ConsumeChars();
 
 class Frame {

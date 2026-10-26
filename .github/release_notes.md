@@ -1,0 +1,29 @@
+## Counter-Strike: HvH
+
+| Файл | Что это |
+|---|---|
+| **CounterStrikeHvH-windows.zip** | Полная Windows-версия: распаковать, запустить `cshvh.exe` |
+| **cshvh.exe** | Только exe (класть рядом с папкой `assets` из архива / репозитория) |
+| **cshvh.apk** | Android (arm64 / armv7, Android 7.0+, OpenGL ES 3) |
+
+### Windows
+1. Скачать `CounterStrikeHvH-windows.zip`, распаковать куда угодно.
+2. Запустить `cshvh.exe`. Меню чита — **Insert** (aimwhere).
+3. Оригинальные карты / модели / звуки CS:Source: в консоли (`~`) ввести `css_download`
+   (или запустить `tools/get_css_content.bat`) — бесплатный CS:S Dedicated Server через SteamCMD (~2 ГБ), потом `css_rescan`.
+
+### Android
+1. Скачать `cshvh.apk` на телефон и открыть его. Разрешить установку из неизвестных источников.
+   Play Protect может предупредить, что приложение неизвестное: «Подробнее» → «Всё равно установить».
+2. Управление:
+   - левая половина экрана — джойстик ходьбы;
+   - правая половина — свайп для поворота камеры;
+   - **FIRE** (зажать и вести пальцем = стрельба с прицеливанием), **JUMP**, **DUCK**, **SCOPE**, **R** (перезарядка),
+     **USE**, **NEXT** (след. оружие), **DROP**, **WALK**, слоты **1-5**;
+   - сверху: **MENU** (= Esc, также кнопка «Назад»), **BUY**, **TEAM**, **SCORE**, **AW** (меню aimwhere).
+   - Настройки в консоли: `touch_sensitivity 1.0`, `touch_opacity 0.55`, `touch_scale 1.0`, `touch_invert 0`.
+3. Оригинальный контент CS:S (по желанию). SteamCMD на телефоне не работает, поэтому:
+   скачать его на ПК (`tools/get_css_content.bat`), затем скопировать папку `content/css` (внутри `cstrike` и `hl2`) по USB в
+   `Android/data/com.cshvh.game/files/content/css/` и перезапустить игру. Без него работают встроенные карты.
+
+APK подписан отладочным ключом из репозитория (`android/debug.p12`); новые версии ставятся поверх старой.

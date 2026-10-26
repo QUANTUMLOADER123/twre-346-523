@@ -1,0 +1,71 @@
+# Builds Counter-Strike: HvH for Windows (.exe, cross-compiled with zig) and Android (.apk) and publishes a GitHub release.
+name: Release
+on:
+  push:
+    branches: [ "arena/01a0f92c-twre-346-523", "main" ]
+    paths-ignore: [ "**.md" ]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install zig
+        run: pip install ziglang
+      - name: Build cshvh.exe
+        run: JOBS=4 ./build.sh windows
+      - name: Package
+        run: |
+          mkdir -p dist/CounterStrikeHvH/bin
+          cp bin/cshvh.exe dist/CounterStrikeHvH/bin/
+          cp -r assets tools README.md CREDITS.md dist/CounterStrikeHvH/
+          cp bin/cshvh.exe dist/CounterStrikeHvH/
+          (cd dist && zip -q -r CounterStrikeHvH-windows.zip CounterStrikeHvH)
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/CounterStrikeHvH-windows.zip
+            bin/cshvh.exe
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build cshvh.apk
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: VERSION_CODE=$((100 + ${{ github.run_number }})) VERSION_NAME=1.1.${{ github.run_number }} JOBS=4 android/build_apk.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: bin/cshvh.apk
+
+  release:
+    needs: [ windows, android ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: find artifacts -type f | xargs ls -la
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.1.${{ github.run_number }}
+          name: Counter-Strike HvH 1.1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          body_path: .github/release_notes.md
+          make_latest: true
+          files: |
+            artifacts/windows/dist/CounterStrikeHvH-windows.zip
+            artifacts/windows/bin/cshvh.exe
+            artifacts/android/cshvh.apk

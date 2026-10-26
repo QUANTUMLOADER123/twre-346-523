@@ -1,5 +1,6 @@
 // input.cpp - keyboard/mouse input, key bindings (keys.cpp) and CInput::CreateMove (in_main.cpp)
 #include "cl_main.hpp"
+#include "touch.hpp"
 #include "../../engine/host.hpp"
 #include "../shared/cs_player.hpp"
 #include "../shared/weapon_csbase.hpp"
@@ -217,10 +218,12 @@ void IN_Frame(float dt) {
     KEY_KP_0, KEY_KP_1, KEY_KP_2, KEY_KP_3, KEY_KP_4, KEY_KP_5, KEY_KP_6, KEY_KP_7, KEY_KP_8, KEY_KP_9, KEY_KP_ENTER, KEY_KP_ADD, KEY_KP_SUBTRACT,
     KEY_MINUS, KEY_EQUAL, KEY_LEFT_BRACKET, KEY_RIGHT_BRACKET, KEY_BACKSLASH, KEY_SEMICOLON, KEY_APOSTROPHE, KEY_COMMA, KEY_PERIOD, KEY_SLASH,
   };
+  Touch_Frame(dt);
+  const bool touch = Touch_Active();   // fingers drive look / fire: ignore the emulated mouse
   if (gameFocus) {
     for (int k : pollKeys) { bool d = IsKeyDown(k); if (d != s_keyDown[k]) IN_KeyDown(k, d); }
     static const int mb[5] = { MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_SIDE, MOUSE_BUTTON_EXTRA };
-    bool menuMouse = cheat::WantsMouse();
+    bool menuMouse = cheat::WantsMouse() || touch;
     for (int i = 0; i < 5; i++) { bool d = IsMouseButtonDown(mb[i]) && !menuMouse; if (d != s_keyDown[K_MOUSE1 + i]) IN_KeyDown(K_MOUSE1 + i, d); }
     float wheel = menuMouse ? 0.f : vgui::Input().wheel;
     if (wheel > 0) { IN_KeyDown(K_MWHEELUP, true); IN_KeyDown(K_MWHEELUP, false); }
@@ -230,7 +233,7 @@ void IN_Frame(float dt) {
     for (int k = 0; k < 1100; k++) if (s_keyDown[k]) IN_KeyDown(k, false);
   }
   // mouse look
-  if (gameFocus && cl.mouseCaptured && !cheat::WantsMouse()) {
+  if (gameFocus && cl.mouseCaptured && !cheat::WantsMouse() && !touch) {
     Vector2 d = GetMouseDelta();
     static float oldx = 0, oldy = 0;
     float mx = d.x, my = d.y;
@@ -277,6 +280,15 @@ void CL_CreateMove(CUserCmd& cmd) {
   if (bits & IN_BACK) cmd.forwardmove -= cl_forwardspeed.GetFloat();
   if (bits & IN_MOVERIGHT) cmd.sidemove += cl_sidespeed.GetFloat();
   if (bits & IN_MOVELEFT) cmd.sidemove -= cl_sidespeed.GetFloat();
+  // touch stick (analog)
+  if (gameFocus) {
+    float tf, ts; Touch_GetMove(tf, ts);
+    if (tf != 0 || ts != 0) {
+      cmd.forwardmove += tf * cl_forwardspeed.GetFloat(); cmd.sidemove += ts * cl_sidespeed.GetFloat();
+      if (tf > 0.3f) cmd.buttons |= IN_FORWARD; if (tf < -0.3f) cmd.buttons |= IN_BACK;
+      if (ts > 0.3f) cmd.buttons |= IN_MOVERIGHT; if (ts < -0.3f) cmd.buttons |= IN_MOVELEFT;
+    }
+  }
   if (IN_IsButtonDown(in_moveup)) cmd.upmove += cl_upspeed.GetFloat();
   if (IN_IsButtonDown(in_movedown)) cmd.upmove -= cl_upspeed.GetFloat();
   if (lp && !lp->IsAlive() && lp->m_iObserverMode == OBS_MODE_ROAMING) { if (bits & IN_JUMP) cmd.upmove += cl_upspeed.GetFloat(); if (bits & IN_DUCK) cmd.upmove -= cl_upspeed.GetFloat(); }

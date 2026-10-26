@@ -3,6 +3,7 @@
 //   test helpers: -frames N (quit after N frames)  -shot file.png (save the last frame)  -dt 0.016 (fixed frame time)  -at N cmd (run cmd at frame N)
 #include "engine/convar.hpp"
 #include "engine/host.hpp"
+#include "engine/platform.hpp"
 #include "engine/materialsystem.hpp"
 #include "engine/worldrender.hpp"
 #include "game/client/cl_main.hpp"
@@ -13,6 +14,7 @@
 #include "vgui/controls.hpp"
 #include "vgui/gameui.hpp"
 #include "cheat/cheat.hpp"
+#include "game/client/touch.hpp"
 #include "raylib.h"
 #include <string>
 #include <vector>
@@ -115,6 +117,7 @@ int main(int argc, char** argv) {
       plusCmds.push_back(cmd);
     }
   }
+  Platform_PreInit();
   // run from the game directory (assets/, cfg/)
   if (!std::filesystem::exists("assets") && argc > 0) {
     std::error_code ec; auto dir = std::filesystem::path(argv[0]).parent_path();
@@ -129,6 +132,7 @@ int main(int argc, char** argv) {
   InitWindow(width, height, "Counter-Strike: HvH");
   SetExitKey(KEY_NULL);
   SetWindowMinSize(800, 600);
+  Platform_PostInit();
   if (fullscreen) ToggleFullscreen();
   ConColorMsg(Color32{ 196, 181, 80, 255 }, "Counter-Strike: HvH 1.0.0 (raylib %s)\n", RAYLIB_VERSION);
 
@@ -171,7 +175,7 @@ int main(int argc, char** argv) {
     cl.fps = dt > 0 ? (cl.fps * 0.9f + 0.1f / dt) : cl.fps; cl.frameMs = dt * 1000.f;
 
     BeginDrawing();
-    if (inGame) CL_RenderFrame();
+    if (inGame) { CL_RenderFrame(); Touch_Draw(); }
     else CL_RenderMenuBackground((float)GetTime());
     gameui::Paint();
     cheat::PaintMenu();

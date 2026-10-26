@@ -279,7 +279,13 @@ std::string FindTool(const char* name) {
 }
 }
 static ConCommand css_download("css_download", [](const CCommand&) {
-#ifdef _WIN32
+#if defined(PLATFORM_ANDROID)
+  std::error_code ec;
+  Msg("SteamCMD does not run on Android. Download the content on a PC (tools/get_css_content.bat), then copy the\n"
+      "content/css folder (it contains cstrike/ and hl2/) to the phone into:\n  %s/content/css\n"
+      "and type css_rescan (or restart the game).\n", fs::current_path(ec).string().c_str());
+  return;
+#elif defined(_WIN32)
   std::string tool = FindTool("get_css_content.bat");
   if (tool.empty()) { Warning("tools/get_css_content.bat not found\n"); return; }
   std::string cmd = "start \"CS:S content download\" cmd /c \"\"" + tool + "\"\"";

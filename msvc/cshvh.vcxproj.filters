@@ -72,6 +72,9 @@
     <ClCompile Include="..\src\engine\mdl.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\engine\platform.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\engine\srcbsp.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
@@ -112,6 +115,9 @@
       <Filter>src\game\client</Filter>
     </ClCompile>
     <ClCompile Include="..\src\game\client\sound.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\touch.cpp">
       <Filter>src\game\client</Filter>
     </ClCompile>
     <ClCompile Include="..\src\game\client\viewmodel.cpp">
@@ -206,6 +212,9 @@
     <ClInclude Include="..\src\engine\mdl.hpp">
       <Filter>src\engine</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\engine\platform.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\engine\random.hpp">
       <Filter>src\engine</Filter>
     </ClInclude>
@@ -234,6 +243,9 @@
       <Filter>src\game\client</Filter>
     </ClInclude>
     <ClInclude Include="..\src\game\client\hud_menus.hpp">
+      <Filter>src\game\client</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\client\touch.hpp">
       <Filter>src\game\client</Filter>
     </ClInclude>
     <ClInclude Include="..\src\game\server\cs_bot.hpp">
