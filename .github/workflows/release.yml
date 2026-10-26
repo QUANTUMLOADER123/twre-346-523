@@ -96,6 +96,7 @@ jobs:
           path: dist
           compression-level: 0
           if-no-files-found: warn
+          retention-days: 1
 
   release:
     needs: [ windows, android, content ]
@@ -106,6 +107,12 @@ jobs:
         with:
           path: artifacts
       - run: find artifacts -type f | xargs ls -la
+      # the artifact layout differs by upload style - collect the packs in one place for the release step
+      - name: Collect the content packs
+        run: |
+          mkdir -p artifacts/content/dist
+          find artifacts/content -name 'cshvh-content-*.zip' -exec cp {} artifacts/content/dist/ \; 2>/dev/null || true
+          ls -la artifacts/content/dist
       - name: Extract latest release notes
         run: |
           VERSION="1.2.${{ github.run_number }}" python3 tools/extract_notes.py

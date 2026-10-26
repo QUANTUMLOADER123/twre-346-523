@@ -45,14 +45,14 @@ def map_entries():
     return out
 
 
-def fetch(url, tries=4):
+def fetch(url, tries=5):
     for i in range(tries):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
                 return r.read()
         except Exception as e:  # noqa: BLE001 - a dead mirror is expected, retried and reported
             last = e
-            time.sleep(1.0 + 1.5 * i)
+            time.sleep(1.5 * (i + 1) ** 1.5)
     raise last
 
 
@@ -70,7 +70,7 @@ def build(name, items, out_dir):
             return None
 
     t0 = time.time()
-    with cf.ThreadPoolExecutor(max_workers=24) as ex:
+    with cf.ThreadPoolExecutor(max_workers=8) as ex:
         for i, res in enumerate(ex.map(work, items), 1):
             if res:
                 data[res[0]] = res[1]
@@ -79,7 +79,7 @@ def build(name, items, out_dir):
 
     if failed:
         print(f"  {name}: {len(failed)} file(s) missing, e.g. {failed[:3]}", flush=True)
-        if len(failed) > max(3, len(items) // 50):
+        if len(failed) > max(5, len(items) // 50):
             raise SystemExit(f"{name}: too many missing files ({len(failed)}/{len(items)}), not shipping a broken pack")
 
     path = os.path.join(out_dir, name)
@@ -97,22 +97,40 @@ def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "dist"
     os.makedirs(out_dir, exist_ok=True)
 
-    # base: map textures, agents, sounds, sound scripts (unpacked into content/css/cstrike)
-    base = [(p, BASE_URL + p) for p in quoted("src/engine/content_base.inc")]
-    build("cshvh-content-base.zip", base, out_dir)
+    packs = {}
 
-    # CS:GO weapon models + their materials (content/extras/csgo_weapons)
-    weapons = [(p, WEAPON_URL + p) for p in quoted("src/engine/content_weapons.inc")]
-    build("cshvh-content-weapons.zip", weapons, out_dir)
+    def base_pack():
+        # map textures, agents, sounds, sound scripts (unpacked into content/css/cstrike)
+        return [(p, BASE_URL + p) for p in quoted("src/engine/content_base.inc")]
 
-    # maps (content/extras/csgo_maps)
-    maps = []
-    for e in map_entries():
-        if e.startswith("http://") or e.startswith("https://"):
-            maps.append(("maps/" + e.rsplit("/", 1)[-1], e))
-        else:
-            maps.append((e, MAP_URL + e))
-    build("cshvh-content-maps.zip", maps, out_dir)
+    def weapon_pack():
+        # CS:GO weapon models + their materials (content/extras/csgo_weapons)
+        return [(p, WEAPON_URL + p) for p in quoted("src/engine/content_weapons.inc")]
+
+    def map_pack():
+        out = []
+        for e in map_entries():
+            if e.startswith("http://") or e.startswith("https://"):
+                out.append(("maps/" + e.rsplit("/", 1)[-1], e))
+            else:
+                out.append((e, MAP_URL + e))
+        return out
+
+    packs["cshvh-content-base.zip"] = base_pack
+    packs["cshvh-content-weapons.zip"] = weapon_pack
+    packs["cshvh-content-maps.zip"] = map_pack
+
+    built = 0
+    for name, make in packs.items():
+        try:
+            build(name, make(), out_dir)
+            built += 1
+        except SystemExit as e:  # a mirror is down: skip this pack, the game falls back to single files
+            print(f"  {name}: skipped ({e})", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"  {name}: skipped ({e})", flush=True)
+    if not built:
+        raise SystemExit("no content pack could be built")
 
 
 if __name__ == "__main__":
