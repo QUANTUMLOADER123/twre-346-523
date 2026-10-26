@@ -313,12 +313,9 @@ static void DrawTimer(float sc) {
   int W = surface()->ScreenWide(), H = surface()->ScreenTall();
   
   // CS:GO style: score at top center (CT | TIMER | T)
-  int ctScore = 0, tScore = 0;
-  for (CCSPlayer* p : UTIL_GetPlayers()) {
-    if (!p) continue;
-    if (p->m_iTeamNum == TEAM_CT) ctScore += p->m_iKills;
-    else if (p->m_iTeamNum == TEAM_TERRORIST) tScore += p->m_iKills;
-  }
+  CCSGameRules* gr2 = CSGameRules();
+  int ctScore = gr2 ? gr2->m_iNumCTWins : 0;
+  int tScore = gr2 ? gr2->m_iNumTerroristWins : 0;
   
   float t;
   if (gr->m_bBombPlanted) {
