@@ -1,7 +1,7 @@
 // srcfs.hpp - Source engine file system for Counter-Strike: Source content.
 //
 // Content comes from a Counter-Strike: Source (or CS:S Dedicated Server) folder - the dedicated server is free and
-// can be downloaded anonymously from Valve with SteamCMD (see tools/get_css_content.* / the "css_download" command).
+// is CS:GO first (free Dedicated Server, tools/get_csgo_content.* / the "csgo_download" command), then CS:S.
 // Nothing from Valve is shipped with this game.
 //
 // Search order (first hit wins), like the real engine:

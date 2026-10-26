@@ -358,27 +358,6 @@ std::string FindTool(const char* name) {
   return "";
 }
 }
-static ConCommand css_download("css_download", [](const CCommand&) {
-#if defined(PLATFORM_ANDROID)
-  std::error_code ec;
-  Msg("SteamCMD does not run on Android. Download the content on a PC (tools/get_css_content.bat), then copy the\n"
-      "content/css folder (it contains cstrike/ and hl2/) to the phone into:\n  %s/content/css\n"
-      "and type css_rescan (or restart the game).\n", fs::current_path(ec).string().c_str());
-#else
-#if defined(_WIN32)
-  std::string tool = FindTool("get_css_content.bat");
-  if (tool.empty()) { Warning("tools/get_css_content.bat not found\n"); return; }
-  std::string cmd = "start \"CS:S content download\" cmd /c \"\"" + tool + "\"\"";
-#else
-  std::string tool = FindTool("get_css_content.sh");
-  if (tool.empty()) { Warning("tools/get_css_content.sh not found\n"); return; }
-  std::string cmd = "\"" + tool + "\" > content_download.log 2>&1 &";
-#endif
-  Msg("Downloading Counter-Strike: Source Dedicated Server content with Valve's SteamCMD (anonymous login, ~2 GB).\n"
-      "When it is done type css_rescan (or restart the game) - maps, models, textures and sounds are then used automatically.\n");
-  if (std::system(cmd.c_str()) != 0) Warning("could not start %s\n", tool.c_str());
-#endif
-}, "Download Counter-Strike: Source content (free CS:S Dedicated Server via SteamCMD) into content/css");
 static ConCommand csgo_download("csgo_download", [](const CCommand&) {
 #if defined(PLATFORM_ANDROID)
   std::error_code ec;
@@ -407,8 +386,19 @@ static ConCommand csgo_rescan("csgo_rescan", [](const CCommand&) {
   else Msg("no CS:GO content found (set csgo_gamedir or run csgo_download)\n");
 }, "Look for CS:GO content again (after csgo_download finished)");
 
-static ConCommand css_rescan("css_rescan", [](const CCommand&) {
+static ConCommand fs_info("fs_info", [](const CCommand&) {
   srcfs::Invalidate();
-  if (srcfs::Available()) Msg("Source content: %s - reload the map (or snd_restart for sounds)\n", srcfs::Root().c_str());
-}, "Look for Counter-Strike: Source content again (after css_download finished)");
+  Msg("content root : %s\n", srcfs::Root().empty() ? "(none)" : srcfs::Root().c_str());
+  Msg("CS:GO root   : %s\n", srcfs::CsgoRoot().empty() ? "(none)" : srcfs::CsgoRoot().c_str());
+  std::vector<std::string> maps = srcfs::List("maps/", ".bsp");
+  Msg("maps         :");
+  for (size_t i = 0; i < maps.size() && i < 40; i++) Msg(" %s", maps[i].c_str());
+  Msg("%s(%d total)\n", maps.empty() ? "(none)" : "", (int)maps.size());
+}, "Print which Source content was found and the maps it offers");
+static ConCommand content_rescan("content_rescan", [](const CCommand&) {
+  srcfs::Invalidate();
+  if (srcfs::CsgoAvailable()) Msg("CS:GO content: %s - reload the map (or snd_restart for sounds)\n", srcfs::CsgoRoot().c_str());
+  else if (srcfs::Available()) Msg("Source content: %s (no CS:GO - run csgo_download for the real CS:GO assets)\n", srcfs::Root().c_str());
+  else Msg("no Source content found (set csgo_gamedir or run csgo_download)\n");
+}, "Look for the Source content again (CS:GO first, then CS:S)");
 

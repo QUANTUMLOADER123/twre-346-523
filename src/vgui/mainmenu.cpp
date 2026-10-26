@@ -348,7 +348,7 @@ void PaintHome(bool ingame) {
       DrawRectangleRec({ x, y, cw, chh }, csgo::Alpha(csgo::Panel, 0.92f));
       DrawRectangleRec({ x, y, 3, chh }, csgo::Accent);
       S()->DrawText(FONT_GO_BOLD, "WHAT'S NEW", x + 16, y + 14, csgo::Accent);
-      const char* lines[] = { "- Counter-Strike: Source maps, agents and weapons", "- Hitboxes from the CS:S player models", "- Radial buy menu, CS:GO style menus",
+      const char* lines[] = { "- Real CS:GO maps, agents and weapons (content_download / csgo_download)", "- Hitboxes from the CS:S player models", "- Radial buy menu, CS:GO style menus",
                               "- Phones: content download, bind circles", "- Press INSERT (or AW) in game for aimwhere" };
       float ly = y + 42;
       for (const char* l : lines) { if (ly > y + chh - 20) break; S()->DrawText(FONT_GO, l, x + 16, ly, csgo::Text); ly += 24; }
@@ -843,7 +843,7 @@ void SettingsTab(int tab) {
     RowEnd();
     Header("VIEW");
     CvSlider("Field of view", "fov_desired", 75, 110, 1, "%.0f");
-    CvSlider("CS:S viewmodel FOV", "cl_css_viewmodel_fov", 40, 90, 1, "%.0f");
+    CvSlider("Viewmodel FOV", "cl_real_viewmodel_fov", 40, 90, 1, "%.0f");
     CvSlider("Viewmodel FOV (other models)", "viewmodel_fov", 54, 90, 1, "%.0f");
     CvSlider("Viewmodel offset X", "viewmodel_offset_x", -2.5f, 2.5f, 0.1f, "%.1f");
     CvSlider("Viewmodel offset Y", "viewmodel_offset_y", -2.5f, 2.5f, 0.1f, "%.1f");
@@ -938,8 +938,8 @@ void SettingsTab(int tab) {
     CvChoice("Skip tiny props", "r_propscreencull", { { "Off", "0" }, { "< 2 px", "2" }, { "< 4 px (faster)", "4" }, { "< 8 px (fastest)", "8" } });
     CvToggle("Player blob shadows", "r_shadows");
     CvChoice("Bullet decals", "r_decals", { { "Off", "0" }, { "64", "64" }, { "128", "128" }, { "256", "256" }, { "512", "512" } });
-    CvToggle("CS:S player models", "cl_css_models");
-    CvToggle("CS:S view models", "cl_css_viewmodels");
+    CvToggle("Real player models (CS:GO agents)", "cl_real_models");
+    CvToggle("Real view models", "cl_real_viewmodels");
     {
       std::vector<std::pair<const char*, const char*>> o;
       static std::vector<std::string> names; names.clear();

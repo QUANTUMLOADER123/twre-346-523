@@ -1,5 +1,5 @@
 // sound.cpp - CSoundEmitterSystem: game sounds. Only real recorded sounds are played: Counter-Strike: Source (content
-// downloaded with tools/get_css_content / css_download, resolved through CS:S's own soundscripts), else Counter-Strike
+// downloaded with tools/get_csgo_content / csgo_download, resolved through the game's own soundscripts), else Counter-Strike
 // 1.6 .wav files (own install via hl_gamedir, or ./sound/). There are no synthesized placeholder sounds.
 #include "../../engine/hlfs.hpp"
 #include "../../engine/srcfs.hpp"

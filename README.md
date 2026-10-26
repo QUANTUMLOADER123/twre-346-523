@@ -178,17 +178,22 @@ csgo_gamedir "D:/Steam/steamapps/common/Counter-Strike Global Offensive/game/csg
 автоматически (`content/csgo`, `./csgo`, `game/csgo`, стандартные пути Steam), `csgo_content`-паки при этом не нужны.
 Формат VPK (v1/v2, многотомный) читается встроенным `srcfs` — как и pakfile карты.
 
-## Контент Counter-Strike: Source
+## Контент CS:GO без Steam: `csgo_download`
 
-Альтернатива загрузке: Valve бесплатно раздаёт **Counter-Strike: Source Dedicated Server** (Steam app 232330,
-около 2 ГБ) через SteamCMD с анонимным входом. В нём есть все карты, материалы, модели и звуки CS:S.
-* в игре: консоль → **`css_download`**, по окончании `css_rescan` или перезапуск;
-* или **`tools\get_css_content.bat`** (Windows) / `tools/get_css_content.sh` (Linux).
+Если CS:GO на компьютере нет, её контент можно скачать бесплатно: Valve раздаёт **Counter-Strike: Global Offensive
+Dedicated Server** (Steam app 740, около 2 ГБ) через SteamCMD с анонимным входом — аккаунт и покупка игры не нужны.
+* в игре: консоль → **`csgo_download`**, по окончании `csgo_rescan` или перезапуск;
+* или **`tools\get_csgo_content.bat`** (Windows) / `tools/get_csgo_content.sh` (Linux).
 
-Контент ставится в `content/css/` (папка в `.gitignore`). Если CS:S уже установлена через Steam, она находится сама,
-другую папку можно указать через `css_gamedir "D:/Games/Counter-Strike Source"`. `css_content 0` выключает CS:S.
+Контент ставится в `content/csgo/` (папка в `.gitignore`) — там `pak01_dir.vpk` и тома `pak01_0xx.vpk`.
+Это **настоящие ассеты CS:GO**: агенты, оружие, текстуры карт, звуки и все официальные карты.
+Всё читается прямо из VPK, ничего не распаковывается. Другую папку можно указать через
+`csgo_gamedir "D:/Games/csgo"`, `cl_real_models 0` выключает реальные модели.
 
-**Что берётся из CS:S:**
+CS:S-контент игра **не скачивает**. Если на машине случайно стоит CS:S, её файлы читаются только как запасной
+вариант (когда CS:GO нет вообще) — отдельного пакета CS:S в загрузчике больше нет.
+
+**Что берётся из контента (CS:GO, а без него — CS:S):**
 * **карты** (VBSP v19–21: de_dust2, de_inferno, de_nuke, de_train, cs_office…): геометрия, дисплейсменты со смешиванием
   двух текстур, родные лайтмапы, небо, прозрачные и альфа-тестовые материалы, брашевые сущности;
 * **коллизия** по брашам карты с плоскостями-бевелами, дисплейсменты, статические пропы по выпуклым оболочкам из `.phy`;
@@ -198,12 +203,12 @@ csgo_gamedir "D:/Steam/steamapps/common/Counter-Strike Global Offensive/game/csg
   `cs_player_shared.mdl`: 9-сторонний бег/ходьба/присед, хват под каждое оружие, наклон корпуса и прицел (body_yaw/body_pitch),
   выстрел, перезарядка, прыжок, смерть; оружие в руках — модели `w_*.mdl`; выброшенное оружие и гранаты тоже из CS:S;
 * **модели от первого лица** `v_*.mdl` с руками CS:S и родными анимациями (достать, выстрел, перезарядка, нож, гранаты,
-  глушитель USP/M4A1, C4); FOV — `cl_css_viewmodel_fov 54`;
+  глушитель USP/M4A1, C4); FOV — `cl_real_viewmodel_fov`;
 * **звуки** через родные скрипты `scripts/game_sounds*.txt`: выстрелы, перезарядка, нож, гранаты, C4, шаги по материалам,
   попадания, радио, интерфейс. Для оружия из CS:GO берётся ближайший аналог (R8 → Deagle, P250 → P228, SSG08 → Scout…).
 
 Файлы читаются прямо из VPK-архивов (`cstrike_pak_dir.vpk`), распаковывать ничего не нужно. **Синтезированных «бипов» больше нет:**
-если нет ни CS:S, ни CS 1.6, звук просто не играет. Модели CS:S выключаются `cl_css_models 0` / `cl_css_viewmodels 0`
+если нет ни CS:S, ни CS 1.6, звук просто не играет. Модели выключаются `cl_real_models 0` / `cl_real_viewmodels 0`
 (тогда игроки рисуются упрощённо). Хитбоксы — родные хитбоксы CS:S (`r_drawhitboxes 1` показывает их).
 
 ## Android
@@ -224,8 +229,9 @@ csgo_gamedir "D:/Steam/steamapps/common/Counter-Strike Global Offensive/game/csg
 Настройки (консоль или `cfg/config.cfg`): `touch_sensitivity 1.0`, `touch_opacity 0.55`, `touch_scale 1.0`, `touch_invert 0`,
 `touch_enable 0/1` (на ПК можно включить для проверки, `touch_mouse 1` — мышь вместо пальца).
 
-**Контент CS:S на телефоне** скачивается сам при первом запуске (лучше по Wi-Fi, ~1.6 ГБ). Можно и вручную скопировать папку
-`content/css` с ПК по USB в `Android/data/com.cshvh.game/files/content/css/`.
+**Контент CS:GO на телефоне:** SteamCMD на Android не работает — скачай контент на ПК (`csgo_download` или
+`tools\get_csgo_content.bat`) и скопируй папку `content/csgo` (с `pak01_dir.vpk`) по USB в
+`Android/data/com.cshvh.game/files/content/csgo/`. Без неё игра работает на встроенных картах из загрузчика.
 При первом запуске игра распаковывает свои файлы в `Android/data/com.cshvh.game/files/`, там же лежит `cfg/`.
 
 ## Оригинальный контент CS 1.6
@@ -318,7 +324,7 @@ src/game/server/  навигационная сетка и боты (CCSBot)
 src/game/client/  ввод/бинды, HUD (как в CS), VGUI-меню закупки и команд, viewmodel, эффекты, звук (WAV из CS:S или CS 1.6)
 src/vgui/         ISurface, контролы (Frame/Button/Slider/ComboBox/…), главное меню в стиле CS:GO (mainmenu), экран загрузки контента, консоль
 src/cheat/        aimwhere: меню, ragebot, antiaim, visuals, misc
-tools/            gen_vs.py (решение Visual Studio), simtest (симуляция матча без графики), get_css_content (SteamCMD)
+tools/            gen_vs.py (решение Visual Studio), simtest (симуляция матча без графики), get_csgo_content (SteamCMD)
 msvc/             проекты Visual Studio (cshvh.vcxproj, raylib.vcxproj)
 third_party/      raylib 6.2 (исходники, zlib-лицензия)
 ```

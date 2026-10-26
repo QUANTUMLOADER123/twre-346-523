@@ -13,14 +13,14 @@
 #include <unordered_map>
 #include <string>
 
-ConVar cl_css_models("cl_css_models", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source player / weapon models when CS:S content is installed");
-ConVar cl_css_viewmodels("cl_css_viewmodels", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source view models (with hands) when CS:S content is installed");
+ConVar cl_real_models("cl_real_models", "1", FCVAR_ARCHIVE, "Use the real player / weapon models from the content (CS:GO agents first, CS:S as a fallback)");
+ConVar cl_real_viewmodels("cl_real_viewmodels", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source view models (with hands) when CS:S content is installed");
 ConVar cl_css_anim_layers("cl_css_anim_layers", "255", FCVAR_CHEAT, "debug: 1 jump 2 upper 4 reload 8 aim 16 shoot");
 ConVar cl_r8_model("cl_r8_model", "1", FCVAR_ARCHIVE, "Use the CS:GO R8 Revolver model (downloaded with the game content) instead of the Desert Eagle");
 ConVar cl_csgo_models("cl_csgo_models", "1", FCVAR_ARCHIVE, "Use the downloaded CS:GO models (SCAR-20, SSG 08, molotov, incendiary) instead of the CS:S stand-ins");
 ConVar cl_csgo_viewmodel_fov("cl_csgo_viewmodel_fov", "56", FCVAR_ARCHIVE, "Field of view of the CS:GO SCAR-20 / SSG 08 / molotov view models", true, 40, true, 90);
 ConVar cl_r8_viewmodel_fov("cl_r8_viewmodel_fov", "68", FCVAR_ARCHIVE, "Field of view of the CS:GO R8 view model (CS:GO viewmodel_fov)", true, 40, true, 90);
-ConVar cl_css_viewmodel_fov("cl_css_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
+ConVar cl_real_viewmodel_fov("cl_real_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
 
 ConVar cl_agent_ct("cl_agent_ct", "0", FCVAR_ARCHIVE, "Your CT agent: 0 SEAL Team 6, 1 GSG-9, 2 SAS, 3 GIGN", true, 0, true, 3);
 ConVar cl_agent_t("cl_agent_t", "0", FCVAR_ARCHIVE, "Your T agent: 0 Phoenix, 1 Elite Crew, 2 Arctic Avengers, 3 Guerilla Warfare", true, 0, true, 3);
@@ -30,7 +30,7 @@ const char* CSS_AgentName(int team, int idx) {
   return team == TEAM_CT ? ct[idx & 3] : t[idx & 3];
 }
 
-bool CSS_ModelsActive() { return cl_css_models.GetBool() && srcfs::AnyContent(); }
+bool CSS_ModelsActive() { return cl_real_models.GetBool() && srcfs::AnyContent(); }
 
 namespace {
 struct WeaponModel { const char* model; const char* anim; };
@@ -505,7 +505,7 @@ SrcSeqRef PickVm(const CSrcModel& m, std::initializer_list<const char*> acts, bo
 }
 
 bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, float bobTime, float bob, const QAngle& sway, float landKick, Vector& muzzleOut) {
-  if (!cl_css_viewmodels.GetBool() || !srcfs::AnyContent()) return false;
+  if (!cl_real_viewmodels.GetBool() || !srcfs::AnyContent()) return false;
   const int wid = w->GetCSWeaponID();
   WeaponModel wi = WeaponInfo(wid); if (!wi.model) return false;
   const CSrcModel* m = nullptr;
@@ -596,7 +596,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   if (cl.nightvision) L.ambient = Vector(0.9f, 1.2f, 0.9f);
   StudioDrawParams dp; dp.light = L; dp.eye = view.origin;
 
-  Matrix proj = BuildProjection(view.VerticalFov((r8 ? cl_r8_viewmodel_fov : csgo ? cl_csgo_viewmodel_fov : cl_css_viewmodel_fov).GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
+  Matrix proj = BuildProjection(view.VerticalFov((r8 ? cl_r8_viewmodel_fov : csgo ? cl_csgo_viewmodel_fov : cl_real_viewmodel_fov).GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
   Render_ClearDepth();
   Render_Begin3D(view.view, proj);
   SrcMdl_Draw(*m, bones, xf, dp);
