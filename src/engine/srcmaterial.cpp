@@ -3,6 +3,7 @@
 #include "srcfs.hpp"
 #include "keyvalues.hpp"
 #include "convar.hpp"
+#include "materialsystem.hpp"
 #include "enginetrace.hpp"
 #include "rlgl.h"
 #include <unordered_map>
@@ -188,6 +189,35 @@ const TexEntry& LoadTex(const std::string& name) {
   }
   return s_tex[key] = e;
 }
+// A missing vmt / vtf (a CS:GO map without its material library) falls back to a plausible procedural surface
+// picked from the material path - never a checkerboard in game. Real textures always win when they exist.
+int FallbackMaterialId(const std::string& key) {
+  std::string k = key;
+  auto has = [&](const char* t) { return k.find(t) != std::string::npos; };
+  if (has("water") || has("lava") || has("slime")) return MAT_DEV_BLUE;
+  if (has("glass") || has("window")) return MAT_DEV_BLUE;
+  if (has("tile") || has("ceramic") || has("porcelain") || has("bathroom")) return MAT_TILE_FLOOR;
+  if (has("brick")) return MAT_BRICK_RED;
+  if (has("wood") || has("crate") || has("plank") || has("door_frame")) return has("crate") ? MAT_CRATE : MAT_WOOD_PLANKS;
+  if (has("metal") || has("steel") || has("iron") || has("girder") || has("beam") || has("grate") || has("rust")) return MAT_METAL;
+  if (has("sand") || has("dust") || has("desert")) return MAT_SANDSTONE_WALL;
+  if (has("grass") || has("foliage") || has("leaf") || has("leaves") || has("moss")) return MAT_GRASS;
+  if (has("roof") || has("shingle") || has("tile_roof")) return MAT_ROOF_TILES;
+  if (has("stone") || has("rock") || has("cliff") || has("marble") || has("granite")) return MAT_STONE_DARK;
+  if (has("cobble") || has("pavement") || has("asphalt") || has("street")) return MAT_COBBLE;
+  if (has("plaster") || has("stucco") || has("wallpaper")) return MAT_PLASTER_WHITE;
+  if (has("floor") || has("ground") || has("concrete") || has("cement") || has("trim")) return MAT_CONCRETE;
+  return MAT_CONCRETE;
+}
+Texture2D Checker();
+Texture2D FallbackTex(const std::string& key) {
+  if (materials->initialized) {
+    MaterialInfo& mi = materials->Get(FallbackMaterialId(key));
+    if (mi.tex.id) return mi.tex;
+  }
+  return Checker();
+}
+
 Texture2D Checker() {
   static Texture2D t{}; if (t.id) return t;
   std::vector<uint8_t> px(32 * 32 * 4);
@@ -236,7 +266,7 @@ static SrcMaterial BuildMaterial(const std::string& key) {
   if (key.rfind("tools/", 0) == 0) m.tool = true;
   if (key.rfind("tools/toolsnodraw", 0) == 0 || key.rfind("tools/toolsskip", 0) == 0 || key.rfind("tools/toolshint", 0) == 0) m.nodraw = true;
   if (key.rfind("tools/toolsskybox", 0) == 0) m.sky = true;
-  if (!kv) { m.tex = Checker(); return m; }
+  if (!kv) { m.tex = FallbackTex(key); m.width = m.height = 128; return m; }
   m.ok = true; m.shader = shader;
   auto B = [&](const char* k) { return kv->GetInt(k, 0) != 0; };
   m.translucent = B("$translucent"); m.alphatest = B("$alphatest"); m.additive = B("$additive"); m.nocull = B("$nocull");
@@ -253,9 +283,10 @@ static SrcMaterial BuildMaterial(const std::string& key) {
   if (m.water && bt.empty()) { m.color = Vector(0.25f, 0.33f, 0.3f); m.alpha = 0.7f; }
   if (!bt.empty()) {
     const TexEntry& t = LoadTex(bt);
-    if (t.ok) { m.tex = t.tex; m.width = t.fullW; m.height = t.fullH; } else m.tex = Checker();
+    if (t.ok) { m.tex = t.tex; m.width = t.fullW; m.height = t.fullH; }
+    else { m.tex = FallbackTex(bt); m.width = m.height = 128; }
     if (!m.translucent && !m.alphatest && t.ok && t.hasAlpha && m.additive) {}
-  } else m.tex = Checker();
+  } else { m.tex = FallbackTex(key); m.width = m.height = 128; }
   std::string bt2 = kv->GetString("$basetexture2");
   if (!bt2.empty()) { const TexEntry& t2 = LoadTex(bt2); if (t2.ok) m.tex2 = t2.tex; }
   return m;
