@@ -32,7 +32,7 @@ STAGE=$OUT/apk
 rm -rf "$STAGE"; mkdir -p "$STAGE" bin
 
 GAME_SRC=$(ls src/engine/*.cpp src/game/*/*.cpp src/vgui/*.cpp src/cheat/*.cpp src/main.cpp)
-COMMON="-DPLATFORM_ANDROID -D__ANDROID_API__=$API -DGRAPHICS_API_OPENGL_ES3 -fPIC -ffunction-sections -fdata-sections -funwind-tables -fstack-protector-strong -I$RL -I$GLUE"
+COMMON="-DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES3 -fPIC -ffunction-sections -fdata-sections -funwind-tables -fstack-protector-strong -I$RL -I$GLUE"
 
 for ABI in $ABIS; do
   case $ABI in

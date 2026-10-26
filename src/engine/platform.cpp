@@ -13,6 +13,7 @@
 #include <android/asset_manager.h>
 #include <android/log.h>
 #include <android/native_activity.h>
+#include <android/window.h>
 #include <android_native_app_glue.h>
 #include <filesystem>
 #include <fstream>

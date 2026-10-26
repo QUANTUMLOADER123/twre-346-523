@@ -112,10 +112,12 @@
     <ClCompile Include="..\src\engine\srcfs.cpp" />
     <ClCompile Include="..\src\engine\srcmaterial.cpp" />
     <ClCompile Include="..\src\engine\srcmdl.cpp" />
+    <ClCompile Include="..\src\engine\srcmdlrender.cpp" />
     <ClCompile Include="..\src\engine\studio.cpp" />
     <ClCompile Include="..\src\engine\view.cpp" />
     <ClCompile Include="..\src\engine\worldrender.cpp" />
     <ClCompile Include="..\src\game\client\cl_render.cpp" />
+    <ClCompile Include="..\src\game\client\css_models.cpp" />
     <ClCompile Include="..\src\game\client\effects.cpp" />
     <ClCompile Include="..\src\game\client\hud.cpp" />
     <ClCompile Include="..\src\game\client\hud_menus.cpp" />
@@ -164,6 +166,7 @@
     <ClInclude Include="..\src\engine\view.hpp" />
     <ClInclude Include="..\src\engine\worldrender.hpp" />
     <ClInclude Include="..\src\game\client\cl_main.hpp" />
+    <ClInclude Include="..\src\game\client\css_models.hpp" />
     <ClInclude Include="..\src\game\client\hud_menus.hpp" />
     <ClInclude Include="..\src\game\client\touch.hpp" />
     <ClInclude Include="..\src\game\server\cs_bot.hpp" />

@@ -38,11 +38,24 @@ struct SrcMdlSeq {
   std::vector<int> anims;                // blend grid (we use the first entry)
   int groupSize[2] = { 1, 1 };
   float fadeIn = 0.2f, fadeOut = 0.2f;
-  bool looping = false;
+  bool looping = false, delta = false;
+  int paramIndex[2] = { -1, -1 };        // pose parameter of each blend axis
+  float paramStart[2] = { 0, 0 }, paramEnd[2] = { 1, 1 };
+  std::vector<float> weights;            // per bone layer weight ($weightlist)
 };
 struct SrcMdlPoseParam { std::string name; int flags = 0; float start = 0, end = 1, loop = 0; };
 struct SrcMdlAttachment { std::string name; int bone = 0; matrix3x4_t local; };
 struct SrcMdlHitbox { int bone = 0, group = 0; Vector mins, maxs; };
+
+class CSrcModel;
+struct SrcSeqRef {                       // a sequence of this model or of one of its $includemodel libraries
+  const CSrcModel* src = nullptr; int seq = -1; int include = -1;   // include: index into includes (-1 = own)
+  explicit operator bool() const { return src && seq >= 0; }
+};
+struct SrcPoseValues {                   // pose parameter values by name (degrees / -1..1, as in the model)
+  float move_x = 0, move_y = 0, move_yaw = 0, body_yaw = 0, body_pitch = 0;
+  float Get(const std::string& n) const;
+};
 
 class CSrcModel {
 public:
@@ -63,6 +76,20 @@ public:
   std::vector<SrcMdlPoseParam> poseParams;
   std::vector<std::string> includeModels;  // $includemodel (animation libraries, e.g. cs_player_shared.mdl)
   std::vector<uint8_t> data;             // the .mdl file (animation data is decoded on demand)
+  std::vector<const CSrcModel*> includes;            // loaded $includemodel libraries
+  std::vector<std::vector<int>> includeBoneMap;      // [include][our bone] -> bone of the include (-1)
+
+  SrcSeqRef FindSeq(const std::string& label) const;                 // own sequences first, then includes
+  std::vector<SrcSeqRef> FindSeqsByActivity(const std::string& act) const;
+  float SeqFps(const SrcSeqRef& r) const;
+  int SeqFrames(const SrcSeqRef& r) const;
+  float SeqDuration(const SrcSeqRef& r) const { int n = SeqFrames(r); return n > 1 ? (n - 1) / std::max(1.f, SeqFps(r)) : 0.f; }
+  // sample a sequence (cycle 0..1, blend grid from pose values) into OUR skeleton's local transforms.
+  // delta sequences give identity for bones they don't touch. weights (per our bone) = the sequence's $weightlist
+  void SampleSeq(const SrcSeqRef& r, float cycle, const SrcPoseValues& pv, std::vector<Vector>& pos, std::vector<Quat>& q, std::vector<float>* weights = nullptr) const;
+  // bone-to-model matrices -> skinning matrices (bone * poseToBone)
+  void SkinMatrices(const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, std::vector<matrix3x4_t>& out) const;
+  Vector AttachmentPos(int idx, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld) const;
 
   // texture of a mesh for a skin family
   Texture2D MeshTexture(const SrcMdlMesh& m, int skin = 0, bool* translucent = nullptr, bool* alphatest = nullptr) const;
@@ -76,6 +103,10 @@ public:
 private:
   void ExtractAnimBone(const uint8_t* animBase, int bone, int frame, float t, Vector& pos, Quat& q, int animFlags) const;
 };
+
+// draw a skinned model: bones = bone-to-model matrices (BuildBones), params like StudioRender_DrawModel
+struct StudioDrawParams;
+void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin = 0);
 
 // cache (cleared on map change)
 CSrcModel* SrcMdl_Get(const std::string& path);

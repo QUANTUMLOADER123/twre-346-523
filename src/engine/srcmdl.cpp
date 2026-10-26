@@ -107,7 +107,10 @@ bool CSrcModel::Load(const std::string& path) {
     sq.groupSize[0] = std::max(1, Rd<int>(d, s + 68)); sq.groupSize[1] = std::max(1, Rd<int>(d, s + 72));
     int ai = Rd<int>(d, s + 60);
     for (int k = 0; k < sq.groupSize[0] * sq.groupSize[1]; k++) sq.anims.push_back(Rd<int16_t>(d, s + ai + k * 2));
-    sq.fadeIn = Rd<float>(d, s + 104); sq.fadeOut = Rd<float>(d, s + 108); sq.looping = (sq.flags & 1) != 0;
+    sq.fadeIn = Rd<float>(d, s + 104); sq.fadeOut = Rd<float>(d, s + 108); sq.looping = (sq.flags & 1) != 0; sq.delta = (sq.flags & 4) != 0;
+    for (int k = 0; k < 2; k++) { sq.paramIndex[k] = Rd<int>(d, s + 76 + k * 4); sq.paramStart[k] = Rd<float>(d, s + 84 + k * 4); sq.paramEnd[k] = Rd<float>(d, s + 92 + k * 4); }
+    int wl = Rd<int>(d, s + 156);
+    if (wl) for (int b = 0; b < numBones; b++) sq.weights.push_back(Rd<float>(d, s + wl + b * 4));
     seqs.push_back(sq);
   }
 
@@ -241,14 +244,15 @@ void CSrcModel::ExtractAnimBone(const uint8_t* p, int bone, int frame, float, Ve
 void CSrcModel::SampleAnim(int anim, float frame, std::vector<Vector>& pos, std::vector<Quat>& q) const {
   size_t nb = bones.size();
   pos.resize(nb); q.resize(nb);
-  for (size_t i = 0; i < nb; i++) { pos[i] = bones[i].pos; q[i] = bones[i].quat; }
+  const bool deltaAnim = anim >= 0 && anim < (int)anims.size() && (anims[anim].flags & 0x4);
+  for (size_t i = 0; i < nb; i++) { pos[i] = deltaAnim ? Vector() : bones[i].pos; q[i] = deltaAnim ? Quat() : bones[i].quat; }
   if (anim < 0 || anim >= (int)anims.size() || !anims[anim].valid) return;
   const SrcMdlAnim& a = anims[anim];
   frame = Clamp(frame, 0.f, (float)(a.numFrames - 1));
   int f0 = (int)frame, f1 = std::min(f0 + 1, a.numFrames - 1); float t = frame - f0;
   auto sample = [&](int f, std::vector<Vector>& P, std::vector<Quat>& Q) {
     P.resize(nb); Q.resize(nb);
-    for (size_t i = 0; i < nb; i++) { P[i] = bones[i].pos; Q[i] = bones[i].quat; }
+    for (size_t i = 0; i < nb; i++) { P[i] = deltaAnim ? Vector() : bones[i].pos; Q[i] = deltaAnim ? Quat() : bones[i].quat; }
     int off = a.animOffset, lf = f;
     if (a.sectionFrames > 0 && a.sectionOffset) {
       int sec = f / a.sectionFrames;
@@ -304,7 +308,16 @@ CSrcModel* SrcMdl_Get(const std::string& path) {
   if (it != s_models.end()) return it->second && it->second->loaded ? it->second.get() : nullptr;
   auto m = std::make_unique<CSrcModel>();
   if (!m->Load(key)) { s_models[key] = nullptr; return nullptr; }
-  CSrcModel* r = m.get(); s_models[key] = std::move(m); return r;
+  CSrcModel* r = m.get(); s_models[key] = std::move(m);
+  // $includemodel animation libraries (cs_player_shared.mdl ...): map bones by name
+  for (const std::string& inc : r->includeModels) {
+    if (inc == key) continue;
+    CSrcModel* im = SrcMdl_Get(inc); if (!im) continue;
+    std::vector<int> map(r->bones.size(), -1);
+    for (size_t b = 0; b < r->bones.size(); b++) map[b] = im->FindBone(r->bones[b].name);
+    r->includes.push_back(im); r->includeBoneMap.push_back(std::move(map));
+  }
+  return r;
 }
 void SrcMdl_Clear() { for (auto& [k, m] : s_models) if (m) m->Unload(); s_models.clear(); }
 
@@ -317,8 +330,89 @@ static ConCommand mdl_info("mdl_info", [](const CCommand& c) {
   for (auto& i : m->includeModels) Msg("  include %s\n", i.c_str());
   for (auto& p : m->poseParams) Msg("  pose %s [%g..%g] loop %g\n", p.name.c_str(), p.start, p.end, p.loop);
   for (auto& a : m->attachments) Msg("  attachment %s bone %d\n", a.name.c_str(), a.bone);
+  if (c.ArgC() > 2) for (size_t i = 0; i < m->bones.size(); i++) Msg("  bone %d %s parent %d pos %.1f %.1f %.1f\n", (int)i, m->bones[i].name.c_str(), m->bones[i].parent, m->bones[i].pos.x, m->bones[i].pos.y, m->bones[i].pos.z);
   for (size_t i = 0; i < m->seqs.size(); i++) {
     auto& s = m->seqs[i]; const SrcMdlAnim* a = s.anims.empty() || s.anims[0] < 0 || s.anims[0] >= (int)m->anims.size() ? nullptr : &m->anims[s.anims[0]];
     Msg("  seq %3d %-28s %-30s flags %x grid %dx%d frames %d fps %g%s\n", (int)i, s.label.c_str(), s.activity.c_str(), s.flags, s.groupSize[0], s.groupSize[1], a ? a->numFrames : 0, a ? a->fps : 0, a && !a->valid ? " (animblock)" : "");
   }
 }, "Print the sequences / pose parameters / attachments of a Source model");
+
+// ------------------------------------------------------------------------------------------------
+// sequences across $includemodel libraries, blending
+float SrcPoseValues::Get(const std::string& n) const {
+  std::string l = srcfs::Normalize(n);
+  if (l == "move_x") return move_x; if (l == "move_y") return move_y; if (l == "move_yaw") return move_yaw;
+  if (l == "body_yaw" || l == "aim_yaw") return body_yaw; if (l == "body_pitch" || l == "aim_pitch") return body_pitch;
+  return 0;
+}
+
+SrcSeqRef CSrcModel::FindSeq(const std::string& label) const {
+  int s = FindSequence(label); if (s >= 0) return { this, s, -1 };
+  for (size_t i = 0; i < includes.size(); i++) { int k = includes[i]->FindSequence(label); if (k >= 0) return { includes[i], k, (int)i }; }
+  return {};
+}
+std::vector<SrcSeqRef> CSrcModel::FindSeqsByActivity(const std::string& act) const {
+  std::vector<SrcSeqRef> out; std::string a = srcfs::Normalize(act);
+  for (int i = 0; i < (int)seqs.size(); i++) if (srcfs::Normalize(seqs[i].activity) == a) out.push_back({ this, i, -1 });
+  return out;
+}
+static const SrcMdlAnim* FirstAnim(const SrcSeqRef& r) {
+  if (!r) return nullptr; const SrcMdlSeq& s = r.src->seqs[r.seq];
+  if (s.anims.empty() || s.anims[0] < 0 || s.anims[0] >= (int)r.src->anims.size()) return nullptr;
+  return &r.src->anims[s.anims[0]];
+}
+float CSrcModel::SeqFps(const SrcSeqRef& r) const { const SrcMdlAnim* a = FirstAnim(r); return a ? a->fps : 30.f; }
+int CSrcModel::SeqFrames(const SrcSeqRef& r) const { const SrcMdlAnim* a = FirstAnim(r); return a ? a->numFrames : 1; }
+
+void CSrcModel::SampleSeq(const SrcSeqRef& r, float cycle, const SrcPoseValues& pv, std::vector<Vector>& pos, std::vector<Quat>& q, std::vector<float>* weights) const {
+  const size_t nb = bones.size();
+  pos.resize(nb); q.resize(nb);
+  if (!r) { for (size_t i = 0; i < nb; i++) { pos[i] = bones[i].pos; q[i] = bones[i].quat; } if (weights) weights->assign(nb, 0.f); return; }
+  const CSrcModel& m = *r.src; const SrcMdlSeq& s = m.seqs[r.seq];
+  // blend grid position
+  float t[2] = { 0, 0 }; int g[2] = { s.groupSize[0], s.groupSize[1] };
+  for (int k = 0; k < 2; k++) {
+    if (g[k] <= 1 || s.paramIndex[k] < 0 || s.paramIndex[k] >= (int)m.poseParams.size()) continue;
+    float v = pv.Get(m.poseParams[s.paramIndex[k]].name);
+    float a = s.paramStart[k], b = s.paramEnd[k];
+    t[k] = std::fabs(b - a) > 1e-4f ? Clamp((v - a) / (b - a), 0.f, 1.f) * (g[k] - 1) : 0.f;
+  }
+  int x0 = std::min((int)t[0], std::max(0, g[0] - 2)), y0 = std::min((int)t[1], std::max(0, g[1] - 2));
+  float fx = g[0] > 1 ? t[0] - x0 : 0.f, fy = g[1] > 1 ? t[1] - y0 : 0.f;
+  auto animAt = [&](int x, int y) { x = std::min(x, g[0] - 1); y = std::min(y, g[1] - 1); size_t i = (size_t)y * g[0] + x; return i < s.anims.size() ? (int)s.anims[i] : -1; };
+  auto frameOf = [&](int anim) { int nf = anim >= 0 && anim < (int)m.anims.size() ? m.anims[anim].numFrames : 1; return Clamp(cycle, 0.f, 1.f) * (nf - 1); };
+  thread_local std::vector<Vector> P[4]; thread_local std::vector<Quat> Q[4];
+  struct C { int x, y; float w; } corners[4] = { { x0, y0, (1 - fx) * (1 - fy) }, { x0 + 1, y0, fx * (1 - fy) }, { x0, y0 + 1, (1 - fx) * fy }, { x0 + 1, y0 + 1, fx * fy } };
+  std::vector<Vector> SP; std::vector<Quat> SQ; bool first = true; float acc = 0;
+  for (int c = 0; c < 4; c++) {
+    if (corners[c].w < 1e-4f) continue;
+    int an = animAt(corners[c].x, corners[c].y);
+    m.SampleAnim(an, frameOf(an), P[c], Q[c]);
+    if (first) { SP = P[c]; SQ = Q[c]; acc = corners[c].w; first = false; continue; }
+    acc += corners[c].w; float k = corners[c].w / acc;
+    for (size_t i = 0; i < SP.size(); i++) { SP[i] = SP[i] + (P[c][i] - SP[i]) * k; SQ[i] = QuatSlerp(SQ[i], Q[c][i], k); }
+  }
+  if (first) m.SampleAnim(-1, 0, SP, SQ);
+  // map into our skeleton
+  const std::vector<int>* map = r.include >= 0 && r.include < (int)includeBoneMap.size() ? &includeBoneMap[r.include] : nullptr;
+  if (weights) weights->assign(nb, s.weights.empty() ? 1.f : 0.f);
+  for (size_t i = 0; i < nb; i++) {
+    int j = map ? (*map)[i] : (int)i;
+    if (j >= 0 && j < (int)SP.size()) { pos[i] = SP[j]; q[i] = SQ[j]; if (weights && !s.weights.empty() && j < (int)s.weights.size()) (*weights)[i] = s.weights[j]; }
+    else { pos[i] = s.delta ? Vector() : bones[i].pos; q[i] = s.delta ? Quat() : bones[i].quat; if (weights) (*weights)[i] = 0; }
+  }
+}
+
+void CSrcModel::SkinMatrices(const std::vector<matrix3x4_t>& bm, const matrix3x4_t& modelToWorld, std::vector<matrix3x4_t>& out) const {
+  out.resize(bones.size());
+  for (size_t b = 0; b < bones.size(); b++) {
+    matrix3x4_t t; ConcatTransforms(b < bm.size() ? bm[b] : matrix3x4_t(), bones[b].poseToBone, t);
+    ConcatTransforms(modelToWorld, t, out[b]);
+  }
+}
+Vector CSrcModel::AttachmentPos(int idx, const std::vector<matrix3x4_t>& bm, const matrix3x4_t& modelToWorld) const {
+  if (idx < 0 || idx >= (int)attachments.size()) return VectorTransform(Vector(), modelToWorld);
+  const SrcMdlAttachment& a = attachments[idx];
+  matrix3x4_t bw; ConcatTransforms(modelToWorld, a.bone < (int)bm.size() ? bm[a.bone] : matrix3x4_t(), bw);
+  return VectorTransform(Vector(a.local.m[0][3], a.local.m[1][3], a.local.m[2][3]), bw);
+}

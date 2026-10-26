@@ -11,6 +11,7 @@
 #include "../../engine/mdl.hpp"
 #include "../../engine/hlfs.hpp"
 #include <cstring>
+#include "css_models.hpp"
 
 ConVar viewmodel_fov("viewmodel_fov", "68", FCVAR_ARCHIVE, "Viewmodel field of view", true, 54, true, 90);
 ConVar viewmodel_offset_x("viewmodel_offset_x", "0", FCVAR_ARCHIVE, "", true, -4, true, 4);
@@ -166,6 +167,7 @@ void CL_DrawViewModel(const CViewSetup& view) {
   CCSPlayer* p = cl.viewEntity; if (!p) return;
   C_WeaponCSBase* w = p->GetActiveCSWeapon(); if (!w) return;
   if (w->GetCSWeaponID() != WEAPON_C4 || !p->m_bIsPlanting) { if (IsGrenade(w->GetCSWeaponID()) && static_cast<CBaseCSGrenade*>(w)->m_bRedraw) return; }
+  if (CSS_DrawViewModel(view, p, w, vm.bobTime, vm.bob, vm.sway, vm.landKick, vm.muzzle)) return;
   if (DrawOriginalViewModel(view, p, w)) return;
   CStudioModel* mdl = p->GetModel(); if (!mdl) return;
   int wid = w->GetCSWeaponID();

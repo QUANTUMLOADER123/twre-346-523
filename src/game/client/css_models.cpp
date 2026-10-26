@@ -1,0 +1,287 @@
+// css_models.cpp - Counter-Strike: Source player / weapon / view models (see css_models.hpp)
+#include "css_models.hpp"
+#include "cl_main.hpp"
+#include "../../engine/srcmdl.hpp"
+#include "../../engine/srcfs.hpp"
+#include "../../engine/view.hpp"
+#include "../../engine/worldrender.hpp"
+#include "../../engine/host.hpp"
+#include "../shared/cs_player.hpp"
+#include "../shared/weapon_csbase.hpp"
+#include <cmath>
+#include <algorithm>
+#include <unordered_map>
+#include <string>
+
+ConVar cl_css_models("cl_css_models", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source player / weapon models when CS:S content is installed");
+ConVar cl_css_viewmodels("cl_css_viewmodels", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source view models (with hands) when CS:S content is installed");
+ConVar cl_css_viewmodel_fov("cl_css_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
+
+bool CSS_ModelsActive() { return cl_css_models.GetBool() && srcfs::Available(); }
+
+namespace {
+struct WeaponModel { const char* model; const char* anim; };
+WeaponModel WeaponInfo(int wid) {
+  switch (wid) {
+    case WEAPON_KNIFE: return { "knife_t", "KNIFE" };
+    case WEAPON_GLOCK: return { "pist_glock18", "PISTOL" };
+    case WEAPON_USP_SILENCER: return { "pist_usp", "PISTOL" };
+    case WEAPON_P250: return { "pist_p228", "PISTOL" };
+    case WEAPON_DEAGLE: case WEAPON_REVOLVER: return { "pist_deagle", "PISTOL" };
+    case WEAPON_MAC10: return { "smg_mac10", "MAC10" };
+    case WEAPON_MP9: return { "smg_tmp", "TMP" };
+    case WEAPON_UMP45: return { "smg_ump45", "UMP45" };
+    case WEAPON_P90: return { "smg_p90", "P90" };
+    case WEAPON_NOVA: return { "shot_m3super90", "M3S90" };
+    case WEAPON_XM1014: return { "shot_xm1014", "XM1014" };
+    case WEAPON_GALILAR: return { "rif_galil", "GALIL" };
+    case WEAPON_FAMAS: return { "rif_famas", "FAMAS" };
+    case WEAPON_AK47: return { "rif_ak47", "AK" };
+    case WEAPON_M4A1: case WEAPON_M4A1_SILENCER: return { "rif_m4a1", "M4" };
+    case WEAPON_SG556: return { "rif_sg552", "SG552" };
+    case WEAPON_AUG: return { "rif_aug", "AUG" };
+    case WEAPON_SSG08: return { "snip_scout", "SCOUT" };
+    case WEAPON_AWP: return { "snip_awp", "AWP" };
+    case WEAPON_G3SG1: return { "snip_g3sg1", "G3" };
+    case WEAPON_SCAR20: return { "snip_sg550", "SG550" };
+    case WEAPON_HEGRENADE: return { "eq_fraggrenade", "GREN" };
+    case WEAPON_FLASHBANG: return { "eq_flashbang", "GREN" };
+    case WEAPON_SMOKEGRENADE: return { "eq_smokegrenade", "GREN" };
+    case WEAPON_C4: return { "c4", "C4" };
+    default: return { nullptr, "KNIFE" };
+  }
+}
+bool SilencerModel(int wid) { return wid == WEAPON_USP_SILENCER || wid == WEAPON_M4A1_SILENCER; }
+
+const CSrcModel* PlayerModel(CCSPlayer* p) {
+  static const char* ct[4] = { "ct_urban", "ct_gsg9", "ct_sas", "ct_gign" };
+  static const char* t[4] = { "t_phoenix", "t_leet", "t_arctic", "t_guerilla" };
+  int idx = (p->entindex() + p->m_iPlayerModel) & 3;
+  const char* n = p->m_iTeamNum == TEAM_CT ? ct[idx] : t[idx];
+  return SrcMdl_Get(std::string("models/player/") + n + ".mdl");
+}
+const CSrcModel* WorldWeapon(int wid, bool silencer = false, bool thrown = false) {
+  WeaponModel wi = WeaponInfo(wid); if (!wi.model) return nullptr;
+  std::string n = std::string("models/weapons/w_") + wi.model;
+  if (silencer && wid == WEAPON_USP_SILENCER) n += "_silencer";
+  if (silencer && wid == WEAPON_M4A1_SILENCER) n += "_silencer";
+  if (thrown && IsGrenade(wid)) n += "_thrown";
+  return SrcMdl_Get(n + ".mdl");
+}
+
+// ------------------------------------------------------------------------------------------------
+// third person animation
+struct AnimTrack { float cycle = 0, air = 0, last = -1; };
+std::unordered_map<int, AnimTrack> s_tracks;
+
+void LayerFull(std::vector<Vector>& pos, std::vector<Quat>& q, const std::vector<Vector>& lp, const std::vector<Quat>& lq, const std::vector<float>& w, float amount) {
+  for (size_t b = 0; b < pos.size(); b++) {
+    float k = (b < w.size() ? w[b] : 1.f) * amount; if (k <= 0.001f) continue;
+    q[b] = QuatSlerp(q[b], lq[b], std::min(1.f, k)); pos[b] = pos[b] + (lp[b] - pos[b]) * std::min(1.f, k);
+  }
+}
+void LayerDelta(std::vector<Vector>& pos, std::vector<Quat>& q, const std::vector<Vector>& dp, const std::vector<Quat>& dq, const std::vector<float>& w, float amount) {
+  for (size_t b = 0; b < pos.size(); b++) {
+    float k = (b < w.size() ? w[b] : 1.f) * amount; if (k <= 0.001f) continue;
+    Quat d = k >= 0.999f ? dq[b] : QuatSlerp(Quat(), dq[b], k);
+    q[b] = QuatMul(q[b], d); pos[b] = pos[b] + dp[b] * k;
+  }
+}
+
+void BuildPlayerBones(CCSPlayer* pl, const CSrcModel& m, const PlayerPoseInput& in, std::vector<matrix3x4_t>& bones) {
+  AnimTrack& tr = s_tracks[pl ? pl->entindex() : 0];
+  const float now = (float)gpGlobals->realtime;
+  float dt = tr.last < 0 ? 0.f : Clamp(now - tr.last, 0.f, 0.1f);
+  tr.last = now;
+  thread_local std::vector<Vector> pos, lp; thread_local std::vector<Quat> q, lq; thread_local std::vector<float> w;
+  SrcPoseValues pv;
+  // death
+  if (in.deathCycle >= 0) {
+    SrcSeqRef d = m.FindSeq("Death1");
+    float dur = std::max(0.1f, m.SeqDuration(d));
+    m.SampleSeq(d, Clamp(in.deathTime / dur, 0.f, 1.f), pv, pos, q);
+    m.BuildBones(pos, q, bones);
+    return;
+  }
+  const bool crouch = in.duckAmount > 0.5f;
+  const float speed = in.moveSpeed * 250.f;
+  const bool moving = speed > 12.f;
+  const bool run = speed > 150.f;
+  // movement direction on the 9-way blend square
+  float yaw = DEG2RADF(in.moveYaw);
+  float mx = std::cos(yaw), my = -std::sin(yaw);
+  float mm = std::max(std::fabs(mx), std::fabs(my)); if (mm > 1e-3f) { mx /= mm; my /= mm; }
+  float mag = moving ? Clamp(speed / (crouch ? 85.f : run ? 250.f : 130.f), 0.35f, 1.f) : 0.f;
+  pv.move_x = mx * mag; pv.move_y = my * mag;
+  pv.body_yaw = Clamp(AngleDiff(in.eyeAngles.y, in.footYaw), -90.f, 90.f);
+  float pitch = in.eyeAngles.x; if (pitch > 180.f) pitch -= 360.f;
+  pv.body_pitch = Clamp(pitch, -90.f, 90.f);
+  // lower body
+  const char* lower = crouch ? (moving ? "Crouch_walk_lower" : "Crouch_Idle_Lower") : (run ? "Run_lower" : moving ? "walk_lower" : "Idle_lower");
+  SrcSeqRef base = m.FindSeq(lower);
+  float seqDur = std::max(0.1f, m.SeqDuration(base));
+  float distPerCycle = moving ? seqDur * (crouch ? 85.f : run ? 250.f : 130.f) : 0.f;
+  tr.cycle += moving ? dt * speed / std::max(1.f, distPerCycle) : dt / seqDur;
+  tr.cycle -= std::floor(tr.cycle);
+  tr.air = in.onGround ? 0.f : tr.air + dt;
+  m.SampleSeq(base, tr.cycle, pv, pos, q);
+  if (!in.onGround) {
+    SrcSeqRef j = m.FindSeq("Jump");
+    if (j) { m.SampleSeq(j, Clamp(0.25f + tr.air / std::max(0.1f, m.SeqDuration(j)), 0.f, 0.8f), pv, lp, lq, &w); LayerFull(pos, q, lp, lq, std::vector<float>(), 1.f); }
+  }
+  // upper body (weapon hold), aim matrix, shoot, reload
+  const std::string wpn = WeaponInfo(in.weaponId).anim;
+  const std::string st = crouch ? (moving ? "Crouch_Walk_" : "Crouch_Idle_") : (run ? "Run_" : moving ? "Walk_" : "Idle_");
+  const std::string aimSt = crouch ? "Crouch_" : (run ? "Run_" : moving ? "Walk_" : "Idle_");
+  SrcSeqRef up = m.FindSeq(st + "Upper_" + wpn);
+  if (up) { m.SampleSeq(up, tr.cycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  if (in.reloadCycle >= 0) {
+    SrcSeqRef r = m.FindSeq(st + "Reload_" + wpn);
+    if (r) { m.SampleSeq(r, in.reloadCycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  }
+  if (in.planting && in.weaponId == WEAPON_C4) {
+    SrcSeqRef r = m.FindSeq(st + "Shoot_C4");
+    if (r) { m.SampleSeq(r, std::fmod(now / std::max(0.1f, m.SeqDuration(r)), 1.f), pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  }
+  SrcSeqRef aim = m.FindSeq(aimSt + "Aim_" + wpn);
+  if (aim) { m.SampleSeq(aim, 0, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
+  if (in.fireAmount > 0 && in.weaponId != WEAPON_C4) {
+    SrcSeqRef s = m.FindSeq(st + "Shoot_" + wpn);
+    if (!s) s = m.FindSeq(st + "Shoot_" + wpn + "_R");
+    if (s) { m.SampleSeq(s, 1.f - in.fireAmount, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
+  }
+  m.BuildBones(pos, q, bones);
+}
+
+// weapon bone merge: bones with the same name as a player bone follow the player
+void BoneMerge(const CSrcModel& w, const CSrcModel& parent, const std::vector<matrix3x4_t>& pb, std::vector<matrix3x4_t>& out) {
+  out.resize(w.bones.size());
+  for (size_t i = 0; i < w.bones.size(); i++) {
+    int j = parent.FindBone(w.bones[i].name);
+    if (j >= 0 && j < (int)pb.size()) { out[i] = pb[j]; continue; }
+    matrix3x4_t local; QuaternionMatrix(w.bones[i].quat, w.bones[i].pos, Vector(1, 1, 1), local);
+    int p = w.bones[i].parent;
+    if (p >= 0 && p < (int)i) ConcatTransforms(out[p], local, out[i]); else out[i] = local;
+  }
+}
+} // namespace
+
+void CSS_AttachPose(CCSPlayer* p, const PlayerPoseInput& in, PlayerPoseOutput& out) {
+  out.css = nullptr; out.cssWeapon = nullptr;
+  if (!p || !CSS_ModelsActive()) return;
+  const CSrcModel* m = PlayerModel(p);
+  if (!m || m->meshes.empty() || m->includes.empty()) return;
+  BuildPlayerBones(p, *m, in, out.cssBones);
+  AngleMatrix(QAngle(0, in.footYaw, 0), in.origin, out.cssToWorld);
+  out.css = m;
+  if (in.deathCycle < 0 && in.weaponId) {
+    bool sil = false;
+    if (SilencerModel(in.weaponId)) { C_WeaponCSBase* w = p->GetActiveCSWeapon(); sil = w && w->GetCSWeaponID() == in.weaponId && w->m_bSilencerOn; }
+    const CSrcModel* wm = WorldWeapon(in.weaponId, sil);
+    if (wm && !wm->meshes.empty()) { BoneMerge(*wm, *m, out.cssBones, out.cssWeaponBones); out.cssWeapon = wm; }
+  }
+}
+
+bool CSS_DrawPose(const PlayerPoseOutput& pose, const StudioDrawParams& p, bool drawWeapon) {
+  if (!pose.css) return false;
+  SrcMdl_Draw(*pose.css, pose.cssBones, pose.cssToWorld, p);
+  if (drawWeapon && pose.cssWeapon) SrcMdl_Draw(*pose.cssWeapon, pose.cssWeaponBones, pose.cssToWorld, p);
+  return true;
+}
+
+bool CSS_DrawWorldWeapon(int weaponId, const matrix3x4_t& xf, const StudioDrawParams& p, bool thrown) {
+  if (!CSS_ModelsActive()) return false;
+  const CSrcModel* m = WorldWeapon(weaponId, false, thrown);
+  if (!m || m->meshes.empty()) return false;
+  thread_local std::vector<matrix3x4_t> bones; thread_local std::vector<Vector> pos; thread_local std::vector<Quat> q;
+  m->SampleAnim(-1, 0, pos, q); m->BuildBones(pos, q, bones);
+  SrcMdl_Draw(*m, bones, xf, p);
+  return true;
+}
+
+// ------------------------------------------------------------------------------------------------
+// view models
+namespace {
+SrcSeqRef PickVm(const CSrcModel& m, std::initializer_list<const char*> acts, bool silenced, int variant) {
+  for (const char* a : acts) {
+    std::vector<SrcSeqRef> v;
+    if (silenced) v = m.FindSeqsByActivity(std::string(a) + "_SILENCED");
+    if (v.empty()) v = m.FindSeqsByActivity(a);
+    if (!v.empty()) return v[(size_t)std::max(0, variant) % v.size()];
+  }
+  return {};
+}
+}
+
+bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, float bobTime, float bob, const QAngle& sway, float landKick, Vector& muzzleOut) {
+  if (!cl_css_viewmodels.GetBool() || !srcfs::Available()) return false;
+  const int wid = w->GetCSWeaponID();
+  WeaponModel wi = WeaponInfo(wid); if (!wi.model) return false;
+  const CSrcModel* m = SrcMdl_Get(std::string("models/weapons/v_") + wi.model + ".mdl");
+  if (!m || m->meshes.empty() || m->seqs.empty()) return false;
+  const bool silenced = SilencerModel(wid) && w->m_bSilencerOn;
+  const int act = w->m_iViewActivity;
+  float elapsed = std::max(0.f, gpGlobals->curtime - w->m_flViewActivityStart);
+  const int variant = w->m_iViewShotSide;
+  const bool empty = w->IsGun() && w->m_iClip1 == 0;
+  SrcSeqRef seq; bool stretch = false;
+  switch (act) {
+    case ACT_VM_DRAW: seq = PickVm(*m, { "ACT_VM_DRAW" }, silenced, 0); stretch = true; break;
+    case ACT_VM_PRIMARYATTACK:
+      if (wid == WEAPON_KNIFE) { seq = m->FindSeq((variant & 1) ? "midslash2" : "midslash1"); if (!seq) seq = PickVm(*m, { "ACT_VM_HITCENTER", "ACT_VM_MISSCENTER" }, false, variant); }
+      else if (wid == WEAPON_C4) seq = PickVm(*m, { "ACT_VM_PRIMARYATTACK" }, false, 0);
+      else seq = empty ? PickVm(*m, { "ACT_VM_DRYFIRE", "ACT_VM_PRIMARYATTACK" }, silenced, 0) : PickVm(*m, { "ACT_VM_PRIMARYATTACK" }, silenced, variant);
+      break;
+    case ACT_VM_SECONDARYATTACK: seq = wid == WEAPON_KNIFE ? m->FindSeq("stab") : PickVm(*m, { "ACT_VM_SECONDARYATTACK" }, silenced, 0); break;
+    case ACT_VM_RELOAD:
+      if (m->FindSeq("insert")) seq = m->FindSeq("insert");   // shotguns: shell after shell
+      else { seq = PickVm(*m, { "ACT_VM_RELOAD" }, silenced, 0); stretch = true; }
+      break;
+    case ACT_VM_PULLPIN: seq = PickVm(*m, { "ACT_VM_PULLPIN" }, false, 0); break;
+    case ACT_VM_THROW: seq = PickVm(*m, { "ACT_VM_THROW" }, false, 0); break;
+    case ACT_VM_ATTACH_SILENCER: seq = PickVm(*m, { "ACT_VM_ATTACH_SILENCER" }, false, 0); stretch = true; break;
+    case ACT_VM_DETACH_SILENCER: seq = PickVm(*m, { "ACT_VM_DETACH_SILENCER" }, false, 0); stretch = true; break;
+    case ACT_VM_PLANT: seq = PickVm(*m, { "ACT_VM_PRIMARYATTACK" }, false, 0); stretch = true; break;
+    default: break;
+  }
+  if (IsGrenade(wid)) { auto* g = static_cast<CBaseCSGrenade*>(w); if (g->m_bPinPulled && act != ACT_VM_THROW) { seq = PickVm(*m, { "ACT_VM_PULLPIN" }, false, 0); elapsed = 99.f; } }
+  float cycle = 0;
+  bool shotgunLoop = act == ACT_VM_RELOAD && m->FindSeq("insert");
+  if (seq) {
+    float dur = std::max(0.01f, m->SeqDuration(seq));
+    float rate = stretch && w->m_flViewActivityDuration > 0.05f ? dur / w->m_flViewActivityDuration : 1.f;
+    float t = elapsed * rate;
+    const SrcMdlSeq& sq = seq.src->seqs[seq.seq];
+    if (shotgunLoop && w->m_bInReload) cycle = std::fmod(t / dur, 1.f);
+    else if (t >= dur && !sq.looping && act != ACT_VM_PULLPIN && !IsGrenade(wid)) { elapsed = (t - dur) / std::max(0.01f, rate); seq = {}; }
+    else cycle = Clamp(t / dur, 0.f, 1.f);
+  }
+  if (!seq) {
+    seq = PickVm(*m, { "ACT_VM_IDLE" }, silenced, 0); if (!seq) seq = { m, 0, -1 };
+    float dur = std::max(0.01f, m->SeqDuration(seq));
+    cycle = std::fmod(elapsed / dur, 1.f);
+  }
+  thread_local std::vector<Vector> pos; thread_local std::vector<Quat> q; thread_local std::vector<matrix3x4_t> bones;
+  m->SampleSeq(seq, cycle, SrcPoseValues(), pos, q);
+  m->BuildBones(pos, q, bones);
+
+  // Source: view model at the eye with the view angles; bob + sway on top
+  float bt = bobTime * 2.f * (float)M_PI / 0.8f;
+  QAngle ang = view.angles; ang.x += sway.x * 0.3f; ang.y += sway.y * 0.3f;
+  Vector org = view.origin + view.forward * (std::sin(bt) * 0.4f * bob) - view.up * (landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * bob);
+  matrix3x4_t xf; AngleMatrix(ang, org, xf);
+
+  StudioLight L;
+  if (g_WorldRender.built) { LightSample s = g_WorldRender.SampleLight(view.origin); L.ambient = s.ambient * 1.15f; L.direct = s.direct * 0.8f; L.dir = s.dir; }
+  L.ambient = L.ambient * (0.35f + 0.65f * cl.worldBrightness); L.direct = L.direct * cl.worldBrightness;
+  if (cl.nightvision) L.ambient = Vector(0.9f, 1.2f, 0.9f);
+  StudioDrawParams dp; dp.light = L; dp.eye = view.origin;
+
+  Matrix proj = BuildProjection(view.VerticalFov(cl_css_viewmodel_fov.GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
+  Render_ClearDepth();
+  Render_Begin3D(view.view, proj);
+  SrcMdl_Draw(*m, bones, xf, dp);
+  Render_End3D();
+  muzzleOut = m->attachments.empty() ? view.origin + view.forward * 20.f - view.up * 4.f : m->AttachmentPos(0, bones, xf);
+  return true;
+}

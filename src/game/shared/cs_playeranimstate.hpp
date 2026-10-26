@@ -5,6 +5,8 @@
 #include <array>
 
 class CCSPlayer;
+class CSrcModel;
+#include <vector>
 
 struct mstudiobbox_t {      // world-space capsule hitbox
   Vector a, b;
@@ -60,6 +62,7 @@ struct PlayerPoseInput {
   float reloadCycle = -1; // 0..1 while reloading
   float deathCycle = -1;  // 0..1 while dying / 1 dead
   float deathYaw = 0;
+  float deathTime = 0;    // seconds since death
   float leanRoll = 0;
   bool planting = false, defusing = false;
   bool viewmodel = false; // first-person arms: hold knife/pistol/grenade in front of the eyes
@@ -72,6 +75,9 @@ struct PlayerPoseOutput {
   bool hasWeapon = false;
   HitboxSet hitboxes;
   Vector eyePos;
+  // Counter-Strike: Source model (client only, see css_models.hpp)
+  const CSrcModel* css = nullptr; std::vector<matrix3x4_t> cssBones; matrix3x4_t cssToWorld;
+  const CSrcModel* cssWeapon = nullptr; std::vector<matrix3x4_t> cssWeaponBones;
 };
 
 void BuildPlayerPose(const CStudioModel& mdl, const CStudioModel* weaponMdl, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes = true);

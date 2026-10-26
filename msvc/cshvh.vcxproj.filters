@@ -90,6 +90,9 @@
     <ClCompile Include="..\src\engine\srcmdl.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\engine\srcmdlrender.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\engine\studio.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
@@ -100,6 +103,9 @@
       <Filter>src\engine</Filter>
     </ClCompile>
     <ClCompile Include="..\src\game\client\cl_render.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\css_models.cpp">
       <Filter>src\game\client</Filter>
     </ClCompile>
     <ClCompile Include="..\src\game\client\effects.cpp">
@@ -240,6 +246,9 @@
       <Filter>src\engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\game\client\cl_main.hpp">
+      <Filter>src\game\client</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\client\css_models.hpp">
       <Filter>src\game\client</Filter>
     </ClInclude>
     <ClInclude Include="..\src\game\client\hud_menus.hpp">

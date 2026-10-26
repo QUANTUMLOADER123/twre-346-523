@@ -1,5 +1,6 @@
 // cl_render.cpp - view setup (CViewRender), entity rendering (DrawModel), client event effects
 #include "cl_main.hpp"
+#include "css_models.hpp"
 #include "../../engine/host.hpp"
 #include "../../engine/worldrender.hpp"
 #include "../../engine/materialsystem.hpp"
@@ -197,7 +198,7 @@ void CCSPlayer::BuildRenderPose(float alpha, bool useNet) {
   PlayerPoseInput in;
   if (!IsAlive()) {
     in.origin = m_vecOrigin; in.footYaw = m_net.footYaw; in.eyeAngles = m_net.eyeAngles;
-    in.deathCycle = Clamp((ServerTime() - m_flDeathTime) / 0.9f, 0.f, 1.f); in.deathYaw = m_flDeathYaw - m_net.footYaw;
+    in.deathCycle = Clamp((ServerTime() - m_flDeathTime) / 0.9f, 0.f, 1.f); in.deathYaw = m_flDeathYaw - m_net.footYaw; in.deathTime = std::max(0.f, ServerTime() - m_flDeathTime);
     in.weaponId = 0;
   } else if (useNet) {
     InterpState st; if (!CL_GetInterpolatedState(this, st)) return;
@@ -221,6 +222,7 @@ void CCSPlayer::BuildRenderPose(float alpha, bool useNet) {
   }
   m_vecRenderOrigin = in.origin;
   BuildPlayerPose(*mdl, GetWeaponWorldModel(in.weaponId), in, m_RenderPose, true);
+  CSS_AttachPose(this, in, m_RenderPose);
   m_bRenderPoseValid = true;
   if (useNet) { m_ClientPose = m_RenderPose; m_bClientPoseValid = true; }
 }
@@ -242,6 +244,7 @@ void CCSPlayer::DrawModel(const CViewSetup& view) {
   if (IsAlive() && cheat::DrawPlayer(this, *mdl, m_RenderPose, wm, light, view)) return;
   StudioDrawParams p; p.pose = &m_RenderPose.pose; p.modelToWorld = m_RenderPose.modelToWorld; p.light = light; p.eye = view.origin;
   if (r_drawothermodels.GetInt() == 2) p.flags |= STUDIO_WIREFRAME;
+  if (CSS_DrawPose(m_RenderPose, p, true)) return;
   StudioRender_DrawModel(*mdl, p);
   if (wm && m_RenderPose.hasWeapon) { StudioDrawParams g = p; g.pose = nullptr; g.modelToWorld = m_RenderPose.weaponToWorld; StudioRender_DrawModel(*wm, g); }
 }
@@ -257,6 +260,7 @@ void C_WeaponCSBase::DrawModel(const CViewSetup&) {
   StudioDrawParams p; p.modelToWorld = rot; p.light = LightAt(o + Vector(0, 0, 8));
   // dropped C4 blinks
   if (m_iWeaponID == WEAPON_C4 && std::fmod(gpGlobals->realtime, 1.f) < 0.15f) { p.flags |= STUDIO_TINT; p.colorOverride = { 255, 120, 120, 255 }; }
+  if (CSS_DrawWorldWeapon(m_iWeaponID, rot, p, false)) return;
   StudioRender_DrawModel(*mdl, p);
 }
 
@@ -266,6 +270,7 @@ void CBaseCSGrenadeProjectile::DrawModel(const CViewSetup&) {
   Vector o = GetRenderOrigin(g_Host.frameAlpha);
   matrix3x4_t rot; AngleMatrix(m_angRotation, rot); rot.SetOrigin(o);
   StudioDrawParams p; p.modelToWorld = rot; p.light = LightAt(o);
+  if (CSS_DrawWorldWeapon(m_iWeaponID, rot, p, true)) return;
   StudioRender_DrawModel(*mdl, p);
 }
 void CBaseCSGrenadeProjectile::DrawTranslucent(const CViewSetup&) {}

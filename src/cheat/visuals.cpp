@@ -1,5 +1,6 @@
 // visuals.cpp - player ESP, chams, world ESP, tracers / impacts, grenade trajectory, aimbot visualisation,
 // indicators, manual AA arrows, watermark, hotkey list, spectator list, damage markers
+#include "../game/client/css_models.hpp"
 #include "cheat_internal.hpp"
 #include "../vgui/surface.hpp"
 #include "../engine/enginetrace.hpp"
@@ -76,6 +77,7 @@ static int MaterialFlags() {
 }
 static void DrawModelWithWeapon(const CStudioModel& mdl, const PlayerPoseOutput& pose, const CStudioModel* wpn, StudioDrawParams p) {
   p.pose = &pose.pose; p.modelToWorld = pose.modelToWorld;
+  if (CSS_DrawPose(pose, p, wpn != nullptr)) return;
   StudioRender_DrawModel(mdl, p);
   if (wpn && pose.hasWeapon) { StudioDrawParams q = p; q.pose = nullptr; q.modelToWorld = pose.weaponToWorld; StudioRender_DrawModel(*wpn, q); }
 }
@@ -92,7 +94,7 @@ bool DrawPlayer(CCSPlayer* p, const CStudioModel& mdl, const PlayerPoseOutput& p
       Vector o = p->m_vecRenderOrigin;
       matrix3x4_t toOrigin, back; toOrigin.SetOrigin(o * -1.f); back.SetOrigin(o);
       matrix3x4_t t1, t2; ConcatTransforms(rot, toOrigin, t1); ConcatTransforms(back, t1, t2);
-      PlayerPoseOutput fake = pose; ConcatTransforms(t2, pose.modelToWorld, fake.modelToWorld); ConcatTransforms(t2, pose.weaponToWorld, fake.weaponToWorld);
+      PlayerPoseOutput fake = pose; ConcatTransforms(t2, pose.modelToWorld, fake.modelToWorld); ConcatTransforms(t2, pose.weaponToWorld, fake.weaponToWorld); ConcatTransforms(t2, pose.cssToWorld, fake.cssToWorld);
       StudioDrawParams fp = base; fp.flags = STUDIO_FLAT_COLOR; fp.colorOverride = s.chamsFakeCol;
       DrawModelWithWeapon(mdl, fake, nullptr, fp);
     }
@@ -115,7 +117,7 @@ bool DrawPlayer(CCSPlayer* p, const CStudioModel& mdl, const PlayerPoseOutput& p
     if (old && (old->origin - p->m_LagRecords.front().origin).Length() > 6.f) {
       PlayerPoseInput in; in.origin = old->origin; in.footYaw = p->m_bResolverActive ? p->m_flResolverFootYaw : p->m_flClientFootYaw; in.eyeAngles = old->eyeAngles;
       in.duckAmount = old->duckAmount; in.moveCycle = old->moveCycle; in.moveSpeed = old->moveSpeed; in.moveYaw = old->moveYaw; in.onGround = old->onGround; in.weaponId = 0;
-      PlayerPoseOutput po; BuildPlayerPose(mdl, nullptr, in, po, false);
+      PlayerPoseOutput po; BuildPlayerPose(mdl, nullptr, in, po, false); CSS_AttachPose(p, in, po);
       StudioDrawParams bp = base; bp.flags = STUDIO_FLAT_COLOR; bp.colorOverride = s.chamsBacktrackCol;
       DrawModelWithWeapon(mdl, po, nullptr, bp);
     }
