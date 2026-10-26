@@ -1,4 +1,4 @@
-// contentscreen.cpp - first-start loading screen: downloads the CS:S content (see engine/download.hpp)
+// contentscreen.cpp - first-start loading screen: downloads the CS:GO maps + the shared Source assets (engine/download.hpp)
 #include "contentscreen.hpp"
 #include "csgo_style.hpp"
 #include "../engine/download.hpp"
@@ -42,7 +42,7 @@ bool ContentScreen_Run(bool force) {
     s->DrawFilledRect(px, py, pw, ph, csgo::Panel);
     s->DrawFilledRect(px, py, pw, 3, csgo::Accent);
     float x = px + 24, y = py + 20;
-    s->DrawText(FONT_MENU_TITLE, coreMissing ? "Downloading Counter-Strike: Source content" : "Downloading game content", x, y, csgo::Text);
+    s->DrawText(FONT_MENU_TITLE, coreMissing ? "Downloading CS:GO content" : "Downloading game content", x, y, csgo::Text);
     y += 34;
     int npacks = 0; const download::Pack* packs = download::Packs(npacks);
     char line[256];
@@ -73,7 +73,7 @@ bool ContentScreen_Run(bool force) {
     // buttons
     float by = py + ph - 52, bh = 36;
     if (p.state == download::RUNNING) {
-      s->DrawText(FONT_UI, coreMissing ? "Wi-Fi recommended. Only needed once." : "Only needed once.", x, by + 10, csgo::TextDim);
+      s->DrawText(FONT_UI, coreMissing ? "Wi-Fi recommended. Maps, models and textures - only needed once." : "Only needed once.", x, by + 10, csgo::TextDim);
       if (Button("CANCEL", px + pw - 24 - 140, by, 140, bh, csgo::PanelLight, csgo::PanelHover)) download::Cancel();
       if (!coreMissing && Button("SKIP", px + pw - 24 - 290, by, 140, bh, csgo::PanelLight, csgo::PanelHover)) { download::Cancel(); skipped = true; }
     } else if (p.state == download::FAILED || p.state == download::CANCELLED) {

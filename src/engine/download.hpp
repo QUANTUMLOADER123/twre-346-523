@@ -1,11 +1,14 @@
-// download.hpp - first-start content download (Counter-Strike: Source maps, models, materials, sounds).
+// download.hpp - first-start content download (CS:GO maps, models, textures, sounds).
 //
-// The game ships without any Valve files. When no CS:S content is found (no Steam CS:S / CS:S Dedicated Server,
-// nothing in ./content/css), the loading screen downloads it once from GitHub mirrors of the CS:S content
-// (zip archives straight from codeload.github.com) and unpacks it while downloading into content/css/cstrike/.
+// Nothing from Valve is shipped with the game. The loading screen downloads, once:
+//   * CS:GO maps (real VBSP v21 .bsp files from public CS:GO FastDL mirrors, one file each) into
+//     content/extras/csgo_maps/maps/ - together with the materials the maps carry in their own pakfile lump;
+//   * the shared Source assets (player / weapon models, textures, sounds) as a zip from codeload.github.com
+//     into content/css/cstrike/ - the open source texture library the maps borrow from;
+//   * a few CS:GO extras (R8 Revolver, SCAR-20 / SSG 08, molotov, weapon icons).
 //
-// Extras (any install): the CS:GO R8 Revolver (view / world model, textures, sounds) from a Garry's Mod addon on GitHub,
-// as single files into content/extras/csgo_r8/ (indexed by srcfs like a cstrike/custom folder).
+// Users who own CS:GO (free on Steam) can skip all of it: csgo_gamedir points at the CS:GO folder and the engine
+// reads the real CS:GO materials, models, sounds and maps straight out of pak01_dir.vpk (see srcfs).
 //
 // HTTP: Android - java.net.HttpURLConnection through JNI, Windows - WinHTTP, others - curl.
 #pragma once

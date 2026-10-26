@@ -318,7 +318,7 @@ std::string ResolveMapFile(const std::string& name) {
   if (name.rfind("css:", 0) == 0) return name;
   std::string local = "assets/maps/" + name + ".map";
   // Counter-Strike: Source first, then CS 1.6, then the built-in remakes
-  if (srcfs::Available() && srcfs::Exists("maps/" + name + ".bsp")) return "css:" + name;
+  if (srcfs::Exists("maps/" + name + ".bsp")) return "css:" + name;   // CS:GO / CS:S bsp (downloaded maps are loose files)
   if (hl_content.GetBool()) {
     std::string p = hlfs::Find("maps/" + name + ".bsp");
     if (!p.empty()) return p;
@@ -449,7 +449,7 @@ bool CMapInfo::LoadSrc(const std::string& mapName) {
   }
   mode = hasBomb ? "bomb" : (hasHostages ? "hostage" : "elimination");
   desc = "Counter-Strike: Source";
-  Msg("Map %s (CS:S VBSP v%d): %d spawns, %d zones, %d faces, %d brushes, %d disp tris, %d props (%d prop hulls)\n", name.c_str(), W.version,
+  Msg("Map %s (Source VBSP v%d): %d spawns, %d zones, %d faces, %d brushes, %d disp tris, %d props (%d prop hulls)\n", name.c_str(), W.version,
       (int)spawns.size(), (int)zones.size(), (int)W.faces.size(), W.numCollisionBrushes, W.numDispTris, (int)W.props.size(), W.numPropHulls);
   return true;
 }
@@ -480,13 +480,13 @@ std::vector<MapListEntry> ListMaps() {
       if (it != out.end()) { m.title = it->title; *it = m; } else out.push_back(m);
     }
   }
-  // Counter-Strike: Source maps win over both
-  if (srcfs::Available()) {
+  // Source maps (downloaded CS:GO / CS:S bsp files) win over both
+  {
     for (const std::string& n0 : srcfs::List("maps", ".bsp")) {
       std::string n = hlfs::Lower(n0);
       if (n.rfind("test_", 0) == 0) continue;
       auto it = std::find_if(out.begin(), out.end(), [&](const MapListEntry& m) { return m.name == n; });
-      MapListEntry m; m.name = n; m.title = n; m.file = "css:" + n; m.desc = "CS:S";
+      MapListEntry m; m.name = n; m.title = n; m.file = "css:" + n; m.desc = "Source";
       m.mode = n.rfind("de_", 0) == 0 ? "bomb" : (n.rfind("cs_", 0) == 0 ? "hostage" : "elimination");
       if (it != out.end()) { m.title = it->title; *it = m; } else out.push_back(m);
     }

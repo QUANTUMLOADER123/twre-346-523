@@ -16,6 +16,10 @@ ConVar css_gamedir("css_gamedir", "", FCVAR_ARCHIVE, "Counter-Strike: Source (or
                    false, 0, false, 0, [](ConVar*, const char*) { srcfs::Invalidate(); });
 ConVar css_content("css_content", "1", FCVAR_ARCHIVE, "Use Counter-Strike: Source maps/models/materials/sounds when available",
                    false, 0, false, 0, [](ConVar*, const char*) { srcfs::Invalidate(); });
+// A local Counter-Strike: Global Offensive install (free on Steam). Its pak01_dir.vpk holds the real CS:GO
+// materials, models (agents), sounds and maps, so nothing has to be redistributed with this game.
+ConVar csgo_gamedir("csgo_gamedir", "", FCVAR_ARCHIVE, "Counter-Strike: Global Offensive folder (the one with pak01_dir.vpk) - empty = auto-detect (./content/csgo, Steam)",
+                    false, 0, false, 0, [](ConVar*, const char*) { srcfs::Invalidate(); });
 
 namespace fs = std::filesystem;
 
@@ -32,6 +36,8 @@ struct ZipEntry { uint32_t offset = 0, csize = 0, usize = 0; uint16_t method = 0
 
 struct State {
   bool scanned = false; std::string root;
+  std::string goRoot;                                      // CS:GO install (pak01_dir.vpk) - overrides CS:S content
+  std::vector<std::unique_ptr<Vpk>> goVpks;
   std::vector<std::string> looseDirs;                      // in priority order
   std::unordered_map<std::string, std::string> loose;      // normalized rel -> real path
   std::vector<std::unique_ptr<Vpk>> vpks;
@@ -101,6 +107,20 @@ void IndexLoose(const std::string& dir) {
   }
 }
 
+bool LooksLikeCsgoRoot(const std::string& r) {
+  std::error_code ec;
+  return fs::exists(fs::path(r) / "pak01_dir.vpk", ec) || fs::exists(fs::path(r) / "csgo" / "pak01_dir.vpk", ec) ||
+         fs::exists(fs::path(r) / "game" / "csgo" / "pak01_dir.vpk", ec);
+}
+// the folder that actually holds pak01_dir.vpk
+std::string CsgoContentDir(const std::string& r) {
+  std::error_code ec;
+  if (fs::exists(fs::path(r) / "pak01_dir.vpk", ec)) return r;
+  if (fs::exists(fs::path(r) / "csgo" / "pak01_dir.vpk", ec)) return (fs::path(r) / "csgo").string();
+  if (fs::exists(fs::path(r) / "game" / "csgo" / "pak01_dir.vpk", ec)) return (fs::path(r) / "game" / "csgo").string();
+  return "";
+}
+
 bool LooksLikeRoot(const std::string& r) {
   std::error_code ec;
   return fs::exists(fs::path(r) / "cstrike" / "cstrike_pak_dir.vpk", ec) || fs::is_directory(fs::path(r) / "cstrike" / "maps", ec) ||
@@ -112,6 +132,44 @@ void Scan() {
   if (s.scanned) return;
   s.scanned = true; s.root.clear(); s.looseDirs.clear(); s.loose.clear(); s.vpks.clear();
   if (!css_content.GetBool()) return;
+  // 1) a local CS:GO install first: it is the content this game is built around now
+  {
+    std::vector<std::string> goCands;
+    std::string gu = csgo_gamedir.GetString();
+    if (!gu.empty()) goCands.push_back(gu);
+    goCands.push_back(".");
+    goCands.push_back("content/csgo");
+    goCands.push_back("../content/csgo");
+    goCands.push_back("csgo");
+    goCands.push_back("game/csgo");
+#ifdef _WIN32
+    for (const char* drive : { "C:", "D:", "E:" }) {
+      for (const char* steam : { "/Program Files (x86)/Steam", "/Program Files/Steam", "/Steam", "/SteamLibrary" }) {
+        goCands.push_back(std::string(drive) + steam + "/steamapps/common/Counter-Strike Global Offensive/game/csgo");
+        goCands.push_back(std::string(drive) + steam + "/steamapps/common/Counter-Strike Global Offensive/csgo");
+      }
+    }
+#else
+    if (const char* home = getenv("HOME")) {
+      goCands.push_back(std::string(home) + "/.steam/steam/steamapps/common/Counter-Strike Global Offensive/game/csgo");
+      goCands.push_back(std::string(home) + "/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo");
+      goCands.push_back(std::string(home) + "/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo");
+    }
+#endif
+    for (auto& c : goCands) {
+      if (c.empty() || !LooksLikeCsgoRoot(c)) continue;
+      std::string dir = CsgoContentDir(c);
+      if (dir.empty()) continue;
+      auto v = std::make_unique<Vpk>();
+      if (LoadVpk(dir + "/pak01_dir.vpk", *v) && !v->files.empty()) { s.goRoot = dir; s.goVpks.push_back(std::move(v)); }
+      else s.goRoot = dir;   // at least the loose folders
+      break;
+    }
+    if (!s.goRoot.empty()) {
+      std::error_code gec;
+      if (fs::is_directory(s.goRoot, gec)) IndexLoose(s.goRoot);
+    }
+  }
   std::vector<std::string> cands;
   std::string user = css_gamedir.GetString();
   if (!user.empty()) {
@@ -138,9 +196,17 @@ void Scan() {
   }
 #endif
   for (auto& c : cands) if (!c.empty() && LooksLikeRoot(c)) { s.root = c; break; }
+  // downloaded extras (content/extras/<name>/{maps,materials,models,sound}) - the CS:GO maps, the CS:GO weapon
+  // models and the weapon icons. Indexed even when no Source install is found, so a CS:GO-only setup works.
+  std::error_code exc;
+  for (const char* ex : { "content/extras", "../content/extras", "assets/extras" })
+    if (fs::is_directory(ex, exc))
+      for (auto& e : fs::directory_iterator(ex, exc)) if (e.is_directory(exc)) IndexLoose(e.path().string());
+  if (!s.goRoot.empty()) Msg("CS:GO content: %s (%d files in pak01)\n", s.goRoot.c_str(), (int)s.goVpks.size() ? (int)s.goVpks[0]->files.size() : 0);
   if (s.root.empty()) {
     static bool hinted = false;
-    if (!hinted) { hinted = true; Msg("CS:S content not found - type css_download in the console (or run tools/get_css_content) to download it from Valve (free, ~2 GB)\n"); }
+    if (!hinted && s.loose.empty()) { hinted = true; Msg("No Source install found (./content/css) - type content_download in the console to download the content\n"); }
+    if (!s.loose.empty()) Msg("Downloaded content: %d files\n", (int)s.loose.size());
     return;
   }
   std::string cs = s.root + "/cstrike";
@@ -153,10 +219,6 @@ void Scan() {
         auto v = std::make_unique<Vpk>(); if (LoadVpk(e.path().string(), *v)) s.vpks.push_back(std::move(v));
       }
     }
-  // downloaded extras (content/extras/<name>/{models,materials,sound}) - e.g. the CS:GO R8 Revolver
-  for (const char* ex : { "content/extras", "../content/extras" })
-    if (fs::is_directory(ex, ec))
-      for (auto& e : fs::directory_iterator(ex, ec)) if (e.is_directory(ec)) IndexLoose(e.path().string());
   IndexLoose(cs);
   for (const char* f : { "/cstrike/cstrike_pak_dir.vpk", "/hl2/hl2_textures_dir.vpk", "/hl2/hl2_misc_dir.vpk", "/hl2/hl2_sound_misc_dir.vpk",
                          "/hl2/hl2_sound_vo_english_dir.vpk", "/platform/platform_misc_dir.vpk" }) {
@@ -197,6 +259,8 @@ std::string Normalize(const std::string& rel) {
 }
 
 bool Available() { Scan(); return !S().root.empty(); }
+bool CsgoAvailable() { Scan(); return !S().goRoot.empty(); }
+const std::string& CsgoRoot() { Scan(); return S().goRoot; }
 const std::string& Root() { Scan(); return S().root; }
 void Invalidate() { S().scanned = false; }
 
@@ -204,27 +268,32 @@ bool Read(const std::string& rel, std::vector<uint8_t>& out) {
   Scan(); State& s = S();
   std::string key = Normalize(rel);
   if (!s.pakFiles.empty() && ReadPak(key, out)) return true;
+  auto readVpk = [&](std::vector<std::unique_ptr<Vpk>>& list) {
+    for (auto& v : list) {
+      auto f = v->files.find(key); if (f == v->files.end()) continue;
+      const VpkEntry& e = f->second;
+      out = e.preload;
+      if (e.length) {
+        std::vector<uint8_t> d; bool ok;
+        if (e.archive == 0x7fff) ok = ReadFile(v->dirFile, d, v->dataStart + e.offset, e.length);
+        else { char num[16]; snprintf(num, sizeof num, "_%03d.vpk", e.archive); ok = ReadFile(v->base + num, d, e.offset, e.length); }
+        if (!ok) continue;
+        out.insert(out.end(), d.begin(), d.end());
+      }
+      return true;
+    }
+    return false;
+  };
+  if (readVpk(s.goVpks)) return true;
   auto it = s.loose.find(key);
   if (it != s.loose.end() && ReadFile(it->second, out)) return true;
-  for (auto& v : s.vpks) {
-    auto f = v->files.find(key); if (f == v->files.end()) continue;
-    const VpkEntry& e = f->second;
-    out = e.preload;
-    if (e.length) {
-      std::vector<uint8_t> d; bool ok;
-      if (e.archive == 0x7fff) ok = ReadFile(v->dirFile, d, v->dataStart + e.offset, e.length);
-      else { char num[16]; snprintf(num, sizeof num, "_%03d.vpk", e.archive); ok = ReadFile(v->base + num, d, e.offset, e.length); }
-      if (!ok) continue;
-      out.insert(out.end(), d.begin(), d.end());
-    }
-    return true;
-  }
-  return false;
+  return readVpk(s.vpks);
 }
 
 bool Exists(const std::string& rel) {
   Scan(); State& s = S(); std::string key = Normalize(rel);
   if (s.pakFiles.count(key) || s.loose.count(key)) return true;
+  for (auto& v : s.goVpks) if (v->files.count(key)) return true;
   for (auto& v : s.vpks) if (v->files.count(key)) return true;
   return false;
 }
@@ -244,6 +313,7 @@ std::vector<std::string> List(const std::string& relDir, const std::string& ext)
     out.push_back(stem);
   };
   for (auto& [k, v] : s.loose) consider(k);
+  for (auto& v : s.goVpks) for (auto& [k, f] : v->files) consider(k);
   for (auto& v : s.vpks) for (auto& [k, f] : v->files) consider(k);
   std::sort(out.begin(), out.end()); out.erase(std::unique(out.begin(), out.end()), out.end());
   return out;

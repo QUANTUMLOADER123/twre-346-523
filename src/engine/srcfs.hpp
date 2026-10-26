@@ -7,7 +7,7 @@
 // Search order (first hit wins), like the real engine:
 //   1. the current map's pakfile lump (zip inside the .bsp)
 //   2. loose files:  <root>/cstrike/{download,custom/*,.}
-//   3. VPKs:         <root>/cstrike/cstrike_pak_dir.vpk, <root>/hl2/hl2_*_dir.vpk, <root>/platform/platform_misc_dir.vpk
+//   3. VPKs:         <csgo root>/pak01_dir.vpk (a local CS:GO install), <root>/cstrike/cstrike_pak_dir.vpk, <root>/hl2/hl2_*_dir.vpk, <root>/platform/platform_misc_dir.vpk
 // <root> is css_gamedir, or auto-detected (./content/css, Steam default folders).
 #pragma once
 #include <string>
@@ -17,9 +17,12 @@
 class ConVar;
 extern ConVar css_gamedir;
 extern ConVar css_content;
+extern ConVar csgo_gamedir;
 
 namespace srcfs {
 bool Available();                                   // a CS:S content root was found (and css_content is 1)
+bool CsgoAvailable();                               // a local CS:GO install (pak01_dir.vpk) was found - it wins over CS:S
+const std::string& CsgoRoot();                      // CS:GO content folder ("" if none)
 const std::string& Root();                          // detected root folder ("" if none)
 void Invalidate();                                  // re-scan on next access (after css_gamedir changes / download)
 bool Read(const std::string& rel, std::vector<uint8_t>& out);   // "materials/de_dust/stone.vtf" (any case, / or \)

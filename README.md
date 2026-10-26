@@ -7,8 +7,10 @@
 `C_WeaponCSBase`, `CCSGameRules`, `CGameMovement`, `CLagCompensationManager`, `CUserCmd`, ConVar/ConCommand, игровые события.
 
 > Проект не связан с Valve. В репозитории файлов Valve нет.
-> **Карты, модели, текстуры и звуки CS:S игра скачивает сама при первом запуске** (экран загрузки, ~1.6 ГБ с GitHub),
+> **Карты CS:GO, модели, текстуры и звуки игра скачивает сама при первом запуске** (экран загрузки, ~1.3 ГБ с GitHub),
 > см. [«Контент при первом запуске»](#контент-при-первом-запуске). Встроенных «самодельных» карт и моделей больше нет.
+> Если у тебя установлена **CS:GO** (бесплатная в Steam) — укажи её папку `csgo_gamedir`, и игра возьмёт настоящие
+> материалы, модели, звуки и все официальные карты прямо из `pak01_dir.vpk`; ничего скачивать не нужно.
 
 ## Запуск
 
@@ -52,9 +54,10 @@
 
 ## Карты
 
-Все стандартные карты CS:S: de_dust2, de_dust, de_inferno, de_nuke, de_train, de_aztec, de_cbble, de_chateau, de_piranesi,
-de_port, de_prodigy, de_tides, cs_office, cs_italy, cs_assault, cs_compound, cs_havana, cs_militia и любые другие `.bsp`
-из папки `maps/`. Если установлена CS 1.6 (`hl_content 1`), появляются и её карты (BSP v30).
+Карты — CS:GO (VBSP v21): de_dust2_16toGO, de_mirage_ce, de_inferno_old, de_nuke_ve, de_aztec_proper, de_dust, de_aztec,
+cs_office, de_seaside_b2, de_rats_1337, de_shorttrain, de_dust2_old, aim_/awp_/fy_/surf_/am_ карты и любые другие `.bsp`
+из `maps/`. С установленной CS:GO (`csgo_gamedir`) доступны все официальные карты из `pak01_dir.vpk`.
+Если установлена CS 1.6 (`hl_content 1`), появляются и её карты (BSP v30).
 
 ## Главное меню
 
@@ -145,20 +148,35 @@ Anti-aim тоже разный: jitter, static, 3-way, sideways, разная с
 
 ## Контент при первом запуске
 
-Если CS:S не найдена, при запуске открывается **экран загрузки**: игра скачивает zip-архивы с GitHub
-(`codeload.github.com`, зеркала [bouletmarc/css_maps_content](https://github.com/bouletmarc/css_maps_content) — карты,
-[bouletmarc/css_content](https://github.com/bouletmarc/css_content) — модели, материалы, звуки) и распаковывает их «на лету»
-в `content/css/cstrike/` (на Android — `Android/data/com.cshvh.game/files/content/css/`). Всего ~1.6 ГБ, ~18 000 файлов.
-* Видно прогресс по каждому архиву, скорость и текущий файл; загрузку можно отменить и продолжить позже
-  (уже скачанные архивы не качаются заново).
-* Повторить или докачать: консоль `content_download` или **Settings → Content**.
-* Адреса архивов меняются переменными `cl_content_url_maps` / `cl_content_url_main` (любые zip с той же структурой).
-* **Дополнительный пакет R8** (модели, текстуры и звуки R8 из CS:GO, 19 файлов, ~9 МБ) берётся из TTT-аддона
-  [EntranceJew/gmod-addons](https://github.com/EntranceJew/gmod-addons) (закреплённый коммит) и кладётся в
-  `content/extras/csgo_r8/`. Если raw.githubusercontent.com недоступен, файлы качаются через api.github.com.
-  Этот пакет докачивается, даже если CS:S уже установлена. Если загрузка не удалась, игра всё равно запускается
-  (кнопка SKIP), а у R8 остаётся модель Desert Eagle. Адреса: `cl_content_url_r8` / `cl_content_url_r8_api`.
+Файлов Valve в репозитории нет, поэтому контент скачивается один раз при первом запуске
+(**экран загрузки**, консоль `content_download`, **Settings → Content**):
+
+| Пакет | Что это | Объём |
+|---|---|---|
+| **CS:GO maps** | настоящие карты CS:GO (VBSP v21) из публичных FastDL-зеркал: de_dust2_16toGO, de_mirage_ce, de_inferno_old, de_nuke_ve, de_aztec_proper, de_seaside_b2, de_rats_1337, de_shortinferno, de_dust, de_aztec, cs_office, de_shorttrain, de_dust2_old, aim_deagle, aim_deagle_lego, aim_map_usp, aim_redline, aim_z_pool_stalker_go, awp_india, awp_lego_fix_pro_v2, fy_snow, fy_pool_day, surf_ski_2_GO, 6v6_ak_m4a1, am_mario_arena_1v1, 1v1 | ~580 МБ |
+| **Shared Source textures, models and sounds** | zip [bouletmarc/css_content](https://github.com/bouletmarc/css_content): модели игроков и оружия, текстуры, звуки (общая библиотека Source, из неё же берут материалы карты без своих текстур) | ~700 МБ |
+| **CS:GO extras** | R8 Revolver, SCAR-20 / SSG 08, molotov, иконки оружия (SVG) | ~31 МБ |
+
+* Итого ~1.3 ГБ (сжато ровно настолько, чтобы влезть в бюджет ~3 ГБ вместе с мобильной сборкой).
+* Карты кладутся в `content/extras/csgo_maps/maps/` — по одному `.bsp` на карту, поэтому прерванная загрузка
+  продолжается с того же места, а материалы, зашитые в pakfile самой карты (lump 40), подхватываются автоматически.
+* Видно прогресс по каждому пакету, скорость и текущий файл; загрузку можно отменить и продолжить позже.
+* Адреса — конвары: `cl_content_url_maps` (+ `cl_content_url_maps_api`), `cl_content_url_main`,
+  `cl_content_url_r8` / `cl_content_url_csgo` / `cl_content_url_icons` (и их `_api`-варианты).
 * HTTP: на Windows — WinHTTP, на Android — `HttpURLConnection` через JNI, на Linux — `curl`.
+
+## Настоящий контент CS:GO из своей установки
+
+Если CS:GO (Steam, app 730) установлена, ничего скачивать не нужно:
+
+```
+csgo_gamedir "D:/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo"
+```
+
+Игра читает `pak01_dir.vpk` (+ `pak01_0xx.vpk`) и берёт оттуда **материалы, модели агентов, звуки и все официальные
+карты** (de_dust2, de_mirage, de_inferno, de_nuke, de_overpass, de_train, de_cache, cs_office, …). Папка находится
+автоматически (`content/csgo`, `./csgo`, `game/csgo`, стандартные пути Steam), `csgo_content`-паки при этом не нужны.
+Формат VPK (v1/v2, многотомный) читается встроенным `srcfs` — как и pakfile карты.
 
 ## Контент Counter-Strike: Source
 
