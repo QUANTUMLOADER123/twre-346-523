@@ -136,6 +136,7 @@ Pack s_packs[kPacks] = {
   { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
 };
 bool s_needCore = true;   // decided on the main thread in Start()
+bool s_haveCsgo = false;  // a local CS:GO install (pak01) - decided on the main thread, read by the worker
 
 void SetError(const std::string& e) { std::lock_guard<std::mutex> l(s_mtx); s_prog.error = e; }
 
@@ -353,7 +354,7 @@ bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(
 bool PackWanted(const Pack& p) {
   if (PackDone(p)) return false;
   // a local CS:GO install already has every stock map, so the map pack is not needed then
-  if (!p.core && p.files == s_csgoMapFiles && srcfs::CsgoAvailable()) return false;
+  if (!p.core && p.files == s_csgoMapFiles && s_haveCsgo) return false;
   return !p.core || s_needCore;
 }
 
@@ -478,6 +479,7 @@ bool ContentMissing() {
 void Start() {
   if (s_busy) return;
   if (s_thread.joinable()) s_thread.join();
+  s_haveCsgo = srcfs::CsgoAvailable();
   s_needCore = CoreContentMissing();
   s_cancel = false; s_busy = true;
   { std::lock_guard<std::mutex> l(s_mtx); s_prog.state = RUNNING; s_prog.error.clear(); }
