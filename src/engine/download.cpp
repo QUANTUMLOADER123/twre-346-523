@@ -58,7 +58,7 @@ const char* kExtras = "content/extras";
 // other public CS:GO FastDL mirrors (a map is a single .bsp file, so every map can live on its own repo).
 const char* const s_csgoMapFiles[] = {
   "maps/de_dust2_16toGO.bsp", "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp",
-  "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp", "maps/de_rats_1337.bsp", "maps/de_shortinferno.bsp",
+  "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp", "maps/de_rats_1337.bsp",
   "maps/aim_deagle_lego.bsp", "maps/aim_z_pool_stalker_go.bsp", "maps/aim_redline.bsp", "maps/awp_lego_fix_pro_v2.bsp",
   "maps/fy_pool_day.bsp", "maps/surf_ski_2_GO.bsp", "maps/6v6_ak_m4a1.bsp", "maps/am_mario_arena_1v1.bsp",
   // real CS:GO achievement-map versions of the stock maps (own repo per map)
@@ -369,7 +369,7 @@ bool WriteFileAtomic(const fs::path& path, const std::vector<uint8_t>& data, std
 
 // single-file pack: every file from <url><file>, falling back to the API template
 bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& err) {
-  size_t bytes = 0; int files = 0;
+  size_t bytes = 0; int files = 0, failed = 0;
   for (const char* const* f = p.files; *f; f++) {
     if (s_cancel) return false;
     const bool absolute = std::strncmp(*f, "http://", 7) == 0 || std::strncmp(*f, "https://", 8) == 0;
@@ -386,18 +386,38 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
       s_prog.packMB = bytes / 1048576.0; s_prog.totalMB = doneMB + s_prog.packMB; s_prog.current = *f;
       return true;
     };
-    bool ok = HttpGet(absolute ? std::string(*f) : std::string(p.url) + *f, sink, e1);
-    if (!ok && !s_cancel && !absolute) {
-      data.clear();
-      char url[1024]; snprintf(url, sizeof(url), p.api ? p.api : cl_content_url_r8_api.GetString(), *f);
-      ok = HttpGet(url, sink, e2, "application/vnd.github.raw");
+    // raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>  ->  api.github.com/repos/<owner>/<repo>/contents/<path>
+    std::string apiUrl;
+    if (absolute) {
+      const std::string kRaw = "https://raw.githubusercontent.com/";
+      if (std::string(*f).rfind(kRaw, 0) == 0) {
+        std::string rest = std::string(*f).substr(kRaw.size());
+        size_t s1 = rest.find('/'); size_t s2 = s1 == std::string::npos ? s1 : rest.find('/', s1 + 1);
+        size_t s3 = s2 == std::string::npos ? s2 : rest.find('/', s2 + 1);
+        if (s3 != std::string::npos)
+          apiUrl = "https://api.github.com/repos/" + rest.substr(0, s2) + "/contents/" + rest.substr(s3 + 1) + "?ref=HEAD";
+      }
     }
-    if (!ok || data.empty()) { err = std::string(*f) + ": " + (e2.empty() ? e1 : e2); return false; }
+    bool ok = HttpGet(absolute ? std::string(*f) : std::string(p.url) + *f, sink, e1);
+    if (!ok && !s_cancel) {
+      data.clear();
+      if (!apiUrl.empty()) ok = HttpGet(apiUrl, sink, e2, "application/vnd.github.raw");
+      else if (!absolute) {
+        char url[1024]; snprintf(url, sizeof(url), p.api ? p.api : cl_content_url_r8_api.GetString(), *f);
+        ok = HttpGet(url, sink, e2, "application/vnd.github.raw");
+      }
+    }
+    if (!ok || data.empty()) {
+      // one dead mirror must not kill the whole pack: remember it, keep going, retry on the next start
+      if (err.empty()) err = std::string(*f) + ": " + (e2.empty() ? e1 : e2);
+      failed++;
+      continue;
+    }
     if (!WriteFileAtomic(dst, data, err)) return false;
     files++;
     std::lock_guard<std::mutex> l(s_mtx); s_prog.files = filesBefore + files;
   }
-  return true;
+  return failed == 0;
 }
 
 void Worker() {
@@ -419,7 +439,13 @@ void Worker() {
     if (p.files) {
       int filesBefore; { std::lock_guard<std::mutex> l(s_mtx); filesBefore = s_prog.files; }
       std::string err;
-      if (!DownloadFiles(p, doneMB, filesBefore, err)) { if (!s_cancel) SetError(err); ok = false; break; }
+      if (!DownloadFiles(p, doneMB, filesBefore, err)) {
+        Msg("content: %s: %s (kept for the next try)\n", p.title, err.c_str());
+        if (s_cancel) { ok = false; break; }
+        if (p.core) { SetError(err); ok = false; break; }
+        SetError(err);
+        continue;                      // no marker: the missing files are retried next time, the rest continues
+      }
       fs::create_directories(kExtras, ec);
       std::ofstream(PackMarker(p)) << "ok\n";
       { std::lock_guard<std::mutex> l(s_mtx); doneMB += s_prog.packMB; }
