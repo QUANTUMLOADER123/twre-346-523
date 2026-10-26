@@ -39,6 +39,7 @@ static bool IsShooting(const CUserCmd& cmd, CCSPlayer* lp) {
   }
   if (w->GetWeaponType() == WEAPONTYPE_KNIFE) return (cmd.buttons & (IN_ATTACK | IN_ATTACK2)) && now >= w->m_flNextPrimaryAttack;
   if (w->GetWeaponType() == WEAPONTYPE_C4) return false;
+  if (w->IsRevolver() && !w->RevolverCocked(now)) return false;   // pulling the hammer back is not a shot
   return (cmd.buttons & IN_ATTACK) && now >= w->m_flNextPrimaryAttack && now >= lp->m_flNextAttack && w->m_iClip1 > 0 && !w->IsReloading();
 }
 

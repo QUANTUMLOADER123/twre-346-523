@@ -152,6 +152,10 @@ void Scan() {
         auto v = std::make_unique<Vpk>(); if (LoadVpk(e.path().string(), *v)) s.vpks.push_back(std::move(v));
       }
     }
+  // downloaded extras (content/extras/<name>/{models,materials,sound}) - e.g. the CS:GO R8 Revolver
+  for (const char* ex : { "content/extras", "../content/extras" })
+    if (fs::is_directory(ex, ec))
+      for (auto& e : fs::directory_iterator(ex, ec)) if (e.is_directory(ec)) IndexLoose(e.path().string());
   IndexLoose(cs);
   for (const char* f : { "/cstrike/cstrike_pak_dir.vpk", "/hl2/hl2_textures_dir.vpk", "/hl2/hl2_misc_dir.vpk", "/hl2/hl2_sound_misc_dir.vpk",
                          "/hl2/hl2_sound_vo_english_dir.vpk", "/platform/platform_misc_dir.vpk" }) {

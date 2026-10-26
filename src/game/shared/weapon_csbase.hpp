@@ -5,7 +5,7 @@
 
 enum WeaponState { WEAPON_NOT_CARRIED = 0, WEAPON_IS_CARRIED_BY_PLAYER, WEAPON_IS_ACTIVE };
 // viewmodel "activities" (procedural viewmodel animation)
-enum ViewModelActivity { ACT_VM_IDLE = 0, ACT_VM_DRAW, ACT_VM_PRIMARYATTACK, ACT_VM_SECONDARYATTACK, ACT_VM_RELOAD, ACT_VM_PULLPIN, ACT_VM_THROW, ACT_VM_HOLSTER, ACT_VM_ATTACH_SILENCER, ACT_VM_DETACH_SILENCER, ACT_VM_PLANT };
+enum ViewModelActivity { ACT_VM_IDLE = 0, ACT_VM_DRAW, ACT_VM_PRIMARYATTACK, ACT_VM_SECONDARYATTACK, ACT_VM_RELOAD, ACT_VM_PULLPIN, ACT_VM_THROW, ACT_VM_HOLSTER, ACT_VM_ATTACH_SILENCER, ACT_VM_DETACH_SILENCER, ACT_VM_PLANT, ACT_VM_HAULBACK };
 
 class C_BaseCombatWeapon : public C_BaseEntity {
 public:
@@ -36,7 +36,13 @@ public:
   bool m_bBurstMode = false;
   int m_iBurstShotsRemaining = 0;
   float m_fNextBurstShot = 0;
-  float m_flPostponeFireReadyTime = 0; // revolver
+  // R8 revolver (CS:GO weapon_csbase): holding attack pulls the hammer back (ACT_VM_HAULBACK); the shot goes off once
+  // m_flPostponeFireReadyTime has elapsed. The hammer only drops when no attack button is held at all.
+  float m_flPostponeFireReadyTime = 1e30f;
+  bool m_bRevolverHaulback = false;
+  bool IsRevolver() const { return m_iWeaponID == WEAPON_REVOLVER; }
+  bool RevolverCocked(float t) const { return m_bRevolverHaulback && m_flPostponeFireReadyTime < t; }   // attack now = instant shot
+  void ResetRevolverHaulback();
   bool m_bReloadVisuallyComplete = true;
   float m_flDroppedTime = -100;
   float m_flDeployTime = 0;

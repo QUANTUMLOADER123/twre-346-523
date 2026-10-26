@@ -113,7 +113,9 @@ private:
 
 // draw a skinned model: bones = bone-to-model matrices (BuildBones), params like StudioRender_DrawModel
 struct StudioDrawParams;
-void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin = 0);
+// boneMask (optional): only triangles whose vertices are skinned to bones with a nonzero mask are drawn (c_arms style
+// view model hands cut out of a player model)
+void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin = 0, const std::vector<uint8_t>* boneMask = nullptr);
 
 // cache (cleared on map change)
 CSrcModel* SrcMdl_Get(const std::string& path);

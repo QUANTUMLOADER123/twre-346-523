@@ -221,11 +221,17 @@ void CCSBot::Buy() {
     if (awper && money >= 5750) { me->BuyItem("awp", true); }
     else if (money >= 4100) me->BuyItem(ct ? (RandomInt(0, 1) ? "m4a1" : "m4a1_silencer") : "ak47", true);
     else if (money >= 3100) me->BuyItem(ct ? "famas" : "galilar", true);
-    else if (money >= 2350 && RandomInt(0, 2) == 0) me->BuyItem(ct ? "mp9" : "mac10", true);
+    else if (money >= 2350 && RandomInt(0, 2) == 0) {
+      static const char* const smgs[] = { "mp9", "mac10", "mp7", "mp5sd", "bizon", "ump45", "p90" };
+      const char* pick = smgs[RandomInt(0, 6)]; if (!me->BuyItem(pick, true)) me->BuyItem(ct ? "mp9" : "mac10", true);
+    }
   }
   money = me->m_iAccount;
   if (money >= 1000) me->BuyItem("vesthelm", true); else if (money >= 650) me->BuyItem("vest", true);
-  if (!me->Weapon_GetSlot(WEAPON_SLOT_RIFLE) && me->m_iAccount >= 700) me->BuyItem(RandomInt(0, 2) ? "deagle" : "p250", true);
+  if (!me->Weapon_GetSlot(WEAPON_SLOT_RIFLE) && me->m_iAccount >= 700) {
+    static const char* const ctp[] = { "deagle", "p250", "fiveseven", "cz75a" }, * const tp[] = { "deagle", "p250", "tec9", "cz75a" };
+    me->BuyItem((ct ? ctp : tp)[RandomInt(0, 3)], true);
+  }
   if (ct && me->m_iAccount >= 400 && RandomInt(0, 1)) me->BuyItem("defuser", true);
   if (me->m_iAccount >= 300 && RandomInt(0, 1)) me->BuyItem("hegrenade", true);
   if (me->m_iAccount >= 200 && RandomInt(0, 1)) me->BuyItem("flashbang", true);
@@ -418,7 +424,8 @@ void CCSBot::Fight(CUserCmd& cmd, QAngle& view) {
     else { cmd.buttons |= IN_ATTACK; m_flLastShot = now; }
   } else {
     // semi-auto: tap (release between shots)
-    if (!(m_LastCmd.buttons & IN_ATTACK) && now >= w->m_flNextPrimaryAttack) { cmd.buttons |= IN_ATTACK; m_flLastShot = now; }
+    if (w->IsRevolver()) { cmd.buttons |= IN_ATTACK; m_flLastShot = now; }   // R8: hold to pull the hammer back
+    else if (!(m_LastCmd.buttons & IN_ATTACK) && now >= w->m_flNextPrimaryAttack) { cmd.buttons |= IN_ATTACK; m_flLastShot = now; }
   }
 }
 

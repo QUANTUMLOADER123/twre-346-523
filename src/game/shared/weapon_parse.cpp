@@ -60,6 +60,30 @@ static const CCSWeaponInfo s_weapons[WEAPON_MAX] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 90, 90, 1, 1.0f, false, 6, 0, "smokegrenade", 1 },
   { WEAPON_C4, "weapon_c4", "C4 Explosive", nullptr, WEAPONTYPE_C4, WEAPON_SLOT_C4, 2, 0, 0, -1, 1, 0, 1, 0, 0, 1, 1.0f, 1.0f, false, 1, 250, 250, 1,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 90, 90, 1, 1.0f, false, 10, 0, "c4", 1 },
+  { WEAPON_ELITE, "weapon_elite", "Dual Berettas", M("w_elite"), WEAPONTYPE_PISTOL, WEAPON_SLOT_PISTOL, 0, 300, 300, 30, 120, 38, 0.575f, 1, 4096, 0.79f, 0.12f, 0.12f, false, 1, 240, 240, 4,
+    2.0f, 2.0f, 5.0f, 6.6f, 340, 70, 52, 13, 5.0f, 6.6f, 0.25f, 0.30f, 0, 20, 26, 0, 0, 90, 90, 3.77f, 1.0f, false, 9, 1, "elite", 0.5f },
+  { WEAPON_FIVESEVEN, "weapon_fiveseven", "Five-SeveN", M("w_fiveseven"), WEAPONTYPE_PISTOL, WEAPON_SLOT_PISTOL, 3, 500, 300, 20, 100, 32, 0.9115f, 1, 4096, 0.81f, 0.15f, 0.15f, false, 1, 240, 240, 4,
+    2.0f, 2.0f, 5.0f, 6.6f, 340, 70, 52, 13, 5.0f, 6.6f, 0.25f, 0.30f, 0, 20, 26, 0, 0, 90, 90, 2.2f, 1.0f, false, 9, 1, "fiveseven", 0.5f },
+  { WEAPON_TEC9, "weapon_tec9", "Tec-9", M("w_tec9"), WEAPONTYPE_PISTOL, WEAPON_SLOT_PISTOL, 2, 500, 300, 18, 90, 33, 0.906f, 1, 4096, 0.831f, 0.12f, 0.12f, false, 1, 240, 240, 4,
+    2.0f, 2.0f, 4.2f, 5.6f, 340, 70, 56, 13, 4.2f, 5.6f, 0.23f, 0.28f, 0, 20, 18, 0, 0, 90, 90, 2.5f, 1.0f, false, 9, 1, "tec9", 0.5f },
+  { WEAPON_CZ75A, "weapon_cz75a", "CZ75-Auto", M("w_cz75a"), WEAPONTYPE_PISTOL, WEAPON_SLOT_PISTOL, 0, 500, 300, 12, 12, 31, 0.7765f, 1, 4096, 0.85f, 0.1f, 0.1f, true, 1, 240, 240, 4,
+    2.0f, 2.0f, 5.0f, 6.6f, 340, 70, 52, 13, 5.0f, 6.6f, 0.25f, 0.30f, 0, 20, 26, 0, 0, 90, 90, 2.7f, 1.0f, false, 9, 1, "cz75a", 0.5f },
+  { WEAPON_HKP2000, "weapon_hkp2000", "P2000", M("w_hkp2000"), WEAPONTYPE_PISTOL, WEAPON_SLOT_PISTOL, 3, 200, 300, 13, 52, 35, 0.505f, 1, 4096, 0.91f, 0.17f, 0.17f, false, 1, 240, 240, 4,
+    2.5f, 2.5f, 3.7f, 4.9f, 340, 70, 52, 13, 3.7f, 4.9f, 0.30f, 0.37f, 0, 20, 23, 0, 0, 90, 90, 2.2f, 1.0f, false, 11, 1, "hkp2000", 0.5f },
+  { WEAPON_MP7, "weapon_mp7", "MP7", M("w_mp7"), WEAPONTYPE_SUBMACHINEGUN, WEAPON_SLOT_RIFLE, 0, 1500, 600, 30, 120, 29, 0.625f, 1, 4096, 0.85f, 0.08f, 0.08f, true, 1, 220, 220, 4,
+    0.6f, 0.6f, 8.2f, 11.0f, 120, 45, 7, 30, 8.2f, 11.0f, 0.30f, 0.40f, 0, 70, 19, 1, 0, 90, 90, 3.1f, 1.0f, false, 13, 3, "mp7", 0.5f },
+  { WEAPON_MP5SD, "weapon_mp5sd", "MP5-SD", M("w_mp5sd"), WEAPONTYPE_SUBMACHINEGUN, WEAPON_SLOT_RIFLE, 0, 1500, 600, 30, 120, 27, 0.65f, 1, 4096, 0.85f, 0.08f, 0.08f, true, 1, 235, 235, 4,
+    0.6f, 0.6f, 8.2f, 11.0f, 120, 45, 7, 30, 8.2f, 11.0f, 0.30f, 0.40f, 0, 70, 19, 1, 0, 90, 90, 2.6f, 1.0f, false, 13, 3, "mp5sd", 0.5f },
+  { WEAPON_BIZON, "weapon_bizon", "PP-Bizon", M("w_bizon"), WEAPONTYPE_SUBMACHINEGUN, WEAPON_SLOT_RIFLE, 0, 1400, 600, 64, 120, 27, 0.575f, 1, 4096, 0.8f, 0.08f, 0.08f, true, 1, 240, 240, 4,
+    0.6f, 0.6f, 11.0f, 15.0f, 120, 45, 8, 30, 11.0f, 15.0f, 0.30f, 0.40f, 0, 70, 21, 1, 0, 90, 90, 2.4f, 1.0f, false, 16, 3, "bizon", 0.5f },
+  { WEAPON_MAG7, "weapon_mag7", "MAG-7", M("w_mag7"), WEAPONTYPE_SHOTGUN, WEAPON_SLOT_RIFLE, 3, 1300, 900, 5, 32, 30, 0.75f, 1, 3000, 0.70f, 0.85f, 0.85f, false, 8, 225, 225, 4,
+    40.0f, 40.0f, 6.0f, 8.0f, 300, 60, 25, 30, 6.0f, 8.0f, 0.35f, 0.45f, 0, 30, 143, 22, 0, 90, 90, 0.5f, 1.0f, false, 24, 1, "mag7", 0.5f },
+  { WEAPON_SAWEDOFF, "weapon_sawedoff", "Sawed-Off", M("w_sawedoff"), WEAPONTYPE_SHOTGUN, WEAPON_SLOT_RIFLE, 2, 1100, 900, 7, 32, 32, 0.75f, 1, 3000, 0.70f, 0.85f, 0.85f, false, 8, 210, 210, 4,
+    40.0f, 40.0f, 6.0f, 8.0f, 300, 60, 25, 30, 6.0f, 8.0f, 0.35f, 0.45f, 0, 30, 143, 22, 0, 90, 90, 0.5f, 1.0f, false, 24, 1, "sawedoff", 0.5f },
+  { WEAPON_M249, "weapon_m249", "M249", M("w_m249"), WEAPONTYPE_MACHINEGUN, WEAPON_SLOT_RIFLE, 0, 5200, 300, 100, 200, 32, 0.8f, 2, 8192, 0.97f, 0.08f, 0.08f, true, 1, 195, 195, 4,
+    0.6f, 0.6f, 4.81f, 6.41f, 400, 80, 7.8f, 140, 4.81f, 6.41f, 0.31f, 0.43f, 0, 30, 30, 1, 0, 90, 90, 5.7f, 1.0f, false, 32, 3, "m249", 0.5f },
+  { WEAPON_NEGEV, "weapon_negev", "Negev", M("w_negev"), WEAPONTYPE_MACHINEGUN, WEAPON_SLOT_RIFLE, 0, 1700, 300, 150, 300, 35, 0.71f, 2, 8192, 0.97f, 0.075f, 0.075f, true, 1, 150, 150, 4,
+    0.6f, 0.6f, 4.81f, 6.41f, 400, 80, 7.8f, 140, 4.81f, 6.41f, 0.31f, 0.43f, 0, 30, 30, 1, 0, 90, 90, 5.7f, 1.0f, false, 32, 3, "negev", 0.5f },
 };
 #undef M
 
@@ -70,6 +94,8 @@ int AliasToWeaponID(const std::string& a) {
   if (s == "m4a4") s = "m4a1"; if (s == "usp" || s == "usps") s = "usp_silencer"; if (s == "m4a1s") s = "m4a1_silencer"; if (s == "galil") s = "galilar";
   if (s == "sg553") s = "sg556"; if (s == "scout") s = "ssg08"; if (s == "he") s = "hegrenade"; if (s == "flash") s = "flashbang"; if (s == "smoke") s = "smokegrenade";
   if (s == "r8") s = "revolver"; if (s == "auto") s = "scar20";
+  if (s == "p2000") s = "hkp2000"; if (s == "cz75" || s == "cz") s = "cz75a"; if (s == "fn57" || s == "57") s = "fiveseven"; if (s == "dualies" || s == "berettas") s = "elite";
+  if (s == "pp-bizon") s = "bizon"; if (s == "sawed-off") s = "sawedoff"; if (s == "mp5") s = "mp5sd";
   for (int i = 1; i < WEAPON_MAX; i++) if (s == WeaponIdToAlias(i)) return i;
   return WEAPON_NONE;
 }

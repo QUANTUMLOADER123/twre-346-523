@@ -72,6 +72,9 @@ static const char* Cs16WeaponModel(int wid) {
     case WEAPON_AK47: return "ak47"; case WEAPON_M4A1: case WEAPON_M4A1_SILENCER: return "m4a1"; case WEAPON_SG556: return "sg552"; case WEAPON_AUG: return "aug";
     case WEAPON_SSG08: return "scout"; case WEAPON_AWP: return "awp"; case WEAPON_G3SG1: return "g3sg1"; case WEAPON_SCAR20: return "sg550";
     case WEAPON_HEGRENADE: return "hegrenade"; case WEAPON_FLASHBANG: return "flashbang"; case WEAPON_SMOKEGRENADE: return "smokegrenade"; case WEAPON_C4: return "c4";
+    case WEAPON_ELITE: return "elite"; case WEAPON_FIVESEVEN: return "fiveseven"; case WEAPON_TEC9: return "glock18"; case WEAPON_CZ75A: return "p228";
+    case WEAPON_HKP2000: return "usp"; case WEAPON_MP7: case WEAPON_MP5SD: return "mp5"; case WEAPON_BIZON: return "ump45";
+    case WEAPON_MAG7: return "xm1014"; case WEAPON_SAWEDOFF: return "m3"; case WEAPON_M249: case WEAPON_NEGEV: return "m249";
     default: return nullptr;
   }
 }

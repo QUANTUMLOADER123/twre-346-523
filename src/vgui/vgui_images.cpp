@@ -75,6 +75,16 @@ static const char* WeaponImageName(int id) {
     case WEAPON_HEGRENADE: n = "hegrenade"; break;
     case WEAPON_FLASHBANG: n = "flashbang"; break;
     case WEAPON_SMOKEGRENADE: n = "smokegrenade"; break;
+    case WEAPON_ELITE: n = "elites"; break;
+    case WEAPON_FIVESEVEN: n = "fiveseven"; break;
+    case WEAPON_TEC9: n = "glock18"; break;
+    case WEAPON_CZ75A: n = "p228"; break;
+    case WEAPON_HKP2000: n = "usp45"; break;
+    case WEAPON_MP7: case WEAPON_MP5SD: n = "mp5"; break;
+    case WEAPON_BIZON: n = "ump45"; break;
+    case WEAPON_MAG7: n = "xm1014"; break;
+    case WEAPON_SAWEDOFF: n = "m3"; break;
+    case WEAPON_M249: case WEAPON_NEGEV: n = "m249"; break;
     default: return nullptr;
   }
   return n;

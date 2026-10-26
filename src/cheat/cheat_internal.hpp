@@ -50,6 +50,7 @@ struct Vars {
     bool hideshots = false; KeyBind hideshotsKey{ 0, KEYMODE_TOGGLE };
     bool logMisses = true;
     bool knifebot = true, zeusbot = false;
+    bool autoRevolver = true;                // keep the R8 hammer pulled back so the shot goes off instantly
     int resolver = 1;                        // 0 off 1 default 2 brute only
   } rage;
   struct {

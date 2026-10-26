@@ -74,13 +74,27 @@ de_port, de_prodigy, de_tides, cs_office, cs_italy, cs_assault, cs_compound, cs_
 * Производительность: Settings → Video → «Skip tiny props» (`r_propscreencull`), «Fade distant props», decals, тени.
   `trace_selftest` проверяет ускоренную трассировку против полного перебора (должно быть 0 mismatches).
 
+## Оружие
+
+* В круговом меню закупки (B) есть **все стволы CS:GO**: семь категорий (Pistols, Heavy, SMGs, Rifles, Snipers, Gear,
+  Grenades). Добавлены Dual Berettas, Five-SeveN, Tec-9, CZ75-Auto, P2000, MP7, MP5-SD, PP-Bizon, MAG-7, Sawed-Off,
+  M249 и Negev. У стволов, которых нет в CS:S, модель, звук и иконка берутся от ближайшего аналога.
+* `mp_buy_anyteam 1` (по умолчанию): обе команды покупают любое оружие и defuse kit. `0` — ограничения как в CS:GO.
+* **R8 Revolver** работает как в CS:GO: ЛКМ взводит курок (~0.23 с) и стреляет, ПКМ — быстрая стрельба с бедра.
+  Модель, анимации и звуки R8 из CS:GO скачиваются отдельным маленьким пакетом (~9 МБ, см. ниже). Руки на
+  view-модели берутся от модели вашего агента. `cl_r8_model 0` возвращает модель Desert Eagle,
+  `cl_r8_viewmodel_fov` (68) задаёт FOV view-модели R8.
+* Модели игроков: наклон взгляда (pitch) двигает торс и голову, а не всю модель. Ноги стоят на земле,
+  оружие держится как в CS:S.
+
 ## Меню чита (Insert)
 
 Меню в стиле Aimware: красная рамка, чёрная панель вкладок, светлые группы. Перетаскивается за красную рамку,
 цвет рамки меняется в **Misc → Settings → Menu color** (или во вкладке **Colors**). Legitbot нет, только HvH.
 
 * **Ragebot:** aimbot (выбор хитбоксов, multipoint, hitchance, минимальный урон и его override), autowall,
-  silent aim, autoscope, quick stop, backtrack, double tap, hide shots, knifebot, prefer/force baim, safe point, резольвер.
+  silent aim, autoscope, quick stop, backtrack, double tap, hide shots, knifebot, prefer/force baim, safe point, резольвер,
+  **auto revolver**: курок R8 всё время взведён (до предела, отпускается в последний тик), поэтому выстрел мгновенный.
 * **Anti-aim:** pitch, yaw base, yaw/jitter/spin, body yaw (desync), freestanding, LBY, edge yaw, manual AA (стрелки),
   fake lag, slow walk, fake duck.
 * **Visuals:** ESP (бокс, HP, имя, флаги, оружие, патроны, скелет), стрелки вне экрана, glow, chams (видимые, за стеной,
@@ -110,6 +124,11 @@ Watermark, список биндов, индикаторы и спектатор
   (уже скачанные архивы не качаются заново).
 * Повторить или докачать: консоль `content_download` или **Settings → Content**.
 * Адреса архивов меняются переменными `cl_content_url_maps` / `cl_content_url_main` (любые zip с той же структурой).
+* **Дополнительный пакет R8** (модели, текстуры и звуки R8 из CS:GO, 19 файлов, ~9 МБ) берётся из TTT-аддона
+  [EntranceJew/gmod-addons](https://github.com/EntranceJew/gmod-addons) (закреплённый коммит) и кладётся в
+  `content/extras/csgo_r8/`. Если raw.githubusercontent.com недоступен, файлы качаются через api.github.com.
+  Этот пакет докачивается, даже если CS:S уже установлена. Если загрузка не удалась, игра всё равно запускается
+  (кнопка SKIP), а у R8 остаётся модель Desert Eagle. Адреса: `cl_content_url_r8` / `cl_content_url_r8_api`.
 * HTTP: на Windows — WinHTTP, на Android — `HttpURLConnection` через JNI, на Linux — `curl`.
 
 ## Контент Counter-Strike: Source

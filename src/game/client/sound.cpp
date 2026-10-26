@@ -80,7 +80,10 @@ std::vector<std::string> CssNames(const std::string& name) {
   static const std::unordered_map<std::string, std::vector<std::string>> alias = {
     { "Weapon_m4a1_silencer.Silenced", { "Weapon_M4A1.Silenced" } }, { "Weapon_m4a1_silencer.Single", { "Weapon_M4A1.Single" } },
     { "Weapon_usp_silencer.Silenced", { "Weapon_USP.SilencedShot" } }, { "Weapon_usp_silencer.Single", { "Weapon_USP.Single" } },
-    { "Weapon_revolver.Single", { "Weapon_DEagle.Single" } }, { "Weapon_p250.Single", { "Weapon_P228.Single" } },
+    { "Weapon_revolver.Single", { "file:weapons/csgo/revolver/revolver-1_01.wav", "Weapon_DEagle.Single" } },
+    { "Weapon_revolver.Reload", { "file:weapons/csgo/revolver/revolver_clipout.wav", "Weapon_DEagle.Clipout" } },
+    { "Weapon_mp5sd.Single", { "Weapon_MP5Navy.Single" } }, { "Weapon_m249.Single", { "Weapon_M249.Single" } },
+    { "Weapon_elite.Single", { "Weapon_Elite.Single" } }, { "Weapon_fiveseven.Single", { "Weapon_FiveSeven.Single" } }, { "Weapon_p250.Single", { "Weapon_P228.Single" } },
     { "Weapon_ssg08.Single", { "Weapon_Scout.Single" } }, { "Weapon_scar20.Single", { "Weapon_SG550.Single" } },
     { "Weapon_sg556.Single", { "Weapon_SG552.Single" } }, { "Weapon_galilar.Single", { "Weapon_Galil.Single" } },
     { "Weapon_mp9.Single", { "Weapon_TMP.Single" } }, { "Weapon_nova.Single", { "Weapon_M3.Single" } },
@@ -94,7 +97,7 @@ std::vector<std::string> CssNames(const std::string& name) {
     { "Buy.Fail", { "file:buttons/weapon_cant_buy.wav", "Player.UseDeny" } },
     { "Weapon_Shotgun.InsertShell", { "Weapon_M3.Insertshell", "Weapon_XM1014.InsertShell" } },
     { "Weapon_Silencer.On", { "Weapon_M4A1.Silencer_On", "Weapon_USP.AttachSilencer" } }, { "Weapon_Silencer.Off", { "Weapon_M4A1.Silencer_Off", "Weapon_USP.DetachSilencer" } },
-    { "Weapon_Revolver.Prepare", { "Weapon_DEagle.Slideback" } },
+    { "Weapon_Revolver.Prepare", { "file:weapons/csgo/revolver/revolver_prepare.wav", "Weapon_DEagle.Slideback" } },
     { "Weapon_Grenade.PullPin", { "Default.PullPin_Grenade", "file:weapons/pinpull.wav" } },
     { "Weapon_Grenade.Throw", { "file:weapons/knife/knife_slash1.wav" } },
     { "BaseSmokeEffect.Sound", { "file:weapons/smokegrenade/sg_explode.wav" } },
@@ -134,6 +137,7 @@ std::vector<std::string> CssFiles(const std::string& name) {
   LoadSoundScripts();
   for (const std::string& n : CssNames(name)) {
     if (n.rfind("file:", 0) == 0) { if (srcfs::Exists("sound/" + n.substr(5))) out.push_back(n.substr(5)); continue; }
+    if (!out.empty() && name.rfind("Player.Step", 0) != 0) break;   // loose files found (e.g. the CS:GO R8): no script fallback mix
     auto it = s_scripts.find(Lower(n)); if (it == s_scripts.end()) continue;
     for (auto& w : it->second) if (srcfs::Exists("sound/" + w)) out.push_back(w);
     if (!out.empty() && name.rfind("Player.Step", 0) != 0) break;   // first script that has files (steps merge left + right)
@@ -184,6 +188,12 @@ static std::vector<std::string> OriginalFiles(const std::string& name) {
     { "Weapon_p90.Single", { "weapons/p90-1.wav" } },
     { "Weapon_nova.Single", { "weapons/m3-1.wav" } },
     { "Weapon_xm1014.Single", { "weapons/xm1014-1.wav" } },
+    { "Weapon_elite.Single", { "weapons/elite_fire.wav" } }, { "Weapon_fiveseven.Single", { "weapons/fiveseven-1.wav" } },
+    { "Weapon_tec9.Single", { "weapons/glock18-2.wav" } }, { "Weapon_cz75a.Single", { "weapons/fiveseven-1.wav" } },
+    { "Weapon_hkp2000.Single", { "weapons/usp_unsil-1.wav" } }, { "Weapon_mp7.Single", { "weapons/mp5-1.wav", "weapons/mp5-2.wav" } },
+    { "Weapon_mp5sd.Single", { "weapons/mp5-1.wav", "weapons/mp5-2.wav" } }, { "Weapon_bizon.Single", { "weapons/ump45-1.wav" } },
+    { "Weapon_mag7.Single", { "weapons/xm1014-1.wav" } }, { "Weapon_sawedoff.Single", { "weapons/m3-1.wav" } },
+    { "Weapon_m249.Single", { "weapons/m249-1.wav", "weapons/m249-2.wav" } }, { "Weapon_negev.Single", { "weapons/m249-1.wav", "weapons/m249-2.wav" } },
     // weapon handling
     { "Weapon.Reload", { "weapons/clipout1.wav" } }, { "Weapon.ClipOut", { "weapons/clipout1.wav" } }, { "Weapon.ClipIn", { "weapons/clipin1.wav" } },
     { "Weapon.BoltPull", { "weapons/boltpull1.wav" } }, { "Weapon.DryFire", { "weapons/dryfire_rifle.wav", "weapons/dryfire_pistol.wav" } },

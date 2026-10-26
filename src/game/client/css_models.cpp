@@ -16,6 +16,8 @@
 ConVar cl_css_models("cl_css_models", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source player / weapon models when CS:S content is installed");
 ConVar cl_css_viewmodels("cl_css_viewmodels", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source view models (with hands) when CS:S content is installed");
 ConVar cl_css_anim_layers("cl_css_anim_layers", "255", FCVAR_CHEAT, "debug: 1 jump 2 upper 4 reload 8 aim 16 shoot");
+ConVar cl_r8_model("cl_r8_model", "1", FCVAR_ARCHIVE, "Use the CS:GO R8 Revolver model (downloaded with the game content) instead of the Desert Eagle");
+ConVar cl_r8_viewmodel_fov("cl_r8_viewmodel_fov", "68", FCVAR_ARCHIVE, "Field of view of the CS:GO R8 view model (CS:GO viewmodel_fov)", true, 40, true, 90);
 ConVar cl_css_viewmodel_fov("cl_css_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
 
 ConVar cl_agent_ct("cl_agent_ct", "0", FCVAR_ARCHIVE, "Your CT agent: 0 SEAL Team 6, 1 GSG-9, 2 SAS, 3 GIGN", true, 0, true, 3);
@@ -57,6 +59,17 @@ WeaponModel WeaponInfo(int wid) {
     case WEAPON_FLASHBANG: return { "eq_flashbang", "GREN" };
     case WEAPON_SMOKEGRENADE: return { "eq_smokegrenade", "GREN" };
     case WEAPON_C4: return { "c4", "C4" };
+    // CS:GO-only guns: the closest CS:S model
+    case WEAPON_ELITE: return { "pist_elite", "ELITES" };
+    case WEAPON_FIVESEVEN: return { "pist_fiveseven", "PISTOL" };
+    case WEAPON_TEC9: return { "pist_glock18", "PISTOL" };
+    case WEAPON_CZ75A: return { "pist_p228", "PISTOL" };
+    case WEAPON_HKP2000: return { "pist_usp", "PISTOL" };
+    case WEAPON_MP7: case WEAPON_MP5SD: return { "smg_mp5", "MP5" };
+    case WEAPON_BIZON: return { "smg_ump45", "UMP45" };
+    case WEAPON_MAG7: return { "shot_xm1014", "XM1014" };
+    case WEAPON_SAWEDOFF: return { "shot_m3super90", "M3S90" };
+    case WEAPON_M249: case WEAPON_NEGEV: return { "mach_m249para", "M249" };
     default: return { nullptr, "KNIFE" };
   }
 }
@@ -73,7 +86,13 @@ const CSrcModel* PlayerModel(CCSPlayer* p) {
   if (p->IsLocalPlayer()) idx = (p->m_iTeamNum == TEAM_CT ? cl_agent_ct : cl_agent_t).GetInt();
   return AgentModel(p->m_iTeamNum, idx);
 }
+// CS:GO R8 Revolver (downloaded extra, see engine/download): Garry's Mod port, v48
+const char* const kR8World = "models/weapons/w_models/csgo/w_pist_revolver.mdl";
+const char* const kR8View = "models/weapons/v_models/csgo/v_pist_revolver.mdl";
+const CSrcModel* LoadedOrNull(const CSrcModel* m) { return m && !m->meshes.empty() ? m : nullptr; }
+
 const CSrcModel* WorldWeapon(int wid, bool silencer = false, bool thrown = false) {
+  if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) if (const CSrcModel* r8 = LoadedOrNull(SrcMdl_Get(kR8World))) return r8;
   WeaponModel wi = WeaponInfo(wid); if (!wi.model) return nullptr;
   std::string n = std::string("models/weapons/w_") + wi.model;
   if (silencer && wid == WEAPON_USP_SILENCER) n += "_silencer";
@@ -91,13 +110,17 @@ void LayerFull(std::vector<Vector>& pos, std::vector<Quat>& q, const std::vector
     q[b] = QuatSlerp(q[b], lq[b], std::min(1.f, k)); pos[b] = pos[b] + (lp[b] - pos[b]) * std::min(1.f, k);
   }
 }
-void LayerDelta(std::vector<Vector>& pos, std::vector<Quat>& q, const std::vector<Vector>& dp, const std::vector<Quat>& dq, const std::vector<float>& w, float amount) {
+// Source SlerpBones for STUDIO_DELTA sequences: STUDIO_POST deltas (the CS:S aim matrices / shoot layers, flags 0x14) are
+// applied in the bone's own frame (QuaternionMA: base * delta), plain deltas in the parent frame (QuaternionSM: delta * base)
+constexpr int STUDIO_POST_FLAG = 0x10;
+void LayerDelta(std::vector<Vector>& pos, std::vector<Quat>& q, const std::vector<Vector>& dp, const std::vector<Quat>& dq, const std::vector<float>& w, float amount, bool post) {
   for (size_t b = 0; b < pos.size(); b++) {
     float k = (b < w.size() ? w[b] : 1.f) * amount; if (k <= 0.001f) continue;
     Quat d = k >= 0.999f ? dq[b] : QuatSlerp(Quat(), dq[b], k);
-    q[b] = QuatMul(d, q[b]); pos[b] = pos[b] + dp[b] * k;   // Source QuaternionSM (non-STUDIO_POST delta): delta * base
+    q[b] = post ? QuatMul(q[b], d) : QuatMul(d, q[b]); pos[b] = pos[b] + dp[b] * k;
   }
 }
+bool IsPost(const SrcSeqRef& r) { return r && (r.src->seqs[r.seq].flags & STUDIO_POST_FLAG); }
 
 // sequence lookups are string based - cache them per model
 struct SeqCache { std::unordered_map<std::string, SrcSeqRef> map; };
@@ -158,11 +181,11 @@ void BuildPlayerBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector
     if (r) { m.SampleSeq(r, std::fmod(now / std::max(0.1f, m.SeqDuration(r)), 1.f), pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   }
   SrcSeqRef aim = Seq(m, aimSt + "Aim_" + wpn);
-  if (aim && (lm & 8)) { m.SampleSeq(aim, 0, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
+  if (aim && (lm & 8)) { m.SampleSeq(aim, 0, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f, IsPost(aim)); }
   if (in.fireAmount > 0 && in.weaponId != WEAPON_C4 && (lm & 16)) {
     SrcSeqRef s = Seq(m, st + "Shoot_" + wpn);
     if (!s) s = Seq(m, st + "Shoot_" + wpn + "_R");
-    if (s) { m.SampleSeq(s, 1.f - in.fireAmount, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
+    if (s) { m.SampleSeq(s, 1.f - in.fireAmount, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f, IsPost(s)); }
   }
   m.BuildBones(pos, q, bones);
 }
@@ -288,7 +311,7 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
       BoneMerge(*wm, *m, out.cssBones, out.cssWeaponBones);
       out.cssWeapon = wm; out.hasWeapon = true;
       for (size_t i = 0; i < wm->attachments.size(); i++)
-        if (wm->attachments[i].name == "muzzle_flash" || wm->attachments[i].name == "1") { out.muzzle = wm->AttachmentPos((int)i, out.cssWeaponBones, out.cssToWorld); out.hasMuzzle = true; break; }
+        if (wm->attachments[i].name == "muzzle_flash" || wm->attachments[i].name == "muzzle" || wm->attachments[i].name == "1") { out.muzzle = wm->AttachmentPos((int)i, out.cssWeaponBones, out.cssToWorld); out.hasMuzzle = true; break; }
     }
   }
 }
@@ -323,6 +346,23 @@ bool CSS_DrawWorldWeapon(int weaponId, const matrix3x4_t& xf, const StudioDrawPa
 // ------------------------------------------------------------------------------------------------
 // view models
 namespace {
+// c_arms (Garry's Mod style): the CS:GO R8 view model has no hands, only ValveBiped.* arm bones - the arms of the
+// player's own agent model are bone merged onto them and only the forearm / hand / finger triangles are drawn
+void DrawViewModelArms(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm, const matrix3x4_t& xf, const StudioDrawParams& dp) {
+  if (!pm || pm->meshes.empty()) return;
+  thread_local std::vector<matrix3x4_t> armBones; thread_local std::vector<uint8_t> mask;
+  BoneMerge(*pm, vm, vmBones, armBones);
+  mask.assign(pm->bones.size(), 0);
+  for (size_t i = 0; i < pm->bones.size(); i++) {
+    const std::string& n = pm->bones[i].name;
+    bool arm = n.find("Forearm") != std::string::npos || n.find("ForeTwist") != std::string::npos || n.find("_Hand") != std::string::npos ||
+               n.find("Finger") != std::string::npos || n.find("Wrist") != std::string::npos || n.find("Ulna") != std::string::npos;
+    if (!arm) continue;
+    int par = pm->bones[i].parent;
+    if (vm.FindBone(n) >= 0 || (par >= 0 && par < (int)i && mask[par])) mask[i] = 1;   // merged, or hangs off a merged arm bone
+  }
+  SrcMdl_Draw(*pm, armBones, xf, dp, 0, &mask);
+}
 SrcSeqRef PickVm(const CSrcModel& m, std::initializer_list<const char*> acts, bool silenced, int variant) {
   for (const char* a : acts) {
     std::vector<SrcSeqRef> v;
@@ -338,7 +378,10 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   if (!cl_css_viewmodels.GetBool() || !srcfs::Available()) return false;
   const int wid = w->GetCSWeaponID();
   WeaponModel wi = WeaponInfo(wid); if (!wi.model) return false;
-  const CSrcModel* m = SrcMdl_Get(std::string("models/weapons/v_") + wi.model + ".mdl");
+  const CSrcModel* m = nullptr;
+  bool r8 = false;
+  if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) { m = LoadedOrNull(SrcMdl_Get(kR8View)); r8 = m && !m->seqs.empty(); if (!r8) m = nullptr; }
+  if (!m) m = SrcMdl_Get(std::string("models/weapons/v_") + wi.model + ".mdl");
   if (!m || m->meshes.empty() || m->seqs.empty()) return false;
   const bool silenced = SilencerModel(wid) && w->m_bSilencerOn;
   const int act = w->m_iViewActivity;
@@ -363,6 +406,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     case ACT_VM_ATTACH_SILENCER: seq = PickVm(*m, { "ACT_VM_ATTACH_SILENCER" }, false, 0); stretch = true; break;
     case ACT_VM_DETACH_SILENCER: seq = PickVm(*m, { "ACT_VM_DETACH_SILENCER" }, false, 0); stretch = true; break;
     case ACT_VM_PLANT: seq = PickVm(*m, { "ACT_VM_PRIMARYATTACK" }, false, 0); stretch = true; break;
+    case ACT_VM_HAULBACK: seq = PickVm(*m, { "ACT_VM_HAULBACK" }, false, 0); break;   // R8: pull the hammer back, hold it there
     default: break;
   }
   if (IsGrenade(wid)) { auto* g = static_cast<CBaseCSGrenade*>(w); if (g->m_bPinPulled && act != ACT_VM_THROW) { seq = PickVm(*m, { "ACT_VM_PULLPIN" }, false, 0); if (act != ACT_VM_PULLPIN) elapsed = 99.f; } }
@@ -374,6 +418,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     float t = elapsed * rate;
     const SrcMdlSeq& sq = seq.src->seqs[seq.seq];
     if (shotgunLoop && w->m_bInReload) cycle = std::fmod(t / dur, 1.f);
+    else if (act == ACT_VM_HAULBACK) cycle = Clamp(t / dur, 0.f, 1.f);
     else if (t >= dur && !sq.looping && act != ACT_VM_PULLPIN && !IsGrenade(wid)) { elapsed = (t - dur) / std::max(0.01f, rate); seq = {}; }
     else cycle = Clamp(t / dur, 0.f, 1.f);
   }
@@ -398,10 +443,11 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   if (cl.nightvision) L.ambient = Vector(0.9f, 1.2f, 0.9f);
   StudioDrawParams dp; dp.light = L; dp.eye = view.origin;
 
-  Matrix proj = BuildProjection(view.VerticalFov(cl_css_viewmodel_fov.GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
+  Matrix proj = BuildProjection(view.VerticalFov((r8 ? cl_r8_viewmodel_fov : cl_css_viewmodel_fov).GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
   Render_ClearDepth();
   Render_Begin3D(view.view, proj);
   SrcMdl_Draw(*m, bones, xf, dp);
+  if (r8) DrawViewModelArms(*m, bones, PlayerModel(p), xf, dp);
   Render_End3D();
   muzzleOut = m->attachments.empty() ? view.origin + view.forward * 20.f - view.up * 4.f : m->AttachmentPos(0, bones, xf);
   return true;

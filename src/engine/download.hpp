@@ -4,6 +4,9 @@
 // nothing in ./content/css), the loading screen downloads it once from GitHub mirrors of the CS:S content
 // (zip archives straight from codeload.github.com) and unpacks it while downloading into content/css/cstrike/.
 //
+// Extras (any install): the CS:GO R8 Revolver (view / world model, textures, sounds) from a Garry's Mod addon on GitHub,
+// as single files into content/extras/csgo_r8/ (indexed by srcfs like a cstrike/custom folder).
+//
 // HTTP: Android - java.net.HttpURLConnection through JNI, Windows - WinHTTP, others - curl.
 #pragma once
 #include <string>
@@ -11,10 +14,13 @@
 
 namespace download {
 struct Pack {
-  const char* id;        // marker file content/css/.pack_<id>
+  const char* id;        // marker file <dest>/.pack_<id>
   const char* title;     // shown on the loading screen
-  const char* url;
+  const char* url;       // zip archive - or, with `files`, the base url of single files
   double approxMB;       // the archives are streamed without Content-Length
+  const char* const* files = nullptr;   // single files (nullptr-terminated, relative to url) instead of a zip
+  const char* dest = nullptr;           // folder of single-file packs (zip packs unpack into content/css/cstrike)
+  bool core = true;      // part of the CS:S content (not needed with a Steam / user install)
 };
 const Pack* Packs(int& count);
 
@@ -30,7 +36,8 @@ struct Progress {
   std::string error;
 };
 
-bool ContentMissing();      // nothing usable installed (or an earlier download did not finish)
+bool ContentMissing();      // nothing usable installed (or an earlier download did not finish), or an extra is missing
+bool CoreContentMissing();  // the CS:S content itself is missing (the extras are optional)
 void Start();               // background thread; packs already finished are skipped
 void Cancel();
 Progress Get();

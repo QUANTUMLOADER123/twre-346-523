@@ -94,7 +94,7 @@ static void RegisterVars() {
   R("rage.mindmg", r.minDamage); R("rage.mindmg_override_key", r.minDamageOverrideKey); R("rage.mindmg_override", r.minDamageOverride); R("rage.prefer_baim", r.preferBaim);
   R("rage.force_baim_key", r.forceBaimKey); R("rage.safepoint", r.safePoint); R("rage.force_safe_key", r.forceSafeKey); R("rage.fov", r.fov); R("rage.norecoil", r.removeRecoil);
   R("rage.nospread", r.compensateSpread); R("rage.backtrack", r.backtrack); R("rage.delayshot", r.delayShot); R("rage.dt_key", r.doubletapKey); R("rage.dt_mode", r.doubletapMode);
-  R("rage.hs_key", r.hideshotsKey); R("rage.dt", r.doubletap); R("rage.hs", r.hideshots); R("rage.logmisses", r.logMisses); R("rage.knifebot", r.knifebot); R("rage.resolver", r.resolver);
+  R("rage.hs_key", r.hideshotsKey); R("rage.dt", r.doubletap); R("rage.hs", r.hideshots); R("rage.logmisses", r.logMisses); R("rage.knifebot", r.knifebot); R("rage.autorevolver", r.autoRevolver); R("rage.resolver", r.resolver);
   R("aa.enabled", a.enabled); R("aa.pitch", a.pitch); R("aa.yawbase", a.yawBase); R("aa.yaw", a.yaw); R("aa.yawadd", a.yawAdd); R("aa.jitter", a.jitter); R("aa.jitter_range", a.jitterRange);
   R("aa.spin", a.spinSpeed); R("aa.bodyyaw", a.bodyYaw); R("aa.inverter", a.inverter); R("aa.fakelimit", a.fakeLimit); R("aa.freestand_body", a.freestandBody); R("aa.freestand_key", a.freestandKey);
   R("aa.edge", a.edgeYaw); R("aa.manual_left", a.manualLeft); R("aa.manual_right", a.manualRight); R("aa.manual_back", a.manualBack); R("aa.lby", a.lbyMode);
@@ -607,6 +607,7 @@ static void PaintRage(float x, float y, float w, float h) {
   Combo("Double tap mode", r.doubletapMode, { "Offensive", "Defensive" });
   Checkbox("On shot anti-aim", r.hideshots); KeyBindW("rage.hskey", r.hideshotsKey);
   Checkbox("Knifebot", r.knifebot);
+  Checkbox("Auto revolver", r.autoRevolver);
   Checkbox("Log misses due to spread", r.logMisses);
   EndGroup();
 }

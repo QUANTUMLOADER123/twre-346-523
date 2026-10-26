@@ -75,7 +75,9 @@ void HUD_DrawTeamMenu() {
 // buy menu
 struct BuyItem { const char* alias; int weaponId; const char* label; int price; int team; const char* image; };
 // CS:GO buy wheel: 6 categories around the money, then the items of the category around a BACK button
-static const char* s_categories[] = { "PISTOLS", "HEAVY", "SMGs", "RIFLES", "GEAR", "GRENADES" };
+static const char* s_categories[] = { "PISTOLS", "HEAVY", "SMGs", "RIFLES", "SNIPERS", "GEAR", "GRENADES" };
+static constexpr int kNumCategories = 7;
+static int BuyTeam(int team) { return FindConVar("mp_buy_anyteam")->GetBool() ? 0 : team; }   // 0 = everything
 static std::vector<BuyItem> GetCategory(int cat, int team) {
   std::vector<BuyItem> out;
   auto addType = [&](int type) {
@@ -90,13 +92,14 @@ static std::vector<BuyItem> GetCategory(int cat, int team) {
     case 0: addType(WEAPONTYPE_PISTOL); break;
     case 1: addType(WEAPONTYPE_SHOTGUN); addType(WEAPONTYPE_MACHINEGUN); break;
     case 2: addType(WEAPONTYPE_SUBMACHINEGUN); break;
-    case 3: addType(WEAPONTYPE_RIFLE); addType(WEAPONTYPE_SNIPER_RIFLE); break;
-    case 4:
+    case 3: addType(WEAPONTYPE_RIFLE); break;
+    case 4: addType(WEAPONTYPE_SNIPER_RIFLE); break;
+    case 5:
       add("vest", 0, "Kevlar Vest", 650, 0, "kevlar"); add("vesthelm", 0, "Kevlar + Helmet", 1000, 0, "kevlar_helmet");
       add("defuser", 0, "Defuse Kit", 400, TEAM_CT, "defuser");
       add("primammo", 0, "Primary Ammo", 0, 0, "bullet"); add("secammo", 0, "Secondary Ammo", 0, 0, "cartridge");
       break;
-    case 5:
+    case 6:
       add("flashbang", WEAPON_FLASHBANG, "Flashbang", GetWeaponInfo(WEAPON_FLASHBANG)->price, 0, nullptr);
       add("hegrenade", WEAPON_HEGRENADE, "HE Grenade", GetWeaponInfo(WEAPON_HEGRENADE)->price, 0, nullptr);
       add("smokegrenade", WEAPON_SMOKEGRENADE, "Smoke Grenade", GetWeaponInfo(WEAPON_SMOKEGRENADE)->price, 0, nullptr);
@@ -105,7 +108,7 @@ static std::vector<BuyItem> GetCategory(int cat, int team) {
   return out;
 }
 
-void HUD_BuyMenuSetCategory(int cat) { s_buyCategory = cat >= 0 && cat < 6 ? cat : -1; s_hoverItem = -1; }
+void HUD_BuyMenuSetCategory(int cat) { s_buyCategory = cat >= 0 && cat < kNumCategories ? cat : -1; s_hoverItem = -1; }
 static void Buy(const char* alias) { Cbuf_AddText(std::string("buy ") + alias + "\n"); }
 static void CloseBuyMenu() { cl.buyMenuOpen = false; s_buyCategory = -1; }
 
@@ -116,7 +119,8 @@ static const Texture2D* CategoryImage(int cat, int team) {
     case 1: return VGUI_WeaponImage(WEAPON_XM1014);
     case 2: return VGUI_WeaponImage(WEAPON_P90);
     case 3: return VGUI_WeaponImage(team == TEAM_CT ? WEAPON_M4A1 : WEAPON_AK47);
-    case 4: return VGUI_ItemImage("kevlar_helmet");
+    case 4: return VGUI_WeaponImage(WEAPON_AWP);
+    case 5: return VGUI_ItemImage("kevlar_helmet");
     default: return VGUI_WeaponImage(WEAPON_HEGRENADE);
   }
 }
@@ -124,8 +128,8 @@ static const Texture2D* CategoryImage(int cat, int team) {
 // select by number (1..n) at the current level; returns true when handled
 static bool BuySelect(int n) {
   CCSPlayer* lp = g_pLocalPlayer; if (!lp) return false;
-  if (s_buyCategory < 0) { if (n >= 1 && n <= 6) { s_buyCategory = n - 1; s_hoverItem = -1; return true; } return false; }
-  auto items = GetCategory(s_buyCategory, lp->m_iTeamNum);
+  if (s_buyCategory < 0) { if (n >= 1 && n <= kNumCategories) { s_buyCategory = n - 1; s_hoverItem = -1; return true; } return false; }
+  auto items = GetCategory(s_buyCategory, BuyTeam(lp->m_iTeamNum));
   if (n >= 1 && n <= (int)items.size()) { Buy(items[n - 1].alias); CloseBuyMenu(); return true; }
   return false;
 }
@@ -143,9 +147,9 @@ void HUD_DrawBuyMenu() {
   std::vector<Entry> entries;
   std::vector<BuyItem> items;
   if (s_buyCategory < 0) {
-    for (int i = 0; i < 6; i++) entries.push_back({ s_categories[i], "", CategoryImage(i, team), true, i + 1 });
+    for (int i = 0; i < kNumCategories; i++) entries.push_back({ s_categories[i], "", CategoryImage(i, team), true, i + 1 });
   } else {
-    items = GetCategory(s_buyCategory, team);
+    items = GetCategory(s_buyCategory, BuyTeam(team));
     for (size_t i = 0; i < items.size(); i++) {
       const BuyItem& it = items[i];
       entries.push_back({ it.label, it.price > 0 ? TextFormat("$%d", it.price) : "", ItemImage(it), lp->m_iAccount >= it.price, (int)i + 1 });
@@ -181,7 +185,7 @@ void HUD_DrawBuyMenu() {
     if (!e.price.empty()) surface()->DrawTextCentered(FONT_GO, e.price.c_str(), ex, ey + ih * 0.5f + 14, e.enabled ? csgo::Green : csgo::Red, true);
     // hotkey number near the outer edge
     float hx = cx + std::cos(mid) * (R - 16), hy = cy + std::sin(mid) * (R - 16);
-    surface()->DrawTextCentered(FONT_GO, TextFormat("%d", e.hotkey), hx, hy - 8, csgo::TextFaint);
+    if (e.hotkey <= 9) surface()->DrawTextCentered(FONT_GO, TextFormat("%d", e.hotkey), hx, hy - 8, csgo::TextFaint);
   }
   // center button: money + (category: close / items: back)
   bool centerHv = dist <= r0;

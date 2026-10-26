@@ -340,6 +340,8 @@ static ConCommand mdl_info("mdl_info", [](const CCommand& c) {
   for (auto& i : m->includeModels) Msg("  include %s\n", i.c_str());
   for (auto& p : m->poseParams) Msg("  pose %s [%g..%g] loop %g\n", p.name.c_str(), p.start, p.end, p.loop);
   for (auto& a : m->attachments) Msg("  attachment %s bone %d\n", a.name.c_str(), a.bone);
+  for (auto& t : m->textures) Msg("  texture %s\n", t.c_str());
+  for (size_t i = 0; i < m->meshes.size(); i++) Msg("  mesh %d skinref %d verts %d tris %d\n", (int)i, m->meshes[i].skinRef, (int)m->meshes[i].pos.size() / 3, (int)m->meshes[i].idx.size() / 3);
   if (c.ArgC() > 2) for (size_t i = 0; i < m->bones.size(); i++) Msg("  bone %d %s parent %d pos %.1f %.1f %.1f\n", (int)i, m->bones[i].name.c_str(), m->bones[i].parent, m->bones[i].pos.x, m->bones[i].pos.y, m->bones[i].pos.z);
   for (size_t i = 0; i < m->seqs.size(); i++) {
     auto& s = m->seqs[i]; const SrcMdlAnim* a = s.anims.empty() || s.anims[0] < 0 || s.anims[0] >= (int)m->anims.size() ? nullptr : &m->anims[s.anims[0]];

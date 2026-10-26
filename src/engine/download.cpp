@@ -32,19 +32,40 @@ namespace fs = std::filesystem;
 ConVar cl_content_url_maps("cl_content_url_maps", "https://codeload.github.com/bouletmarc/css_maps_content/zip/refs/heads/master", FCVAR_ARCHIVE, "Zip archive with the CS:S maps (maps/*.bsp) for the first-start download");
 ConVar cl_content_url_main("cl_content_url_main", "https://codeload.github.com/bouletmarc/css_content/zip/refs/heads/master", FCVAR_ARCHIVE, "Zip archive with the CS:S models / materials / sounds for the first-start download");
 
+// CS:GO R8 Revolver from a Garry's Mod addon (pinned commit): raw.githubusercontent.com first, the GitHub contents API
+// (Accept: application/vnd.github.raw) as the fallback
+ConVar cl_content_url_r8("cl_content_url_r8", "https://raw.githubusercontent.com/EntranceJew/gmod-addons/48675a7f3a5a06d826bebba97078e24d0124f728/weapon_ttt_csgo_r8revolver/gamemodes/terrortown/content/", FCVAR_ARCHIVE, "Base url of the CS:GO R8 Revolver files (view / world model, textures, sounds)");
+ConVar cl_content_url_r8_api("cl_content_url_r8_api", "https://api.github.com/repos/EntranceJew/gmod-addons/contents/weapon_ttt_csgo_r8revolver/gamemodes/terrortown/content/%s?ref=48675a7f3a5a06d826bebba97078e24d0124f728", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the R8 Revolver files");
+
 namespace download {
 namespace {
 const char* kDest = "content/css";
+const char* kExtras = "content/extras";
+
+const char* const s_r8Files[] = {
+  "models/weapons/v_models/csgo/v_pist_revolver.mdl", "models/weapons/v_models/csgo/v_pist_revolver.vvd", "models/weapons/v_models/csgo/v_pist_revolver.dx90.vtx",
+  "models/weapons/w_models/csgo/w_pist_revolver.mdl", "models/weapons/w_models/csgo/w_pist_revolver.vvd", "models/weapons/w_models/csgo/w_pist_revolver.dx90.vtx",
+  "materials/models/weapons/v_models/csgo/pist_revolver/pist_revolver.vmt", "materials/models/weapons/v_models/csgo/pist_revolver/pist_revolver.vtf",
+  "materials/models/weapons/v_models/csgo/pist_revolver/pist_revolver_exponent.vtf",
+  "materials/csgo/models/weapons/w_models/w_pist_revolver/pist_revolver.vmt", "materials/csgo/models/weapons/w_models/w_pist_revolver/pist_revolver.vtf",
+  "materials/csgo/models/weapons/w_models/w_pist_revolver/pist_revolver_exponent.vtf",
+  "sound/weapons/csgo/revolver/revolver-1_01.wav", "sound/weapons/csgo/revolver/revolver_prepare.wav", "sound/weapons/csgo/revolver/revolver_draw.wav",
+  "sound/weapons/csgo/revolver/revolver_clipout.wav", "sound/weapons/csgo/revolver/revolver_clipin.wav", "sound/weapons/csgo/revolver/revolver_sideback.wav",
+  "sound/weapons/csgo/revolver/revolver_siderelease.wav",
+  nullptr };
 
 std::mutex s_mtx;
 Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-Pack s_packs[2] = {
+constexpr int kPacks = 3;
+Pack s_packs[kPacks] = {
   { "maps", "CS:S maps", nullptr, 105 },
   { "main", "CS:S models, textures and sounds", nullptr, 700 },
+  { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
 };
+bool s_needCore = true;   // decided on the main thread in Start()
 
 void SetError(const std::string& e) { std::lock_guard<std::mutex> l(s_mtx); s_prog.error = e; }
 
@@ -161,7 +182,7 @@ std::string JavaError(JNIEnv* env) {
   const char* u = env->GetStringUTFChars(s, nullptr); std::string r = u ? u : "java error"; env->ReleaseStringUTFChars(s, u);
   return r;
 }
-bool HttpGet(const std::string& url, const Sink& sink, std::string& err) {
+bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const char* accept = nullptr) {
   android_app* app = GetAndroidApp();
   if (!app || !app->activity) { err = "no activity"; return false; }
   JavaVM* vm = app->activity->vm; JNIEnv* env = nullptr;
@@ -179,6 +200,7 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err) {
     env->CallVoidMethod(conn, env->GetMethodID(hc, "setConnectTimeout", "(I)V"), 20000);
     env->CallVoidMethod(conn, env->GetMethodID(hc, "setReadTimeout", "(I)V"), 60000);
     env->CallVoidMethod(conn, env->GetMethodID(hc, "setRequestProperty", "(Ljava/lang/String;Ljava/lang/String;)V"), env->NewStringUTF("User-Agent"), env->NewStringUTF("cshvh"));
+    if (accept) env->CallVoidMethod(conn, env->GetMethodID(hc, "setRequestProperty", "(Ljava/lang/String;Ljava/lang/String;)V"), env->NewStringUTF("Accept"), env->NewStringUTF(accept));
     jint code = env->CallIntMethod(conn, env->GetMethodID(hc, "getResponseCode", "()I"));
     if (env->ExceptionCheck()) { err = JavaError(env); env->PopLocalFrame(nullptr); break; }
     if (code != 200) { err = "HTTP " + std::to_string(code); env->PopLocalFrame(nullptr); break; }
@@ -208,7 +230,7 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err) {
   return ok;
 }
 #elif defined(_WIN32)
-bool HttpGet(const std::string& url, const Sink& sink, std::string& err) {
+bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const char* accept = nullptr) {
   std::wstring w(url.begin(), url.end());
   URL_COMPONENTS uc{}; uc.dwStructSize = sizeof(uc);
   wchar_t host[256] = {}, path[2048] = {};
@@ -220,7 +242,8 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err) {
   HINTERNET c = WinHttpConnect(s, host, uc.nPort, 0);
   HINTERNET r = c ? WinHttpOpenRequest(c, L"GET", path, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, uc.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0) : nullptr;
   bool ok = false;
-  if (r && WinHttpSendRequest(r, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) && WinHttpReceiveResponse(r, nullptr)) {
+  std::wstring hdr; if (accept) { std::string a = std::string("Accept: ") + accept; hdr.assign(a.begin(), a.end()); }
+  if (r && WinHttpSendRequest(r, hdr.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : hdr.c_str(), hdr.empty() ? 0 : (DWORD)-1L, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) && WinHttpReceiveResponse(r, nullptr)) {
     DWORD code = 0, len = sizeof(code);
     WinHttpQueryHeaders(r, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &code, &len, WINHTTP_NO_HEADER_INDEX);
     if (code != 200) err = "HTTP " + std::to_string(code);
@@ -241,8 +264,8 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err) {
   return ok;
 }
 #else
-bool HttpGet(const std::string& url, const Sink& sink, std::string& err) {
-  std::string cmd = "curl -fsSL --connect-timeout 20 '" + url + "'";
+bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const char* accept = nullptr) {
+  std::string cmd = "curl -fsSL --connect-timeout 20 " + (accept ? std::string("-H 'Accept: ") + accept + "' " : std::string()) + "'" + url + "'";
   FILE* f = popen(cmd.c_str(), "r");
   if (!f) { err = "curl not found"; return false; }
   std::vector<uint8_t> buf(256 * 1024);
@@ -255,20 +278,72 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err) {
 }
 #endif
 
-bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(fs::path(kDest) / (std::string(".pack_") + p.id), ec); }
+fs::path PackMarker(const Pack& p) { return fs::path(p.files ? kExtras : kDest) / (std::string(".pack_") + p.id); }
+bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(p), ec); }
+bool PackWanted(const Pack& p) { return !PackDone(p) && (!p.core || s_needCore); }
+
+bool WriteFileAtomic(const fs::path& path, const std::vector<uint8_t>& data, std::string& err) {
+  std::error_code ec; fs::create_directories(path.parent_path(), ec);
+  std::string tmp = path.string() + ".part";
+  { std::ofstream o(tmp, std::ios::binary); if (!o) { err = "cannot write " + path.string(); return false; } o.write((const char*)data.data(), (std::streamsize)data.size()); if (!o) { err = "disk full?"; return false; } }
+  fs::rename(tmp, path, ec);
+  if (ec) { err = "cannot write " + path.string(); return false; }
+  return true;
+}
+
+// single-file pack: every file from <url><file>, falling back to the API template
+bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& err) {
+  size_t bytes = 0; int files = 0;
+  for (const char* const* f = p.files; *f; f++) {
+    if (s_cancel) return false;
+    fs::path dst = fs::path(p.dest) / *f;
+    std::error_code ec;
+    if (fs::exists(dst, ec) && fs::file_size(dst, ec) > 0) { files++; continue; }   // an earlier interrupted run
+    std::vector<uint8_t> data; std::string e1, e2;
+    auto sink = [&](const uint8_t* d, size_t n) {
+      if (s_cancel) return false;
+      data.insert(data.end(), d, d + n); bytes += n;
+      std::lock_guard<std::mutex> l(s_mtx);
+      s_prog.packMB = bytes / 1048576.0; s_prog.totalMB = doneMB + s_prog.packMB; s_prog.current = *f;
+      return true;
+    };
+    bool ok = HttpGet(std::string(p.url) + *f, sink, e1);
+    if (!ok && !s_cancel) {
+      data.clear();
+      char url[1024]; snprintf(url, sizeof(url), cl_content_url_r8_api.GetString(), *f);
+      ok = HttpGet(url, sink, e2, "application/vnd.github.raw");
+    }
+    if (!ok || data.empty()) { err = std::string(*f) + ": " + (e2.empty() ? e1 : e2); return false; }
+    if (!WriteFileAtomic(dst, data, err)) return false;
+    files++;
+    std::lock_guard<std::mutex> l(s_mtx); s_prog.files = filesBefore + files;
+  }
+  return true;
+}
 
 void Worker() {
   s_packs[0].url = cl_content_url_maps.GetString();
   s_packs[1].url = cl_content_url_main.GetString();
-  double expected = 0; for (auto& p : s_packs) if (!PackDone(p)) expected += p.approxMB;
-  { std::lock_guard<std::mutex> l(s_mtx); s_prog = Progress(); s_prog.state = RUNNING; s_prog.packCount = 2; s_prog.totalExpectedMB = expected; }
-  std::error_code ec; fs::create_directories(fs::path(kDest) / "cstrike", ec);
+  s_packs[2].url = cl_content_url_r8.GetString();
+  double expected = 0; for (auto& p : s_packs) if (PackWanted(p)) expected += p.approxMB;
+  { std::lock_guard<std::mutex> l(s_mtx); s_prog = Progress(); s_prog.state = RUNNING; s_prog.packCount = kPacks; s_prog.totalExpectedMB = expected; }
+  std::error_code ec;
+  if (s_needCore) fs::create_directories(fs::path(kDest) / "cstrike", ec);
   double doneMB = 0;
   bool ok = true;
-  for (int i = 0; i < 2 && ok; i++) {
+  for (int i = 0; i < kPacks && ok; i++) {
     const Pack& p = s_packs[i];
-    if (PackDone(p)) continue;
+    if (!PackWanted(p)) continue;
     { std::lock_guard<std::mutex> l(s_mtx); s_prog.pack = i; s_prog.packMB = 0; s_prog.packTotalMB = p.approxMB; }
+    if (p.files) {
+      int filesBefore; { std::lock_guard<std::mutex> l(s_mtx); filesBefore = s_prog.files; }
+      std::string err;
+      if (!DownloadFiles(p, doneMB, filesBefore, err)) { if (!s_cancel) SetError(err); ok = false; break; }
+      fs::create_directories(kExtras, ec);
+      std::ofstream(PackMarker(p)) << "ok\n";
+      { std::lock_guard<std::mutex> l(s_mtx); doneMB += s_prog.packMB; }
+      continue;
+    }
     ZipStream zip(kDest);
     int filesBefore; { std::lock_guard<std::mutex> l(s_mtx); filesBefore = s_prog.files; }
     size_t bytes = 0;
@@ -291,7 +366,7 @@ void Worker() {
     if (!zip.Error().empty()) { SetError(zip.Error()); ok = false; break; }
     if (!got) { SetError(err.empty() ? "download failed" : err); ok = false; break; }
     if (zip.files == 0) { SetError("the archive was empty"); ok = false; break; }
-    std::ofstream(fs::path(kDest) / (std::string(".pack_") + p.id)) << zip.files << "\n";
+    std::ofstream(PackMarker(p)) << zip.files << "\n";
     doneMB += bytes / 1048576.0;
   }
   {
@@ -302,21 +377,27 @@ void Worker() {
 }
 } // namespace
 
-const Pack* Packs(int& count) { count = 2; return s_packs; }
+const Pack* Packs(int& count) { count = kPacks; return s_packs; }
 
-bool ContentMissing() {
+bool CoreContentMissing() {
   if (!srcfs::Available()) return true;
   std::error_code ec;
   fs::path root = fs::path(srcfs::Root());
   if (fs::exists(root / "cstrike" / "cstrike_pak_dir.vpk", ec)) return false;          // Steam / SteamCMD install
   if (fs::weakly_canonical(root, ec) != fs::weakly_canonical(fs::path(kDest), ec)) return false;   // user folder
-  for (auto& p : s_packs) if (!PackDone(p)) return true;                                 // our download, unfinished
+  for (auto& p : s_packs) if (p.core && !PackDone(p)) return true;                       // our download, unfinished
+  return false;
+}
+bool ContentMissing() {
+  if (CoreContentMissing()) return true;
+  for (auto& p : s_packs) if (!p.core && !PackDone(p)) return true;
   return false;
 }
 
 void Start() {
   if (s_busy) return;
   if (s_thread.joinable()) s_thread.join();
+  s_needCore = CoreContentMissing();
   s_cancel = false; s_busy = true;
   { std::lock_guard<std::mutex> l(s_mtx); s_prog.state = RUNNING; s_prog.error.clear(); }
   s_thread = std::thread(Worker);

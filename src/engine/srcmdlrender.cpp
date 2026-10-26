@@ -6,7 +6,7 @@
 #include <cmath>
 #include <algorithm>
 
-void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin) {
+void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin, const std::vector<uint8_t>* boneMask) {
   if (!m.loaded || m.meshes.empty()) return;
   thread_local std::vector<matrix3x4_t> sk;
   m.SkinMatrices(bones, modelToWorld, sk);
@@ -18,7 +18,7 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
   rlDrawRenderBatchActive();
   if (p.flags & STUDIO_NO_DEPTH) rlDisableDepthTest();
   if (p.flags & STUDIO_NO_CULL) rlDisableBackfaceCulling();
-  thread_local std::vector<Vector> wp; thread_local std::vector<Color> wc;
+  thread_local std::vector<Vector> wp; thread_local std::vector<Color> wc; thread_local std::vector<uint8_t> vok;
   // opaque meshes first, translucent ones after
   for (int pass = 0; pass < 2; pass++) {
     for (const SrcMdlMesh& me : m.meshes) {
@@ -27,6 +27,11 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
       if ((pass == 1) != translucent) continue;
       const size_t vc = me.pos.size() / 3;
       wp.resize(vc); wc.resize(vc);
+      if (boneMask) {
+        vok.assign(vc, 1);
+        for (size_t v = 0; v < vc; v++)
+          for (int k = 0; k < 3; k++) { int b = me.bone[v * 3 + k]; if (me.weight[v * 3 + k] > 0 && (b >= (int)boneMask->size() || !(*boneMask)[b])) { vok[v] = 0; break; } }
+      }
       for (size_t v = 0; v < vc; v++) {
         Vector P(me.pos[v * 3], me.pos[v * 3 + 1], me.pos[v * 3 + 2]), N(me.normal[v * 3], me.normal[v * 3 + 1], me.normal[v * 3 + 2]);
         Vector pos, nrm; float wsum = 0;
@@ -70,18 +75,25 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
         }
         continue;
       }
+      // opaque materials: the texture alpha is a mask for phong / envmap ($basemapalphaphongmask, $basealphaenvmapmask -
+      // CS:GO models) and must not make the mesh see-through
+      const bool noBlend = !translucent && !alphatest && !tint && !glow;
+      if (noBlend) { rlDrawRenderBatchActive(); rlDisableColorBlend(); }
       rlSetTexture(!flat && tex.id ? tex.id : rlGetTextureIdDefault());
       for (size_t t0 = 0; t0 < tc; t0 += 512) {
         size_t t1 = std::min(tc, t0 + 512);
         rlCheckRenderBatchLimit((int)(t1 - t0) * 3);
         rlBegin(RL_TRIANGLES);
-        for (size_t t = t0; t < t1; t++)
+        for (size_t t = t0; t < t1; t++) {
+          if (boneMask && !(vok[me.idx[t * 3]] && vok[me.idx[t * 3 + 1]] && vok[me.idx[t * 3 + 2]])) continue;
           for (int q = 0; q < 3; q++) {
             uint16_t vi = me.idx[t * 3 + q]; const Vector& v = wp[vi]; const Color& c = wc[vi];
             rlColor4ub(c.r, c.g, c.b, c.a); rlTexCoord2f(me.uv[vi * 2], me.uv[vi * 2 + 1]); rlVertex3f(v.x, v.y, v.z);
           }
+        }
         rlEnd();
       }
+      if (noBlend) { rlDrawRenderBatchActive(); rlEnableColorBlend(); }
     }
   }
   rlSetTexture(0);

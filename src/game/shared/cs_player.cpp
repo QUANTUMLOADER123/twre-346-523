@@ -15,6 +15,7 @@
 #include <iterator>
 
 ConVar mp_friendlyfire("mp_friendlyfire", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Allows team members to injure other members of their team");
+ConVar mp_buy_anyteam("mp_buy_anyteam", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "1 = both teams can buy every weapon (team-specific guns, defuse kit)");
 ConVar mp_buytime("mp_buytime", "20", FCVAR_REPLICATED | FCVAR_NOTIFY, "How many seconds after round start players can buy items for");
 ConVar mp_buy_anywhere("mp_buy_anywhere", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "When set, players can buy anywhere, not only in buyzones");
 ConVar mp_maxmoney("mp_maxmoney", "16000", FCVAR_REPLICATED | FCVAR_NOTIFY, "Maximum amount of money allowed in a player's account");
@@ -545,7 +546,7 @@ bool CCSPlayer::BuyItem(const char* alias, bool silent) {
     if (!charge(price)) return false; m_ArmorValue = 100; m_bHasHelmet = true; fire("item_assaultsuit"); return true;
   }
   if (a == "defuser" || a == "defusekit") {
-    if (m_iTeamNum != TEAM_CT || m_bHasDefuser) return false;
+    if ((m_iTeamNum != TEAM_CT && !mp_buy_anyteam.GetBool()) || m_bHasDefuser) return false;
     if (!charge(400)) return false; m_bHasDefuser = true; fire("item_defuser"); return true;
   }
   if (a == "primammo" || a == "secammo") {
@@ -555,7 +556,7 @@ bool CCSPlayer::BuyItem(const char* alias, bool silent) {
   }
   const CCSWeaponInfo* wi = GetWeaponInfoByName(a);
   if (!wi || wi->id == WEAPON_KNIFE || wi->id == WEAPON_C4) { if (!silent) Msg("Unknown item '%s'\n", alias); return false; }
-  if (wi->team != 0 && wi->team != m_iTeamNum) { if (!silent) Msg("%s is not available for your team.\n", wi->printName); return false; }
+  if (wi->team != 0 && wi->team != m_iTeamNum && !mp_buy_anyteam.GetBool()) { if (!silent) Msg("%s is not available for your team.\n", wi->printName); return false; }
   if (C_WeaponCSBase* have = Weapon_OwnsThisType(wi->id)) {
     if (!IsGrenade(wi->id)) { if (!silent) Msg("You already own that weapon.\n"); return false; }
     int maxCount = wi->id == WEAPON_FLASHBANG ? 2 : 1;

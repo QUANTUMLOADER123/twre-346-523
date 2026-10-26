@@ -21,12 +21,14 @@ bool Button(const char* label, float x, float y, float w, float h, Color base, C
 
 bool ContentScreen_Run(bool force) {
   if (!force && !download::ContentMissing()) return true;
+  const bool coreMissing = download::CoreContentMissing();
   download::Start();
   auto* s = vgui::surface();
   bool skipped = false;
   while (!WindowShouldClose()) {
     download::Progress p = download::Get();
     if (p.state == download::DONE) break;
+    if (p.state == download::FAILED && !coreMissing) { Msg("Optional content download failed: %s\n", p.error.c_str()); break; }   // extras only: never block
     const float W = (float)GetScreenWidth(), H = (float)GetScreenHeight(), t = (float)GetTime();
     BeginDrawing();
     ClearBackground(csgo::Bg);
@@ -40,7 +42,7 @@ bool ContentScreen_Run(bool force) {
     s->DrawFilledRect(px, py, pw, ph, csgo::Panel);
     s->DrawFilledRect(px, py, pw, 3, csgo::Accent);
     float x = px + 24, y = py + 20;
-    s->DrawText(FONT_MENU_TITLE, "Downloading Counter-Strike: Source content", x, y, csgo::Text);
+    s->DrawText(FONT_MENU_TITLE, coreMissing ? "Downloading Counter-Strike: Source content" : "Downloading game content", x, y, csgo::Text);
     y += 34;
     int npacks = 0; const download::Pack* packs = download::Packs(npacks);
     char line[256];
@@ -71,8 +73,9 @@ bool ContentScreen_Run(bool force) {
     // buttons
     float by = py + ph - 52, bh = 36;
     if (p.state == download::RUNNING) {
-      s->DrawText(FONT_UI, "Wi-Fi recommended. Only needed once.", x, by + 10, csgo::TextDim);
+      s->DrawText(FONT_UI, coreMissing ? "Wi-Fi recommended. Only needed once." : "Only needed once.", x, by + 10, csgo::TextDim);
       if (Button("CANCEL", px + pw - 24 - 140, by, 140, bh, csgo::PanelLight, csgo::PanelHover)) download::Cancel();
+      if (!coreMissing && Button("SKIP", px + pw - 24 - 290, by, 140, bh, csgo::PanelLight, csgo::PanelHover)) { download::Cancel(); skipped = true; }
     } else if (p.state == download::FAILED || p.state == download::CANCELLED) {
       if (Button("RETRY", px + pw - 24 - 140, by, 140, bh, csgo::Green, csgo::GreenHover)) download::Start();
       if (Button("SKIP", px + pw - 24 - 290, by, 140, bh, csgo::PanelLight, csgo::PanelHover)) skipped = true;
@@ -83,7 +86,7 @@ bool ContentScreen_Run(bool force) {
         float a = t * 4.f + i * 0.785f;
         s->DrawFilledCircle(px + pw - 40 + std::cos(a) * 9, py + 30 + std::sin(a) * 9, 2.2f, csgo::Alpha(csgo::Text, (i + 1) / 8.f));
       }
-    s->DrawTextCentered(FONT_UI, "Counter-Strike: Source files are downloaded from GitHub (bouletmarc/css_content, css_maps_content)", W / 2, H - 30, csgo::TextFaint);
+    s->DrawTextCentered(FONT_UI, "Files are downloaded from GitHub (bouletmarc/css_content, css_maps_content, EntranceJew/gmod-addons)", W / 2, H - 30, csgo::TextFaint);
     EndDrawing();
     if (skipped) break;
   }

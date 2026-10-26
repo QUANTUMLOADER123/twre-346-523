@@ -265,6 +265,29 @@ static void QuickStop(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles, bo
 
 float LocalAttackTime(CCSPlayer* lp) { return TICKS_TO_TIME(lp->m_nTickBase); }
 
+// ------------------------------------------------------------------------------------------------
+// auto revolver (CS:GO R8 semantics, see C_WeaponCSBase::ItemPostFrame):
+//  1. hold attack: the hammer is pulled back, the shot is armed 15 ticks later
+//  2. on the last tick before the shot would go off, swap attack for attack2: with m_flNextSecondaryAttack still in
+//     the future (every primary tick pushes it 0.25s ahead) attack2 does nothing and the hammer stays back
+//  3. while cocked, the ragebot presses attack -> the shot leaves on that very tick
+//  4. the attack2 window is over -> let go of everything for a tick (hammer drops) and start again
+// returns true while the revolver is cocked (an attack this tick fires instantly)
+static bool AutoRevolver(CUserCmd& cmd, CCSPlayer* lp, C_WeaponCSBase* w, bool userAttack) {
+  if (!w || !w->IsRevolver()) return false;
+  const float now = LocalAttackTime(lp), tick = gpGlobals->interval_per_tick;
+  const bool usable = !w->IsReloading() && w->m_iClip1 > 0 && !CSGameRules()->IsFreezePeriod() && !lp->m_bIsDefusing && !lp->m_bIsPlanting &&
+                      now >= lp->m_flNextAttack;
+  if (!usable || userAttack) return usable && w->RevolverCocked(now);
+  cmd.buttons &= ~(IN_ATTACK | IN_ATTACK2);
+  if (now < w->m_flNextPrimaryAttack) return false;                      // between shots: nothing to pull yet
+  if (!w->m_bRevolverHaulback) { cmd.buttons |= IN_ATTACK; return false; }
+  if (!(w->m_flPostponeFireReadyTime < now)) { cmd.buttons |= IN_ATTACK; return false; }   // still pulling: attack can't fire yet
+  if (now + tick * 0.5f < w->m_flNextSecondaryAttack) { cmd.buttons |= IN_ATTACK2; return true; }   // cocked, held by attack2
+  return true;   // window over: release (the hammer drops after this tick) - still cocked now, a shot this tick is instant
+}
+bool Rage_RevolverCocked(CCSPlayer* lp, C_WeaponCSBase* w) { return w && w->IsRevolver() && w->RevolverCocked(LocalAttackTime(lp)); }
+
 static bool CanShoot(CCSPlayer* lp, C_WeaponCSBase* w) {
   if (!w || w->IsReloading() || w->m_iClip1 <= 0) return false;
   float now = LocalAttackTime(lp);   // the weapon fires on tickbase time, not on the server clock
@@ -364,6 +387,10 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
   if (!v.rage.enabled || !v.rage.key.Active() || !w) return;
   if (w->GetWeaponType() == WEAPONTYPE_KNIFE) { if (v.rage.knifebot) Knifebot(cmd, lp, w); return; }
   if (!w->IsGun()) return;
+  const bool userAttack = (cmd.buttons & IN_ATTACK) != 0;
+  const bool revolver = w->IsRevolver();
+  bool revolverCocked = revolver && w->RevolverCocked(LocalAttackTime(lp));
+  if (revolver && v.rage.autoRevolver) revolverCocked = AutoRevolver(cmd, lp, w, userAttack);
   bool canShoot = CanShoot(lp, w);
   Vector eye = lp->EyePosition() + lp->m_vecVelocity * gpGlobals->interval_per_tick;
   // gather targets
@@ -410,7 +437,7 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
   //  - we actually want to shoot (auto fire on, or the attack button is held)
   //  - the weapon is ready now, or (between shots) becomes ready within a few ticks
   //  - never while reloading / empty / in freeze time / planting (CanShoot covers this), never in the air
-  bool wantShoot = v.rage.autoFire || (cmd.buttons & IN_ATTACK);
+  bool wantShoot = v.rage.autoFire || userAttack;
   float readyIn = std::max(w->m_flNextPrimaryAttack, lp->m_flNextAttack) - LocalAttackTime(lp);
   bool soonReady = !w->IsReloading() && w->m_iClip1 > 0 && !CSGameRules()->IsFreezePeriod() && !lp->m_bIsDefusing && !lp->m_bIsPlanting &&
                    readyIn <= TICKS_TO_TIME(3);
@@ -445,8 +472,15 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
     if (!canShoot) return;
   }
   aim.x = Clamp(aim.x, -89.f, 89.f); aim.y = AngleNormalize(aim.y); aim.z = 0;
-  if (!v.rage.autoFire && !(cmd.buttons & IN_ATTACK)) return;
+  if (!v.rage.autoFire && !userAttack) return;
+  if (revolver && !revolverCocked) {
+    // the hammer is not back yet: hold attack to pull it (aim already, but this tick is not a shot)
+    cmd.buttons &= ~IN_ATTACK2; cmd.buttons |= IN_ATTACK;
+    if (!v.rage.silent) CL_SetViewAngles(aim);
+    return;
+  }
   cmd.viewangles = aim;
+  cmd.buttons &= ~IN_ATTACK2;
   cmd.buttons |= IN_ATTACK;
   cmd.tick_count = best.rec->tick;
   if (!v.rage.silent) CL_SetViewAngles(aim);

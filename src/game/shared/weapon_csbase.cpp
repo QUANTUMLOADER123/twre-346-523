@@ -83,15 +83,19 @@ void C_WeaponCSBase::Deploy() {
   m_flNextPrimaryAttack = std::max(m_flNextPrimaryAttack, t);
   m_flNextSecondaryAttack = std::max(m_flNextSecondaryAttack, t);
   m_flDeployTime = gpGlobals->curtime;
-  m_zoomLevel = 0; m_iBurstShotsRemaining = 0; m_flPostponeFireReadyTime = 0;
+  m_zoomLevel = 0; m_iBurstShotsRemaining = 0; m_bRevolverHaulback = false; m_flPostponeFireReadyTime = 1e30f;
   m_flAccuracyPenalty = m_pWeaponInfo->inaccuracyStand / 1000.f;
   if (owner) { owner->m_flNextAttack = t; owner->m_iShotsFired = 0; owner->m_bIsScoped = false; owner->m_iFOV = 0; }
   SendViewActivity(ACT_VM_DRAW, m_pWeaponInfo->deployTime);
   if (owner) EmitSound(GetWeaponType() == WEAPONTYPE_KNIFE ? "Weapon_Knife.Deploy" : "Weapon.Deploy", owner->m_vecOrigin, owner->entindex(), 0.5f);
 }
 void C_WeaponCSBase::Holster() {
-  m_bInReload = false; m_iBurstShotsRemaining = 0;
+  m_bInReload = false; m_iBurstShotsRemaining = 0; m_bRevolverHaulback = false; m_flPostponeFireReadyTime = 1e30f;
   ResetZoom();
+}
+void C_WeaponCSBase::ResetRevolverHaulback() {
+  m_flPostponeFireReadyTime = 1e30f;
+  if (m_bRevolverHaulback) { m_bRevolverHaulback = false; if (m_iViewActivity == ACT_VM_HAULBACK) SendViewActivity(ACT_VM_IDLE, 0.1f); }
 }
 void C_WeaponCSBase::ResetZoom() {
   m_zoomLevel = 0;
@@ -173,7 +177,15 @@ void C_WeaponCSBase::ItemPostFrame() {
     if (gun && m_iClip1 > 0) { gun->CSBaseGunFire(0.05f, 2); m_iBurstShotsRemaining--; m_fNextBurstShot = now + 0.05f; if (m_iBurstShotsRemaining == 0) { m_flNextPrimaryAttack = now + (m_iWeaponID == WEAPON_GLOCK ? 0.5f : 0.55f); } }
     else m_iBurstShotsRemaining = 0;
   }
-  if (!m_bInReload && (buttons & IN_ATTACK2) && now >= m_flNextSecondaryAttack && CanAttack()) {
+  if (IsRevolver()) {
+    // CS:GO CWeaponCSBase::ItemPostFrame order for the R8: primary first, then secondary, reload, and the hammer only
+    // drops (ItemPostFrame_RevolverResetHaulback) when none of the attack buttons is held. Holding attack2 while
+    // m_flNextSecondaryAttack is still in the future does nothing at all - the hammer stays back.
+    if (!m_bInReload && (buttons & IN_ATTACK) && now >= m_flNextPrimaryAttack && CanAttack()) PrimaryAttack();
+    else if (!m_bInReload && (buttons & IN_ATTACK2) && now >= m_flNextSecondaryAttack && CanAttack()) SecondaryAttack();
+    else if ((buttons & IN_RELOAD) && !m_bInReload && now >= m_flNextPrimaryAttack) { ResetRevolverHaulback(); Reload(); }
+    else if (!(buttons & (IN_ATTACK | IN_ATTACK2))) { ResetRevolverHaulback(); o->m_iShotsFired = 0; }
+  } else if (!m_bInReload && (buttons & IN_ATTACK2) && now >= m_flNextSecondaryAttack && CanAttack()) {
     SecondaryAttack();
   } else if (!m_bInReload && (buttons & IN_ATTACK) && now >= m_flNextPrimaryAttack && CanAttack()) {
     if (IsGun() && !IsAutoRepeat() && o->m_iShotsFired > 0 && m_iWeaponID != WEAPON_REVOLVER) { /* semi-auto: wait for release */ }
@@ -181,10 +193,9 @@ void C_WeaponCSBase::ItemPostFrame() {
   } else if ((buttons & IN_RELOAD) && !m_bInReload && IsGun() && now >= m_flNextPrimaryAttack) {
     Reload();
   }
-  if (!(buttons & IN_ATTACK)) {
+  if (!(buttons & IN_ATTACK) && !IsRevolver()) {
     if (o->m_iShotsFired > 0 && !IsAutoRepeat()) o->m_iShotsFired = 0;
     else if (IsAutoRepeat()) o->m_iShotsFired = 0;
-    m_flPostponeFireReadyTime = 0;
   }
   // auto reload on empty
   if (IsGun() && !m_bInReload && m_iClip1 == 0 && m_iPrimaryReserveAmmoCount > 0 && now >= m_flNextPrimaryAttack) Reload();
@@ -341,11 +352,20 @@ void C_WeaponCSBaseGun::PrimaryAttack() {
   CCSPlayer* o = m_hOwner; if (!o) return;
   const CCSWeaponInfo& wi = *m_pWeaponInfo;
   if (m_iWeaponID == WEAPON_REVOLVER) {
-    // the R8 has to cock the hammer first (0.234s) while attack is held
-    if (m_flPostponeFireReadyTime <= 0) { m_flPostponeFireReadyTime = gpGlobals->curtime + 0.234375f; EmitSound("Weapon_Revolver.Prepare", o->m_vecOrigin, o->entindex(), 0.5f); return; }
-    if (gpGlobals->curtime < m_flPostponeFireReadyTime) return;
-    m_flPostponeFireReadyTime = 0;
-    CSBaseGunFire(wi.cycleTime, 0);
+    // CS:GO ItemPostFrame_ProcessPrimaryAttack: no rapid fire in the middle of a haul back hold
+    const float now = gpGlobals->curtime;
+    m_flNextSecondaryAttack = now + 0.25f;
+    if (!m_bRevolverHaulback) {
+      // start pulling the hammer back; the haul back animation event arms the shot 0.234s (15 ticks) later
+      m_bRevolverHaulback = true; m_flPostponeFireReadyTime = now + 0.234375f - 0.001f;
+      SendViewActivity(ACT_VM_HAULBACK, 999.f);
+      EmitSound("Weapon_Revolver.Prepare", o->m_vecOrigin + Vector(0, 0, 50), o->entindex(), 0.5f);
+      return;
+    }
+    if (!(m_flPostponeFireReadyTime < now)) return;
+    if (m_iClip1 <= 0) { ResetRevolverHaulback(); m_flNextPrimaryAttack = m_flNextSecondaryAttack = now + 0.5f; }
+    m_bRevolverHaulback = false; m_flPostponeFireReadyTime = 1e30f;
+    if (CSBaseGunFire(wi.cycleTime, 0)) m_flNextSecondaryAttack = now + wi.cycleTimeAlt * 1.7f;   // cool-off before fanning
     return;
   }
   if (m_bBurstMode && (m_iWeaponID == WEAPON_GLOCK || m_iWeaponID == WEAPON_FAMAS)) {
@@ -379,7 +399,11 @@ void C_WeaponCSBaseGun::SecondaryAttack() {
     if (o->IsLocalPlayer()) Msg(m_bBurstMode ? "Switched to Burst-Fire mode\n" : (m_iWeaponID == WEAPON_GLOCK ? "Switched to semi-automatic\n" : "Switched to automatic fire\n"));
     m_flNextSecondaryAttack = now + 0.3f;
   } else if (m_iWeaponID == WEAPON_REVOLVER) {
-    // fan the hammer: fast inaccurate shot
+    // CS:GO ItemPostFrame_ProcessSecondaryAttack: attack2 lowers a pulled-back hammer first (no shot this tick),
+    // and fanning is not automatic - shots fired resets when the buttons are released
+    if (m_bRevolverHaulback) { ResetRevolverHaulback(); return; }
+    m_flPostponeFireReadyTime = 1e30f;
+    if (o->m_iShotsFired > 0) return;
     CSBaseGunFire(wi.cycleTimeAlt, 1);
     m_flAccuracyPenalty += wi.inaccuracyFire / 1000.f;
     m_flNextPrimaryAttack = now + wi.cycleTimeAlt;

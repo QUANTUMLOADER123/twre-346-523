@@ -9,6 +9,9 @@
   from public GitHub mirrors (bouletmarc/css_maps_content, bouletmarc/css_content) or uses a local CS:S /
   CS:S Dedicated Server install (SteamCMD, app 232330). That content belongs to Valve Corporation.
 * The earlier built-in CC0 models (Quaternius) and procedural maps were removed.
+* The R8 Revolver model, textures and sounds (from Counter-Strike: Global Offensive, Valve Corporation) are downloaded
+  at runtime from the TTT addon `weapon_ttt_csgo_r8revolver` in EntranceJew/gmod-addons into `content/extras/`.
+  They are not part of this repository. The R8 view model arms come from the player's CS:S agent model.
 
 ## Fonts
 * **DejaVu** fonts (`assets/fonts/`), Bitstream Vera / DejaVu license (see `assets/fonts/LICENSE_DEJAVU`).
