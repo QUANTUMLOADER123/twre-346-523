@@ -234,5 +234,7 @@ static ConCommand cmd_exit("exit", [](const CCommand&) { g_Host.wantQuit = true;
 void Host_Init() {
   gpGlobals->interval_per_tick = 1.f / 64.f;
   Cmd_ExecFile("cfg/config.cfg", true);
-  Cmd_ExecFile("cfg/autoexec.cfg", true);
 }
+
+// autoexec.cfg runs after the menu background is set up (it may load a map, like +map on the command line)
+void Host_ExecAutoexec() { Cmd_ExecFile("cfg/autoexec.cfg", true); }

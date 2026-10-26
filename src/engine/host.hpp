@@ -20,6 +20,7 @@ struct HostState {
 inline HostState g_Host;
 
 void Host_Init();
+void Host_ExecAutoexec();   // cfg/autoexec.cfg, after the menu is up
 bool Host_NewGame(const std::string& map);   // loads map, creates players
 void Host_Disconnect();
 void Host_Frame(float realDt);               // runs ticks

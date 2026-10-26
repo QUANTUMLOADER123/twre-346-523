@@ -12,9 +12,11 @@ from PIL import Image
 n = sys.argv[1]
 im = Image.open(f"/tmp/{n}.png").convert("RGB")
 if im.height > im.width: im = im.rotate(90, expand=True)
-im.thumbnail((320, 180))
-b = io.BytesIO(); im.save(b, "JPEG", quality=55)
-print(f"::notice title=screenshot {n}::" + base64.b64encode(b.getvalue()).decode())
+im.thumbnail((256, 144))
+b = io.BytesIO(); im.save(b, "JPEG", quality=45)
+d = base64.b64encode(b.getvalue()).decode()
+parts = [d[i:i + 4000] for i in range(0, len(d), 4000)][:2]   # annotations are cut at 4096 chars, max 10 per step
+for k, p in enumerate(parts): print(f"::notice title=screenshot {n} {k}/{len(parts)}::" + p)
 PY
 }
 adb install -r -g "$APK" 2>&1 | tail -2
@@ -24,22 +26,21 @@ adb logcat -c
 adb shell am start -n com.cshvh.game/android.app.NativeActivity
 sleep 25
 shot menu
-PID=$(adb shell pidof com.cshvh.game | tr -d '\r')
-note "alive after 25s (menu)" "pid=${PID:-DEAD}"
+PID1=$(adb shell pidof com.cshvh.game | tr -d '\r')
 # second launch straight into a match: autoexec.cfg is executed at startup
 adb shell am force-stop com.cshvh.game
 D=/sdcard/Android/data/com.cshvh.game/files
-printf 'bot_quota 4\nmp_freezetime 1\nmap de_mirage\n' > /tmp/autoexec.cfg
+printf 'bot_quota 4\nmp_freezetime 1\nmap de_mirage\njointeam 2\njoinclass 1\n' > /tmp/autoexec.cfg
 adb push /tmp/autoexec.cfg $D/cfg/autoexec.cfg
 adb shell am start -n com.cshvh.game/android.app.NativeActivity
 sleep 30
 shot map
-adb shell input tap 1200 540; sleep 3; shot tap
+adb shell input tap 1200 540; sleep 3
 adb shell input swipe 300 800 300 500 2500; sleep 1
 adb shell input swipe 1800 600 1500 600 800; sleep 4
 shot moved
 PID=$(adb shell pidof com.cshvh.game | tr -d '\r')
-note "alive in game" "pid=${PID:-DEAD}"
+note "alive" "menu: pid=${PID1:-DEAD}, in game: pid=${PID:-DEAD}"
 LOG=$(adb logcat -d | grep -E " (cshvh|raylib|DEBUG|libc|AndroidRuntime) *:|FATAL|Fatal signal" | grep -v "Access denied finding\|ro.build.fingerprint" | tail -60)
 note "logcat" "$LOG"
 [ -n "$PID" ] || exit 1

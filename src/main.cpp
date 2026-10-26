@@ -141,11 +141,12 @@ int main(int argc, char** argv) {
   vgui::surface()->Init();
   S_Init();
   CL_Init();
-  Host_Init();          // execs cfg/config.cfg + autoexec.cfg
+  Host_Init();          // execs cfg/config.cfg
   Cbuf_Execute();
   cheat::Init();
   gameui::Init();
   LoadMenuBackground();
+  Host_ExecAutoexec();
   for (auto& c : plusCmds) Cbuf_AddText(c + "\n");
   if (!plusCmds.empty()) gameui::Hide();
 

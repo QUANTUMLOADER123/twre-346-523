@@ -12,6 +12,7 @@
 #if defined(PLATFORM_ANDROID)
 #include <android/asset_manager.h>
 #include <android/configuration.h>
+#include <jni.h>
 #include <algorithm>
 #include <android/log.h>
 #include <android/native_activity.h>
@@ -77,22 +78,54 @@ void Platform_PostInit() {
   if (app && app->activity) ANativeActivity_setWindowFlags(app->activity, AWINDOW_FLAG_KEEP_SCREEN_ON | AWINDOW_FLAG_FULLSCREEN, 0);
 }
 
-static constexpr int kAndroidRenderHeight = 720;   // the screen is scaled up from this height
+static constexpr int kAndroidRenderHeight = 600;   // like CS at 800x600; the system scaler stretches it to the screen
+
+// Real display size in pixels via JNI: activity.getWindowManager().getDefaultDisplay().getRealMetrics(dm)
+static bool RealDisplaySize(int& w, int& h) {
+  android_app* app = GetAndroidApp();
+  if (!app || !app->activity || !app->activity->vm) return false;
+  JavaVM* vm = app->activity->vm; JNIEnv* env = nullptr;
+  if (vm->AttachCurrentThread(&env, nullptr) != JNI_OK || !env) return false;
+  bool ok = false;
+  jobject act = app->activity->clazz;
+  jclass actCls = env->GetObjectClass(act);
+  jmethodID getWM = env->GetMethodID(actCls, "getWindowManager", "()Landroid/view/WindowManager;");
+  jobject wm = getWM ? env->CallObjectMethod(act, getWM) : nullptr;
+  jclass wmCls = env->FindClass("android/view/WindowManager");
+  jmethodID getDD = (wm && wmCls) ? env->GetMethodID(wmCls, "getDefaultDisplay", "()Landroid/view/Display;") : nullptr;
+  jobject disp = getDD ? env->CallObjectMethod(wm, getDD) : nullptr;
+  jclass dmCls = env->FindClass("android/util/DisplayMetrics");
+  jclass dCls = env->FindClass("android/view/Display");
+  if (disp && dmCls && dCls && !env->ExceptionCheck()) {
+    jobject dm = env->NewObject(dmCls, env->GetMethodID(dmCls, "<init>", "()V"));
+    jmethodID getReal = env->GetMethodID(dCls, "getRealMetrics", "(Landroid/util/DisplayMetrics;)V");
+    if (dm && getReal) {
+      env->CallVoidMethod(disp, getReal, dm);
+      if (!env->ExceptionCheck()) {
+        w = env->GetIntField(dm, env->GetFieldID(dmCls, "widthPixels", "I"));
+        h = env->GetIntField(dm, env->GetFieldID(dmCls, "heightPixels", "I"));
+        ok = w > 0 && h > 0;
+      }
+    }
+  }
+  if (env->ExceptionCheck()) env->ExceptionClear();
+  vm->DetachCurrentThread();
+  return ok;
+}
 
 void Platform_WindowSize(int& w, int& h) {
-  android_app* app = GetAndroidApp();
-  int wdp = 0, hdp = 0, dens = 160;
-  if (app && app->config) {
-    wdp = AConfiguration_getScreenWidthDp(app->config); hdp = AConfiguration_getScreenHeightDp(app->config);
-    dens = AConfiguration_getDensity(app->config);
+  float longPx = 0, shortPx = 0;
+  int rw = 0, rh = 0;
+  if (RealDisplaySize(rw, rh)) { longPx = (float)std::max(rw, rh); shortPx = (float)std::min(rw, rh); }
+  else if (android_app* app = GetAndroidApp(); app && app->config) {
+    int wdp = AConfiguration_getScreenWidthDp(app->config), hdp = AConfiguration_getScreenHeightDp(app->config);
+    int dens = AConfiguration_getDensity(app->config);
     if (dens <= 0 || dens == ACONFIGURATION_DENSITY_ANY || dens == ACONFIGURATION_DENSITY_NONE) dens = 160;
+    if (wdp > 0 && hdp > 0) { longPx = std::max(wdp, hdp) * dens / 160.f; shortPx = std::min(wdp, hdp) * dens / 160.f; }
   }
-  if (wdp <= 0 || hdp <= 0) { w = h = 0; return; }       // unknown: native size
-  float longPx = std::max(wdp, hdp) * dens / 160.f, shortPx = std::min(wdp, hdp) * dens / 160.f;
-  int target = kAndroidRenderHeight;
-  if (target >= shortPx) { w = h = 0; return; }   // display not bigger than the target: native size
-  h = target; w = (int)(target * longPx / shortPx + 0.5f) & ~1;
-  __android_log_print(ANDROID_LOG_INFO, "cshvh", "display ~%.0fx%.0f px, rendering %dx%d", longPx, shortPx, w, h);
+  if (shortPx <= 0 || kAndroidRenderHeight >= shortPx) w = h = 0;   // unknown or small display: native size
+  else { h = kAndroidRenderHeight; w = (int)(h * longPx / shortPx + 0.5f) & ~1; }
+  __android_log_print(ANDROID_LOG_INFO, "cshvh", "display %.0fx%.0f px, rendering %dx%d (0 = native)", longPx, shortPx, w, h);
 }
 #else
 void Platform_PreInit() {}
