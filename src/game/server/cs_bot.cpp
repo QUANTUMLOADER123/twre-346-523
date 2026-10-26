@@ -959,7 +959,7 @@ void CCSBot::Fight(CUserCmd& cmd, QAngle& view) {
       cmd.sidemove = 450.f * m_iStrafeDir; cmd.forwardmove = 0;
       if (m_bCrouchSpray && me->m_iShotsFired > 4) cmd.buttons |= IN_DUCK;
       // human-like: crouch before shooting (more realistic)
-      if (m_bHumanLike && me->m_iShotsFired == 0 && (type == WEAPONTYPE_RIFLE || type == WEAPONTYPE_SMG)) cmd.buttons |= IN_DUCK;
+      if (m_bHumanLike && me->m_iShotsFired == 0 && (type == WEAPONTYPE_RIFLE || type == WEAPONTYPE_SUBMACHINEGUN)) cmd.buttons |= IN_DUCK;
     }
     if (canShoot && onTarget) PressFire(cmd, w);
     return;
