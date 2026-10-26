@@ -7,6 +7,7 @@
 #include "engine/download.hpp"
 #include "vgui/contentscreen.hpp"
 #include "engine/materialsystem.hpp"
+#include "engine/srcfs.hpp"
 #include "engine/worldrender.hpp"
 #include "game/client/cl_main.hpp"
 #include "game/client/hud_menus.hpp"
@@ -55,7 +56,19 @@ static void SaveScreen(const std::string& path) {
 static void LoadMenuBackground() {
   if (g_Host.active) return;
   std::string map = sv_menu_background.GetString();
-  if (g_MapInfo.Load(ResolveMapFile(map))) { g_WorldRender.Unload(); g_WorldRender.Build(g_MapInfo); }
+  if (!srcfs::Exists("maps/" + map + ".bsp")) {
+    // the configured map is not there (a fresh install, or an old map name): use the nicest map that is
+    static const char* kPreferred[] = { "de_dust2_old", "de_mirage_ce", "de_inferno_old", "de_nuke_ve", "cs_office", "fy_pool_day" };
+    std::string pick;
+    for (const char* c : kPreferred) if (srcfs::Exists(std::string("maps/") + c + ".bsp")) { pick = c; break; }
+    if (pick.empty()) {
+      std::vector<std::string> maps = srcfs::List("maps/", ".bsp");
+      if (!maps.empty()) pick = maps[0];
+    }
+    if (!pick.empty()) map = pick;
+  }
+  if (g_MapInfo.Load(ResolveMapFile(map))) { g_WorldRender.Unload(); g_WorldRender.Build(g_MapInfo); Msg("Menu background: %s\n", map.c_str()); }
+  else Msg("Menu background: no map yet - the content is still downloading\n");
 }
 
 // keyboard routing: console > GameUI dialogs > cheat menu > HUD menus (team/buy/chat) > game binds

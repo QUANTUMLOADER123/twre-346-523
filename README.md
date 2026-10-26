@@ -153,15 +153,14 @@ Anti-aim тоже разный: jitter, static, 3-way, sideways, разная с
 
 | Пакет | Что это | Объём |
 |---|---|---|
-| **CS:GO maps** | настоящие карты CS:GO (VBSP v21) из публичных FastDL-зеркал: de_dust2_16toGO, de_mirage_ce, de_inferno_old, de_nuke_ve, de_aztec_proper, de_seaside_b2, de_rats_1337, de_shortinferno, de_dust, de_aztec, cs_office, de_shorttrain, de_dust2_old, aim_deagle, aim_deagle_lego, aim_map_usp, aim_redline, aim_z_pool_stalker_go, awp_india, awp_lego_fix_pro_v2, fy_snow, fy_pool_day, surf_ski_2_GO, 6v6_ak_m4a1, am_mario_arena_1v1, 1v1 | ~580 МБ |
-| **Shared Source textures, models and sounds** | zip [bouletmarc/css_content](https://github.com/bouletmarc/css_content): модели игроков и оружия, текстуры, звуки (общая библиотека Source, из неё же берут материалы карты без своих текстур) | ~700 МБ |
-| **CS:GO extras** | R8 Revolver, SCAR-20 / SSG 08, molotov, иконки оружия (SVG) | ~31 МБ |
+| **CS:GO maps** | только популярные карты в старых версиях CS:GO (VBSP v21): de_dust2_old, de_mirage_ce, de_inferno_old, de_nuke_ve, de_nuke_old, de_shorttrain, de_dust, de_aztec_proper, de_seaside_b2, cs_office, aim_redline, aim_map_usp, awp_india, fy_snow, fy_pool_day, 6v6_ak_m4a1, 1v1 | ~365 МБ |
+| **Agents, weapons and sounds** | ровно то, что нужно игре: 4 агента CT + 4 агента T, модели оружия, звуки (выстрелы, перезарядка, шаги, попадания, UI) и sound-скрипты — точный список файлов в `src/engine/content_base.inc` | ~84 МБ |
+| **CS:GO extras** | R8 Revolver, SCAR-20 / SSG 08, молотов, иконки оружия (SVG) | ~31 МБ |
 
-* Итого ~1.3 ГБ (сжато ровно настолько, чтобы влезть в бюджет ~3 ГБ вместе с мобильной сборкой).
-* Карты кладутся в `content/extras/csgo_maps/maps/` — по одному `.bsp` на карту, поэтому прерванная загрузка
-  продолжается с того же места, а материалы, зашитые в pakfile самой карты (lump 40), подхватываются автоматически.
+* Итого ~480 МБ. Каждая карта несёт свои материалы, модели и небо в pakfile (lump 40), поэтому ничего лишнего не качается;
+  старые карты из прошлых версий набора удаляются автоматически.
 * Видно прогресс по каждому пакету, скорость и текущий файл; загрузку можно отменить и продолжить позже.
-* Адреса — конвары: `cl_content_url_maps` (+ `cl_content_url_maps_api`), `cl_content_url_main`,
+* Адреса — конвары: `cl_content_url_maps` (+ `cl_content_url_maps_api`), `cl_content_url_base` (+ `_api`),
   `cl_content_url_r8` / `cl_content_url_csgo` / `cl_content_url_icons` (и их `_api`-варианты).
 * HTTP: на Windows — WinHTTP, на Android — `HttpURLConnection` через JNI, на Linux — `curl`.
 

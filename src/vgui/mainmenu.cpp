@@ -938,7 +938,7 @@ void SettingsTab(int tab) {
     CvChoice("Skip tiny props", "r_propscreencull", { { "Off", "0" }, { "< 2 px", "2" }, { "< 4 px (faster)", "4" }, { "< 8 px (fastest)", "8" } });
     CvToggle("Player blob shadows", "r_shadows");
     CvChoice("Bullet decals", "r_decals", { { "Off", "0" }, { "64", "64" }, { "128", "128" }, { "256", "256" }, { "512", "512" } });
-    CvToggle("Real player models (CS:GO agents)", "cl_real_models");
+    CvToggle("Real player models", "cl_real_models");
     CvToggle("Real view models", "cl_real_viewmodels");
     {
       std::vector<std::pair<const char*, const char*>> o;

@@ -35,6 +35,11 @@ namespace fs = std::filesystem;
 ConVar cl_content_url_maps("cl_content_url_maps", "https://raw.githubusercontent.com/wiktorxxiii/csgo-fastdl/HEAD/csgo/", FCVAR_ARCHIVE, "Base url of the CS:GO maps (maps/*.bsp)");
 ConVar cl_content_url_maps_api("cl_content_url_maps_api", "https://api.github.com/repos/wiktorxxiii/csgo-fastdl/contents/csgo/%s?ref=HEAD", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the CS:GO maps");
 
+// The shared Source asset library that provides the agents (4 CT + 4 T), the weapon models, the sound effects and the
+// sound scripts. Only the files listed in content_base.inc are downloaded (~84 MB instead of the whole 1.3 GB library).
+ConVar cl_content_url_base("cl_content_url_base", "https://raw.githubusercontent.com/bouletmarc/css_content/master/", FCVAR_ARCHIVE, "Base url of the shared Source agents / weapons / sounds");
+ConVar cl_content_url_base_api("cl_content_url_base_api", "https://api.github.com/repos/bouletmarc/css_content/contents/%s?ref=master", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the shared Source agents / weapons / sounds");
+
 // CS:GO R8 Revolver from a Garry's Mod addon (pinned commit): raw.githubusercontent.com first, the GitHub contents API
 // (Accept: application/vnd.github.raw) as the fallback
 ConVar cl_content_url_r8("cl_content_url_r8", "https://raw.githubusercontent.com/EntranceJew/gmod-addons/48675a7f3a5a06d826bebba97078e24d0124f728/weapon_ttt_csgo_r8revolver/gamemodes/terrortown/content/", FCVAR_ARCHIVE, "Base url of the CS:GO R8 Revolver files (view / world model, textures, sounds)");
@@ -55,18 +60,16 @@ const char* kExtras = "content/extras";
 // curated CS:GO map set for HvH / deathmatch. Relative entries come from cl_content_url_maps, absolute ones from
 // other public CS:GO FastDL mirrors (a map is a single .bsp file, so every map can live on its own repo).
 const char* const s_csgoMapFiles[] = {
-  "maps/de_dust2_16toGO.bsp", "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp",
-  "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp", "maps/de_rats_1337.bsp",
-  "maps/aim_deagle_lego.bsp", "maps/aim_z_pool_stalker_go.bsp", "maps/aim_redline.bsp", "maps/awp_lego_fix_pro_v2.bsp",
-  "maps/fy_pool_day.bsp", "maps/surf_ski_2_GO.bsp", "maps/6v6_ak_m4a1.bsp", "maps/am_mario_arena_1v1.bsp",
-  // real CS:GO achievement-map versions of the stock maps (own repo per map)
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_dust/de_dust.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_aztec/de_aztec.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_shorttrain/de_shorttrain.bsp",
+  // the popular maps, in their old CS:GO versions (the ones the FastDL mirrors still carry). Each of them brings its
+  // own materials / props / sky inside the bsp (lump 40), so they look right without any extra texture download.
+  "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp", "maps/de_nuke_old.bsp",
+  "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp",
   "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/de_dust2_old.bsp",
-  // classic HvH warm-up maps
-  "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/aim_deagle.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_shorttrain/de_shorttrain.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_dust/de_dust.bsp",
+  // small HvH warm-up maps
+  "maps/aim_redline.bsp", "maps/fy_pool_day.bsp", "maps/6v6_ak_m4a1.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/aim_map_usp.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/awp_india.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/fy_snow.bsp",
@@ -107,6 +110,8 @@ const char* const s_csgoFiles[] = {
   "sound/weapons/csgo/molotov/grenade_throw.wav", "sound/weapons/csgo/molotov/lighter_open.wav",
   "sound/weapons/csgo/incgrenade/inc_grenade_detonate_1.wav", "sound/weapons/csgo/incgrenade/inc_grenade_bounce-1.wav",
   nullptr };
+#include "content_base.inc"
+
 #define ICON(n) "svg_normal/" n ".svg"
 const char* const s_iconFiles[] = {
   ICON("weapon_ak47"), ICON("weapon_aug"), ICON("weapon_awp"), ICON("weapon_bizon"), ICON("weapon_c4"), ICON("weapon_cz75a"), ICON("weapon_deagle"),
@@ -125,9 +130,11 @@ Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-constexpr int kPacks = 4;
+constexpr int kPacks = 5;
 Pack s_packs[kPacks] = {
   { "csgomaps", "CS:GO maps", nullptr, 580, s_csgoMapFiles, "content/extras/csgo_maps", false },
+  // agents (4 CT + 4 T), weapon models, sound effects and sound scripts - the exact file list in content_base.inc
+  { "base2", "Agents, weapons and sounds", nullptr, 84, s_baseFiles, "content/css/cstrike", false },
   { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
   { "csgo", "CS:GO SCAR-20, SSG 08, molotov", nullptr, 22, s_csgoFiles, "content/extras/csgo_gsr", false },
   { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
@@ -350,9 +357,34 @@ fs::path PackMarker(const Pack& p) { return fs::path(p.files ? kExtras : kDest) 
 bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(p), ec); }
 bool PackWanted(const Pack& p) {
   if (PackDone(p)) return false;
-  // a local CS:GO install already has every stock map, so the map pack is not needed then
+  // a local CS:GO install already has every stock map and every texture, so both packs are not needed then
   if (!p.core && p.files == s_csgoMapFiles && s_haveCsgo) return false;
+  if (p.files == s_baseFiles && s_haveCsgo) return false;   // a CS:GO install brings its own agents, weapons and sounds
   return !p.core || s_needCore;
+}
+
+// drop the maps that are not in the current list any more (an older, bigger map pack left them behind)
+void PruneStaleMaps() {
+  std::error_code ec;
+  fs::path dir = fs::path("content/extras/csgo_maps/maps");
+  if (!fs::is_directory(dir, ec)) return;
+  auto lower = [](std::string v) { for (char& c : v) c = (char)std::tolower((unsigned char)c); return v; };
+  std::vector<std::string> want;
+  for (const char* const* f = s_csgoMapFiles; *f; f++) {
+    std::string n = *f; size_t slash = n.find_last_of('/');
+    std::string stem = slash == std::string::npos ? n : n.substr(slash + 1);
+    if (stem.size() > 4) stem.resize(stem.size() - 4);   // ".bsp"
+    want.push_back(lower(stem));
+  }
+  for (auto it = fs::directory_iterator(dir, ec); it != fs::directory_iterator(); it.increment(ec)) {
+    if (ec) break;
+    if (!it->is_regular_file(ec) || it->path().extension() != ".bsp") continue;
+    std::string stem = lower(it->path().stem().string());
+    bool keep = false; for (auto& w : want) if (w == stem) { keep = true; break; }
+    if (keep) continue;
+    std::error_code rec; fs::remove(it->path(), rec);
+    if (!rec) Msg("content: removed the stale map %s\n", it->path().filename().string().c_str());
+  }
 }
 
 bool WriteFileAtomic(const fs::path& path, const std::vector<uint8_t>& data, std::string& err) {
@@ -418,10 +450,12 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
 }
 
 void Worker() {
+  PruneStaleMaps();
   s_packs[0].url = cl_content_url_maps.GetString(); s_packs[0].api = cl_content_url_maps_api.GetString();
-  s_packs[1].url = cl_content_url_r8.GetString(); s_packs[1].api = cl_content_url_r8_api.GetString();
-  s_packs[2].url = cl_content_url_csgo.GetString(); s_packs[2].api = cl_content_url_csgo_api.GetString();
-  s_packs[3].url = cl_content_url_icons.GetString(); s_packs[3].api = cl_content_url_icons_api.GetString();
+  s_packs[1].url = cl_content_url_base.GetString(); s_packs[1].api = cl_content_url_base_api.GetString();
+  s_packs[2].url = cl_content_url_r8.GetString(); s_packs[2].api = cl_content_url_r8_api.GetString();
+  s_packs[3].url = cl_content_url_csgo.GetString(); s_packs[3].api = cl_content_url_csgo_api.GetString();
+  s_packs[4].url = cl_content_url_icons.GetString(); s_packs[4].api = cl_content_url_icons_api.GetString();
   double expected = 0; for (auto& p : s_packs) if (PackWanted(p)) expected += p.approxMB;
   { std::lock_guard<std::mutex> l(s_mtx); s_prog = Progress(); s_prog.state = RUNNING; s_prog.packCount = kPacks; s_prog.totalExpectedMB = expected; }
   std::error_code ec;
@@ -506,5 +540,5 @@ Progress Get() { std::lock_guard<std::mutex> l(s_mtx); return s_prog; }
 } // namespace download
 
 static ConCommand cmd_content_download("content_download", [](const CCommand&) {
-  download::Start(); Msg("Downloading the CS:GO maps and the shared Source assets ...\n");
-}, "Download the Counter-Strike: Source content (maps, models, textures, sounds) from GitHub");
+  download::Start(); Msg("Downloading the CS:GO maps and the base Source assets (textures, models, sounds) ...\n");
+}, "Download the CS:GO maps and the base Source assets (textures, models, sounds) from GitHub");
