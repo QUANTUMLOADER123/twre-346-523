@@ -120,7 +120,10 @@ static void SplitCommands(const std::string& text, std::vector<std::string>& out
   for (size_t i = 0; i < text.size(); i++) {
     char c = text[i];
     if (c == '"') quote = !quote;
-    if (!quote && c == '/' && i + 1 < text.size() && text[i + 1] == '/') { while (i < text.size() && text[i] != '\n') i++; c = '\n'; }
+    // "//" starts a comment only at the start of a token, so urls (https://...) survive
+    if (!quote && c == '/' && i + 1 < text.size() && text[i + 1] == '/' && (cur.empty() || cur.back() == ' ' || cur.back() == '\t')) {
+      while (i < text.size() && text[i] != '\n') i++; c = '\n';
+    }
     if (!quote && (c == ';' || c == '\n' || c == '\r')) { if (!cur.empty()) out.push_back(cur); cur.clear(); continue; }
     cur += c;
   }

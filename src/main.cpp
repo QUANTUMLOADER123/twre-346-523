@@ -222,6 +222,7 @@ int main(int argc, char** argv) {
   CL_WriteConfig();
   Host_Disconnect();
   CL_Shutdown();
+  download::Shutdown();   // never leave the content thread running while the process goes away (std::terminate)
   CloseWindow();
   return 0;
 }

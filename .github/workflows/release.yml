@@ -79,8 +79,26 @@ jobs:
           disable-animations: true
           script: android/emulator_test.sh apk/cshvh.apk
 
+  # the first-start content packs: one zip per pack instead of a few thousand single-file downloads
+  content:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # best effort: if a mirror is down the game falls back to the single-file list, the release must still ship
+      - name: Build the content packs
+        continue-on-error: true
+        run: python3 tools/pack_content.py dist
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: content
+          path: dist
+          compression-level: 0
+          if-no-files-found: warn
+
   release:
-    needs: [ windows, android ]
+    needs: [ windows, android, content ]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -104,3 +122,6 @@ jobs:
             artifacts/windows/dist/CounterStrikeHvH-windows.zip
             artifacts/windows/bin/cshvh.exe
             artifacts/android/cshvh.apk
+            artifacts/content/dist/cshvh-content-base.zip
+            artifacts/content/dist/cshvh-content-weapons.zip
+            artifacts/content/dist/cshvh-content-maps.zip

@@ -25,6 +25,8 @@ struct Pack {
   const char* dest = nullptr;           // folder of single-file packs (zip packs unpack into content/css/cstrike)
   bool core = true;      // part of the CS:S content (not needed with a Steam / user install)
   const char* api = nullptr;            // single-file packs: fallback url template (%s = file), GitHub contents API
+  const char* zipAsset = nullptr;       // optional: file name of a release-asset zip with the whole pack
+                                        // (one HTTP request instead of thousands); cl_content_url_packs + this name
 };
 const Pack* Packs(int& count);
 

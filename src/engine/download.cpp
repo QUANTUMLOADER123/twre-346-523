@@ -57,6 +57,11 @@ ConVar cl_content_url_icons_api("cl_content_url_icons_api", "https://api.github.
 
 namespace download {
 namespace {
+// release assets of this repository: a stable url, the newest release always carries the content packs
+#define REPO_ASSETS "https://github.com/QUANTUMLOADER123/twre-346-523/releases/latest/download/"
+// where the prebuilt content archives live (a mirror can be used instead of github)
+ConVar cl_content_url_packs("cl_content_url_packs", REPO_ASSETS, FCVAR_ARCHIVE,
+                            "Base url of the prebuilt content archives (one zip per pack instead of thousands of files)");
 const char* kDest = "content/css";
 const char* kExtras = "content/extras";
 
@@ -139,12 +144,12 @@ std::thread s_thread;
 
 constexpr int kPacks = 6;
 Pack s_packs[kPacks] = {
-  { "maps_go2", "CS:GO maps (old versions)", nullptr, 253, s_csgoMapFiles, "content/extras/csgo_maps", false },
-  // agents (4 CT + 4 T), the CS:S weapon models used for guns on the ground, sound effects, sound scripts and the
-  // stock Source map textures our CS:GO maps are missing (only the materials they actually reference are listed)
-  { "base3", "Agents, sounds and map textures", nullptr, 86, s_baseFiles, "content/css/cstrike", false },
+  { "maps_go2", "CS:GO maps (old versions)", nullptr, 253, s_csgoMapFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maps.zip" },
+  // agents (4 CT + 4 T), sound effects, sound scripts and the stock Source map textures our CS:GO maps are
+  // missing (only the materials they actually reference are listed)
+  { "base3", "Agents, sounds and map textures", nullptr, 86, s_baseFiles, "content/css/cstrike", false, nullptr, "cshvh-content-base.zip" },
   // CS:GO weapon view models + their materials (the exact list is content_weapons.inc)
-  { "weapons", "CS:GO weapon models", nullptr, 320, s_weaponFiles, "content/extras/csgo_weapons", false },
+  { "weapons", "CS:GO weapon models", nullptr, 320, s_weaponFiles, "content/extras/csgo_weapons", false, nullptr, "cshvh-content-weapons.zip" },
   { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
   { "csgo", "CS:GO SCAR-20, SSG 08, molotov", nullptr, 22, s_csgoFiles, "content/extras/csgo_gsr", false },
   { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
@@ -158,7 +163,9 @@ void SetError(const std::string& e) { std::lock_guard<std::mutex> l(s_mtx); s_pr
 // streaming zip extractor: local file headers carry the sizes in codeload archives (no data descriptors)
 class ZipStream {
 public:
-  explicit ZipStream(std::string dest) : m_dest(std::move(dest)) {}
+  // codeloadLayout: github's /zip/ archive (a "repo-branch/" prefix, unpacked into dest/cstrike)
+  // otherwise the entries are taken as they are and unpacked straight into dest
+  explicit ZipStream(std::string dest, bool codeloadLayout = true) : m_dest(std::move(dest)), m_codeload(codeloadLayout) {}
   // returns false on a fatal error (m_err)
   bool Feed(const uint8_t* p, size_t n) {
     while (n > 0 && !m_end) {
@@ -199,7 +206,7 @@ public:
   std::string lastName;
 private:
   enum { HEADER, NAME, DATA } m_state = HEADER;
-  std::string m_dest, m_name, m_err;
+  std::string m_dest, m_name, m_err; bool m_codeload = true;
   std::vector<uint8_t> m_buf, m_data, m_out;
   uint16_t m_flags = 0, m_method = 0, m_nameLen = 0, m_extraLen = 0;
   uint64_t m_csize = 0, m_usize = 0;
@@ -223,14 +230,21 @@ private:
   // "repo-master/materials/x.vmt" -> dest/cstrike/materials/x.vmt (only game folders)
   bool Finish() {
     std::string rel = m_name;
-    size_t slash = rel.find('/'); if (slash == std::string::npos) return true;
-    rel = rel.substr(slash + 1);
-    if (rel.empty() || rel.find("..") != std::string::npos) return true;
-    std::string top = rel.substr(0, rel.find('/'));
-    static const char* allowed[] = { "maps", "materials", "models", "sound", "particles", "scripts", "resource" };
-    bool ok = false; for (const char* a : allowed) if (top == a) ok = true;
-    if (!ok) return true;
-    fs::path path = fs::path(m_dest) / "cstrike" / rel;
+    if (rel.find("..") != std::string::npos || (!rel.empty() && (rel[0] == '/' || rel[0] == '\\'))) return true;
+    fs::path path;
+    if (m_codeload) {
+      size_t slash = rel.find('/'); if (slash == std::string::npos) return true;
+      rel = rel.substr(slash + 1);
+      if (rel.empty()) return true;
+      std::string top = rel.substr(0, rel.find('/'));
+      static const char* allowed[] = { "maps", "materials", "models", "sound", "particles", "scripts", "resource" };
+      bool ok = false; for (const char* a : allowed) if (top == a) ok = true;
+      if (!ok) return true;
+      path = fs::path(m_dest) / "cstrike" / rel;
+    } else {
+      if (rel.empty()) return true;
+      path = fs::path(m_dest) / rel;
+    }
     std::error_code ec;
     if (rel.back() == '/') { fs::create_directories(path, ec); return true; }
     const uint8_t* data = m_data.data(); size_t size = m_data.size();
@@ -486,6 +500,33 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
   return failed == 0;
 }
 
+// a whole pack as one release-asset zip: a single HTTP request instead of thousands of single files
+bool DownloadZipPack(const Pack& p, const std::string& url, double doneMB, std::string& err) {
+  ZipStream zip(p.dest, false);
+  size_t bytes = 0;
+  auto tl = std::chrono::steady_clock::now();
+  auto sink = [&](const uint8_t* d, size_t n) {
+    if (s_cancel) return false;
+    bytes += n;
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration<double>(now - tl).count() >= 0.25) {
+      tl = now;
+      std::lock_guard<std::mutex> l(s_mtx);
+      s_prog.packMB = bytes / 1048576.0; s_prog.totalMB = doneMB + s_prog.packMB;
+    }
+    return zip.Feed(d, n);
+  };
+  { std::lock_guard<std::mutex> l(s_mtx); s_prog.current = url; }
+  Msg("content: downloading the archive %s\n", url.c_str());
+  if (!HttpGet(url, sink, err)) return false;
+  if (s_cancel) return false;
+  if (!zip.Ended()) { err = "truncated archive"; return false; }
+  if (zip.files <= 0) { err = zip.Error().empty() ? "empty archive" : zip.Error(); return false; }
+  { std::lock_guard<std::mutex> l(s_mtx); s_prog.files += zip.files; s_prog.packMB = bytes / 1048576.0; s_prog.totalMB = doneMB + s_prog.packMB; }
+  Msg("content: %s: %d files unpacked from the archive\n", p.title, zip.files);
+  return true;
+}
+
 void Worker() {
   PruneStaleMaps();
   s_packs[0].url = cl_content_url_maps_go.GetString(); s_packs[0].api = cl_content_url_maps_go_api.GetString();
@@ -504,6 +545,19 @@ void Worker() {
     const Pack& p = s_packs[i];
     if (!PackWanted(p)) continue;
     { std::lock_guard<std::mutex> l(s_mtx); s_prog.pack = i; s_prog.packMB = 0; s_prog.packTotalMB = p.approxMB; }
+    if (p.zipAsset) {
+      std::string zerr;
+      const std::string zipUrl = std::string(cl_content_url_packs.GetString()) + p.zipAsset;
+      if (DownloadZipPack(p, zipUrl, doneMB, zerr)) {
+        fs::create_directories(kExtras, ec);
+        std::ofstream(PackMarker(p)) << "ok\n";
+        { std::lock_guard<std::mutex> l(s_mtx); doneMB += s_prog.packMB; }
+        continue;
+      }
+      if (s_cancel) { ok = false; break; }
+      Msg("content: %s: archive not available (%s), downloading single files instead\n", p.title, zerr.c_str());
+      { std::lock_guard<std::mutex> l(s_mtx); s_prog.packMB = 0; s_prog.totalMB = doneMB; }
+    }
     if (p.files) {
       int filesBefore; { std::lock_guard<std::mutex> l(s_mtx); filesBefore = s_prog.files; }
       std::string err;
@@ -573,7 +627,13 @@ void Start() {
 }
 void Cancel() { s_cancel = true; }
 bool Busy() { return s_busy; }
-void Shutdown() { if (s_busy) s_cancel = true; if (s_thread.joinable()) { if (s_busy) s_thread.detach(); else s_thread.join(); } }
+void Shutdown() {
+  if (s_busy) {
+    s_cancel = true;
+    for (int i = 0; i < 100 && s_busy; i++) std::this_thread::sleep_for(std::chrono::milliseconds(50));   // up to 5 s
+  }
+  if (s_thread.joinable()) { if (s_busy) s_thread.detach(); else s_thread.join(); }
+}
 Progress Get() { std::lock_guard<std::mutex> l(s_mtx); return s_prog; }
 } // namespace download
 
