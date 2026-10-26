@@ -1325,6 +1325,11 @@ void CCSBot::Upkeep(CUserCmd& cmd) {
     cmd.sidemove = 450.f * m_iStrafeDir;
   } else if (bot_freeze.GetBool()) { cmd.forwardmove = cmd.sidemove = 0; }
   if (bot_crouch.GetBool()) cmd.buttons |= IN_DUCK;
+  // heavy auto-snipers: crouch when engaging for stability (SCAR-20, G3SG1)
+  if (m_pEnemy && me->IsAlive()) {
+    C_WeaponCSBase* w = me->GetActiveCSWeapon();
+    if (w && (w->GetCSWeaponID() == WEAPON_SCAR20 || w->GetCSWeaponID() == WEAPON_G3SG1)) cmd.buttons |= IN_DUCK;
+  }
   view.x = Clamp(view.x, -89.f, 89.f); view.y = AngleNormalize(view.y); view.z = 0;
   m_angView = view;
   cmd.viewangles = view;
