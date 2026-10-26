@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install zig
-        run: pip install ziglang
+        run: pip install --break-system-packages ziglang
       - name: Build cshvh.exe
         run: JOBS=4 ./build.sh windows
       - name: Package
