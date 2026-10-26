@@ -18,16 +18,28 @@ print(f"::notice title=screenshot {n}::" + base64.b64encode(b.getvalue()).decode
 PY
 }
 adb install -r -g "$APK" 2>&1 | tail -2
+adb shell wm size 1080x2400; adb shell wm density 420
 adb shell settings put system accelerometer_rotation 0
 adb logcat -c
 adb shell am start -n com.cshvh.game/android.app.NativeActivity
 sleep 25
 shot menu
 PID=$(adb shell pidof com.cshvh.game | tr -d '\r')
-note "alive after 25s" "pid=${PID:-DEAD}"
-# start a game from the console-less path: tap through the main menu is resolution dependent, so use an intent-free
-# approach: send Back (closes nothing at the menu), then check again
-sleep 5
-LOG=$(adb logcat -d | grep -E "cshvh|raylib|INFO: |WARNING: |ERROR: |FATAL|DEBUG   :|AndroidRuntime|libc    :" | tail -80)
+note "alive after 25s (menu)" "pid=${PID:-DEAD}"
+# second launch straight into a match: autoexec.cfg is executed at startup
+adb shell am force-stop com.cshvh.game
+D=/sdcard/Android/data/com.cshvh.game/files
+printf 'bot_quota 4\nmp_freezetime 1\nmap de_mirage\n' > /tmp/autoexec.cfg
+adb push /tmp/autoexec.cfg $D/cfg/autoexec.cfg
+adb shell am start -n com.cshvh.game/android.app.NativeActivity
+sleep 30
+shot map
+adb shell input tap 1200 540; sleep 3; shot tap
+adb shell input swipe 300 800 300 500 2500; sleep 1
+adb shell input swipe 1800 600 1500 600 800; sleep 4
+shot moved
+PID=$(adb shell pidof com.cshvh.game | tr -d '\r')
+note "alive in game" "pid=${PID:-DEAD}"
+LOG=$(adb logcat -d | grep -E " (cshvh|raylib|DEBUG|libc|AndroidRuntime) *:|FATAL|Fatal signal" | grep -v "Access denied finding\|ro.build.fingerprint" | tail -60)
 note "logcat" "$LOG"
 [ -n "$PID" ] || exit 1

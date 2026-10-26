@@ -11,6 +11,8 @@
 
 #if defined(PLATFORM_ANDROID)
 #include <android/asset_manager.h>
+#include <android/configuration.h>
+#include <algorithm>
 #include <android/log.h>
 #include <android/native_activity.h>
 #include <android/window.h>
@@ -74,7 +76,26 @@ void Platform_PostInit() {
   android_app* app = GetAndroidApp();
   if (app && app->activity) ANativeActivity_setWindowFlags(app->activity, AWINDOW_FLAG_KEEP_SCREEN_ON | AWINDOW_FLAG_FULLSCREEN, 0);
 }
+
+static constexpr int kAndroidRenderHeight = 720;   // the screen is scaled up from this height
+
+void Platform_WindowSize(int& w, int& h) {
+  android_app* app = GetAndroidApp();
+  int wdp = 0, hdp = 0, dens = 160;
+  if (app && app->config) {
+    wdp = AConfiguration_getScreenWidthDp(app->config); hdp = AConfiguration_getScreenHeightDp(app->config);
+    dens = AConfiguration_getDensity(app->config);
+    if (dens <= 0 || dens == ACONFIGURATION_DENSITY_ANY || dens == ACONFIGURATION_DENSITY_NONE) dens = 160;
+  }
+  if (wdp <= 0 || hdp <= 0) { w = h = 0; return; }       // unknown: native size
+  float longPx = std::max(wdp, hdp) * dens / 160.f, shortPx = std::min(wdp, hdp) * dens / 160.f;
+  int target = kAndroidRenderHeight;
+  if (target >= shortPx) { w = h = 0; return; }   // display not bigger than the target: native size
+  h = target; w = (int)(target * longPx / shortPx + 0.5f) & ~1;
+  __android_log_print(ANDROID_LOG_INFO, "cshvh", "display ~%.0fx%.0f px, rendering %dx%d", longPx, shortPx, w, h);
+}
 #else
 void Platform_PreInit() {}
 void Platform_PostInit() {}
+void Platform_WindowSize(int&, int&) {}
 #endif

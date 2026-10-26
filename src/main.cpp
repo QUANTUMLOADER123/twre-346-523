@@ -129,6 +129,7 @@ int main(int argc, char** argv) {
   unsigned flags = FLAG_WINDOW_RESIZABLE;
   if (mat_vsync.GetBool()) flags |= FLAG_VSYNC_HINT;
   SetConfigFlags(flags);
+  Platform_WindowSize(width, height);
   InitWindow(width, height, "Counter-Strike: HvH");
   SetExitKey(KEY_NULL);
   SetWindowMinSize(800, 600);
