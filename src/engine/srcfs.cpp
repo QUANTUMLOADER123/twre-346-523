@@ -81,7 +81,8 @@ void IndexLoose(const std::string& dir) {
   State& s = S(); std::error_code ec;
   if (!fs::is_directory(dir, ec)) return;
   s.looseDirs.push_back(dir);
-  static const char* subs[] = { "maps", "materials", "models", "sound", "scripts", "resource", "particles" };
+  // "svg_normal" holds the downloaded CS:GO weapon icons (content/extras/csgo_icons/svg_normal)
+  static const char* subs[] = { "maps", "materials", "models", "sound", "scripts", "resource", "particles", "svg_normal", "svg_outline" };
   for (const char* sub : subs) {
     fs::path sp = fs::path(dir) / sub;
     // tolerate any case of the sub folder name

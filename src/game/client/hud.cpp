@@ -283,6 +283,20 @@ static void HudTextRight(int font, const char* t, float rx, float y, float size,
 static void HudTextCentered(int font, const char* t, float cx, float y, float size, Color c, bool shadow = true) {
   if (!t || !*t) return; HudText(font, t, cx - HudTextW(font, t, size) * 0.5f, y, size, c, shadow);
 }
+// CS2 typography (reference textShadow "0 0 3px #000000DD"): a soft halo instead of an offset drop shadow
+static void HudTextGlow(int font, const char* t, float x, float y, float size, Color c, int strength = 105) {
+  if (!t || !*t) return;
+  const Color sh = { 0, 0, 0, (unsigned char)strength };
+  const float d = std::max(1.f, size * 0.04f);
+  surface()->DrawTextScaled(font, t, x - d, y, size, sh);
+  surface()->DrawTextScaled(font, t, x + d, y, size, sh);
+  surface()->DrawTextScaled(font, t, x, y - d, size, sh);
+  surface()->DrawTextScaled(font, t, x, y + d, size, sh);
+  surface()->DrawTextScaledShadow(font, t, x, y, size, c, sh);
+}
+static void HudTextGlowCentered(int font, const char* t, float cx, float y, float size, Color c, int strength = 105) {
+  if (!t || !*t) return; HudTextGlow(font, t, cx - HudTextW(font, t, size) * 0.5f, y, size, c, strength);
+}
 // thin progress bar (CS:GO style: dark track + solid fill)
 static void HudBar(float x, float y, float w, float h, float frac, Color fill) {
   frac = Clamp(frac, 0.f, 1.f);
@@ -290,33 +304,6 @@ static void HudBar(float x, float y, float w, float h, float frac, Color fill) {
   if (frac > 0) surface()->DrawFilledRect(x, y, w * frac, h, fill);
 }
 
-// ------------------------------------------------------------------------------------------------
-// icons (procedural, always available - no content files needed)
-static void IconCross(float x, float y, float s, Color c) {
-  // CS2 health icon: thin plus sign
-  float t = s * 0.26f;
-  surface()->DrawFilledRect(x + (s - t) * 0.5f, y, t, s, c);
-  surface()->DrawFilledRect(x, y + (s - t) * 0.5f, s, t, c);
-}
-static void IconShield(float x, float y, float s, Color c, bool helmet) {
-  float top = y + (helmet ? s * 0.16f : 0.f), h = s - (top - y);
-  DrawRectangleRounded({ x, top, s, h * 0.60f }, 0.30f, 4, c);
-  surface()->DrawTriangle({ x, top + h * 0.52f }, { x + s, top + h * 0.52f }, { x + s * 0.5f, top + h }, c);
-  if (helmet) DrawRectangleRounded({ x + s * 0.16f, y, s * 0.68f, s * 0.24f }, 0.8f, 4, c);
-}
-static void IconC4(float x, float y, float s, Color c) {
-  // bomb pack: body with a strap, a small keypad window and the antenna
-  DrawRectangleRounded({ x, y + s * 0.30f, s, s * 0.66f }, 0.20f, 4, c);
-  Color dark = { 0, 0, 0, 150 };
-  surface()->DrawFilledRect(x + s * 0.16f, y + s * 0.46f, s * 0.30f, s * 0.26f, dark);
-  surface()->DrawFilledRect(x + s * 0.58f, y + s * 0.46f, s * 0.26f, s * 0.06f, dark);
-  surface()->DrawFilledRect(x + s * 0.58f, y + s * 0.60f, s * 0.26f, s * 0.06f, dark);
-  surface()->DrawLine(x + s * 0.72f, y + s * 0.32f, x + s * 0.72f, y + s * 0.04f, c, std::max(1.f, s * 0.10f));
-}
-static void IconDefuser(float x, float y, float s, Color c) {
-  surface()->DrawFilledRect(x, y + s * 0.36f, s * 0.86f, s * 0.28f, c);
-  surface()->DrawFilledRect(x + s * 0.62f, y + s * 0.06f, s * 0.17f, s * 0.32f, c);
-}
 
 
 // fallback weapon silhouettes (used when the CS:S content / CS:GO icons are not installed)
@@ -371,119 +358,123 @@ void DrawWeaponGlyph(int wtype, float x, float y, float w, float h, Color c) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// bottom left: money, buy-zone / bomb / defuse icons
+// CS2 HUD - layout and artwork copied from mioxive/scaleform-hud-cs2 (js/healtharmor.js,
+// js/money.js, js/weaponammo.js, js/teamcounter.js). The real plates / icons are the reference art
+// files, shipped in assets/hud/*.png and drawn exactly like the reference panels - no procedural
+// stand-ins for the CS2 icons. Sizes are the reference CSS pixels for 1080p times Cs2K().
 // ------------------------------------------------------------------------------------------------
-// CS2 HUD layout (matches mioxive/scaleform-hud-cs2): black gradient plates at the screen corners,
-// 42px-ish bold counters, 80x8 thin bars, magazine pips, money plate with the buy-zone icon.
-// All sizes below are the reference CSS pixel values (1080p) multiplied by the HUD scale.
-static float Cs2K(float sc) { return sc * 0.72f; }   // 1080p reference -> our screen scale
+static float Cs2K(float sc) { return sc * (768.f / 1080.f); }   // reference 1080p values -> our screen
 
-// plate that is solid on the left and fades out towards the right (HP / armor / money)
-static void Cs2PlateLeft(float x, float y, float w, float h, float fade, float alpha) {
-  Color s = { 0, 0, 0, (unsigned char)(255 * Clamp(alpha, 0.f, 1.f)) };
-  const Color clear = { 0, 0, 0, 0 };
-  float fw = std::min(fade, w);
-  surface()->DrawFilledRect(x, y, w - fw, h, s);
-  if (fw > 0) surface()->DrawGradientH(x + w - fw, y, fw, h, s, clear);
+// left-to-right alpha ramp drawn as thin strips (smooth in the software renderer as well)
+static void HudFadeH(float x, float y, float w, float h, Color solid, bool solidLeft, int steps = 32) {
+  steps = std::max(4, steps);
+  const float sw = w / steps;
+  for (int i = 0; i < steps; i++) {
+    const float t = (i + 0.5f) / steps;                 // 0 = left edge, 1 = right edge
+    const float a = solidLeft ? (1.f - t) : t;
+    Color c = solid;
+    c.a = (unsigned char)(solid.a * Clamp(a, 0.f, 1.f));
+    surface()->DrawFilledRect(x + i * sw, y, sw + 1, h, c);
+  }
 }
-// solid on the right, fades out towards the left (ammo / weapon plates)
-static void Cs2PlateRight(float x, float y, float w, float h, float fade, float alpha) {
-  Color s = { 0, 0, 0, (unsigned char)(255 * Clamp(alpha, 0.f, 1.f)) };
-  const Color clear = { 0, 0, 0, 0 };
-  float fw = std::min(fade, w);
-  if (fw > 0) surface()->DrawGradientH(x, y, fw, h, clear, s);
-  surface()->DrawFilledRect(x + fw, y, w - fw, h, s);
+static void HudArtDraw(const char* name, float x, float y, float w, float h, Color tint = WHITE) {
+  std::string path = std::string("assets/hud/") + name + ".png";
+  if (const Texture2D* t = VGUI_FileTexture(path))
+    DrawTexturePro(*t, { 0, 0, (float)t->width, (float)t->height }, { x, y, w, h }, { 0, 0 }, 0, tint);
 }
-
-// one stat block: icon, big number, thin bar (reference: hp_plate / armor_plate groups)
-static void Cs2Stat(float x, float y, float w, float h, float k, bool armor, int value, int maxValue,
-                    const char* iconGlyph, bool critical, bool helmet) {
-  const float pad = 19 * k;
-  const float iconS = 22 * k;
-  const float numSize = 42 * k;
-  const float barW = 80 * k, barH = 8 * k, barX = 116 * k;
-
-  // icon
-  Color ic = Alpha(hudgo::Text, 0.85f);
-  if (armor) IconShield(x + pad, y + h * 0.5f - iconS * 0.5f, iconS, armor ? Alpha(hudgo::Text, value > 0 ? 0.85f : 0.35f) : ic, helmet);
-  else IconCross(x + pad, y + h * 0.5f - iconS * 0.5f, iconS, Alpha(hudgo::Text, 0.9f));
-  (void)iconGlyph;
-
-  // number
-  char numBuf[16]; snprintf(numBuf, sizeof numBuf, "%d", value);
-  const char* t = numBuf;
-  Color nc = critical ? Color{ 255, 40, 40, 255 } : hudgo::Text;
-  if (armor && value <= 0) nc = Alpha(hudgo::Text, 0.45f);
-  HudText(FONT_GO_HUGE, t, x + 40 * k, y + h * 0.5f - numSize * 0.56f, numSize, nc);
-
-  // bar
-  float by = y + h * 0.5f + 6 * k;
-  surface()->DrawFilledRect(x + barX, by, barW, barH, { 3, 3, 3, 150 });
-  float frac = maxValue > 0 ? Clamp(value / (float)maxValue, 0.f, 1.f) : 0.f;
-  if (frac > 0) surface()->DrawFilledRect(x + barX, by, barW * frac, barH, critical ? Color{ 255, 0, 0, 255 } : Alpha(hudgo::Text, 0.92f));
+// CS:GO / CS:GO-content icon (svg_normal/*.svg) drawn by height, tinted
+static void HudSvgDraw(const char* svg, float cx, float cy, float h, Color tint) {
+  const Texture2D* t = VGUI_SvgIcon(svg);
+  if (!t) return;
+  float w = h * t->width / (float)std::max(1, t->height);
+  DrawTexturePro(*t, { 0, 0, (float)t->width, (float)t->height }, { cx - w * 0.5f, cy - h * 0.5f, w, h }, { 0, 0 }, 0, tint);
 }
 
-// bottom left: money plate, then HP and armor plates side by side (CS2 arrangement)
+// ------------------------------------------------------------------------------------------------
+// bottom left (reference js/money.js): 250x39 plate at left 0, top 385, fontSize 31, rowLeft 9,
+// buy-zone icon 28 at 26 gap. Plate = gradient(linear 100% 0%, 0% 0%, #00000000, .25 #000000f6,
+// #000000f6): solid on the left 75%, fading out over the right quarter.
+// ------------------------------------------------------------------------------------------------
 static void DrawMoney(CCSPlayer* p, float sc) {
-  const int H = surface()->ScreenTall();
   const float k = Cs2K(sc);
   const float pw = 250 * k, ph = 39 * k;
-  const float x = 0, y = H - HudBottomInset(sc) - 57 * k - ph - 6 * k;
+  const float x = 0, y = 385 * k;
+  const float rowLeft = 9 * k, iconSize = 28 * k, iconGap = 26 * k;
 
   if (s_lastMoney >= 0 && p->m_iAccount != s_lastMoney) { s_moneyDelta = p->m_iAccount - s_lastMoney; s_moneyDeltaTime = gpGlobals->realtime; }
   s_lastMoney = p->m_iAccount;
   const float since = gpGlobals->realtime - s_moneyDeltaTime;
 
-  Cs2PlateLeft(x, y, pw, ph, 90 * k, 0.86f);
+  const Color plate = { 0, 0, 0, 0xf6 };
+  const float fade = pw * 0.25f;                    // color-stop 0.25
+  surface()->DrawFilledRect(x, y, pw - fade + 1, ph, plate);
+  HudFadeH(x + pw - fade, y, fade, ph, plate, true, 40);
 
-  // buy-zone icon (green) + bomb / defuser indicators, like the reference money row
-  float ix = x + 9 * k, iy = y + ph * 0.5f;
-  const float isz = 20 * k;
-  if (p->m_bInBuyZone && CSGameRules() && !CSGameRules()->IsBuyTimeElapsed()) {
-    HudText(FONT_GO_HUGE, "$", ix, iy - isz * 0.62f, isz * 1.15f, { 124, 194, 19, 235 });
-    ix += 28 * k;
-  }
-  if (p->HasC4()) {
-    Color cc = p->m_bInBombZone ? (std::fmod(gpGlobals->realtime, 0.5f) < 0.25f ? Color{ 90, 255, 100, 255 } : Color{ 40, 140, 45, 235 }) : Color{ 110, 215, 115, 225 };
-    IconC4(ix, iy - isz * 0.5f, isz, cc); ix += 24 * k;
-  }
-  if (p->m_bHasDefuser) { IconDefuser(ix, iy - isz * 0.4f, isz, { 120, 205, 225, 225 }); ix += 26 * k; }
+  // money row: buy-zone icon (green, only inside the buy zone) then the amount
+  float rx = x + rowLeft;
+  const float cy = y + ph * 0.5f;
+  if (p->m_bInBuyZone && CSGameRules() && !CSGameRules()->IsBuyTimeElapsed())
+    HudTextCentered(FONT_GO_HUGE, "$", rx + iconSize * 0.5f, cy - iconSize * 0.62f, iconSize * 1.25f, { 124, 194, 19, 204 });
+  rx += iconSize + iconGap;
 
-  // money
   const float numSize = 31 * k;
   Color mc = hudgo::Text;
   if (since < 0.6f && s_moneyDelta < 0) mc = hudgo::Danger;
   char moneyBuf[24]; snprintf(moneyBuf, sizeof moneyBuf, "$%d", p->m_iAccount);
-  const char* mt = moneyBuf;
-  HudText(FONT_GO_HUGE, mt, ix + 4 * k, y + ph * 0.5f - numSize * 0.6f, numSize, mc);
-  const float w = HudTextW(FONT_GO_HUGE, mt, numSize);
+  const float mw = HudTextW(FONT_GO_HUGE, moneyBuf, numSize);
+  HudTextGlow(FONT_GO_HUGE, moneyBuf, rx, cy - numSize * 0.55f, numSize, mc);
   if (since < 3.f && s_moneyDelta != 0) {
     Color dc = s_moneyDelta > 0 ? hudgo::Gain : hudgo::Danger;
     dc.a = (unsigned char)(255 * Clamp(3.f - since, 0.f, 1.f));
     char deltaBuf[24]; snprintf(deltaBuf, sizeof deltaBuf, "%s%d", s_moneyDelta > 0 ? "+" : "-", std::abs(s_moneyDelta));
-    HudText(FONT_GO_HUGE, deltaBuf, ix + 4 * k + w + 6 * k, y + ph * 0.5f - numSize * 0.5f, numSize * 0.72f, dc);
+    HudText(FONT_GO_HUGE, deltaBuf, rx + mw + 6 * k, cy - numSize * 0.48f, numSize * 0.72f, dc);
   }
 }
 
-// bottom left: HP + armor plates (reference: HaBox - 197 / 230 wide, 57 tall, 22px icons, 42px numbers)
+// ------------------------------------------------------------------------------------------------
+// bottom left (reference js/healtharmor.js HaBox): 57 tall row, HP group 197 wide (hp_plate art
+// stretched to 107%), armor group 230, icons 22 at x 19, number 42 centred at x 80, thin bar 80x8
+// at x 116 (vertical centre +6), track #03030399, HP switches to hp_red + a red fill at <= 25.
+// ------------------------------------------------------------------------------------------------
 static void DrawVitals(CCSPlayer* p, float sc) {
   const int H = surface()->ScreenTall();
   const float k = Cs2K(sc);
   const float rowH = 57 * k;
   const float y = H - HudBottomInset(sc) - rowH;
   const int hp = std::max(0, p->m_iHealth), armor = std::max(0, p->m_ArmorValue);
-  const bool crit = hp <= 25;
+  const bool crit = hp <= 25;                       // reference criticalAt: 25
   const float hpW = 197 * k, arW = 230 * k;
+  const float iconS = 22 * k, iconX = 19 * k, iconY = rowH * 0.5f - iconS * 0.5f;
+  const float numSize = 42 * k;
+  const float barW = 80 * k, barH = 8 * k, barX = 116 * k, barY = 6 * k;
 
-  Cs2PlateLeft(0, y, hpW, rowH, 30 * k, crit ? 0.92f : 0.86f);
-  // thin outline strip along the top + left edge (reference HP plate has a light rim)
-  surface()->DrawFilledRect(0, y, hpW * 0.62f, std::max(1.f, 1.5f * k), Alpha(hudgo::Text, crit ? 0.45f : 0.22f));
-  Cs2Stat(0, y, hpW, rowH, k, false, hp, 100, nullptr, crit, false);
-  Cs2PlateLeft(hpW, y, arW, rowH, 60 * k, 0.86f);
-  Cs2Stat(hpW, y, arW, rowH, k, true, armor, 100, nullptr, false, p->m_bHasHelmet);
+  // plates: the reference art (opaque left, fading right), red version when the HP is critical
+  HudArtDraw(crit ? "hp_red" : "hp_plate", 0, y, hpW * 1.07f, rowH, crit ? Alpha(WHITE, 0.92f) : WHITE);
+  HudArtDraw("armor_plate", hpW, y, arW, rowH);
+
+  for (int side = 0; side < 2; side++) {
+    const float gx = side ? hpW : 0.f;
+    const int value = side ? armor : hp;
+    const bool low = !side && crit;
+    HudArtDraw(side ? (p->m_bHasHelmet ? "helmet_icon" : "armor_icon") : "hp_icon",
+               gx + iconX, y + iconY, iconS, iconS, Alpha(WHITE, 0.85f));
+
+    char buf[8]; snprintf(buf, sizeof buf, "%d", value);
+    HudTextGlowCentered(FONT_GO_HUGE, buf, gx + 80 * k, y + rowH * 0.5f - numSize * 0.55f, numSize, hudgo::Text);
+
+    const float by = y + rowH * 0.5f + barY - barH * 0.5f;
+    surface()->DrawFilledRect(gx + barX, by, barW, barH, { 3, 3, 3, 153 });
+    const float frac = Clamp(value / 100.f, 0.f, 1.f);
+    if (frac > 0)
+      surface()->DrawFilledRect(gx + barX, by, barW * frac, barH, low ? Color{ 255, 0, 0, 255 } : hudgo::Text);
+  }
 }
 
-// top centre: CS2 team counter - CT block, score, timer, score, T block (+ win pips)
+// ------------------------------------------------------------------------------------------------
+// top centre (reference js/teamcounter.js): team tiles 54x54 (alive_ct / alive_t art, digit 40),
+// 75 wide column, timer row 27 (font 23), score row 27 (font 22, CT #6f9ec4, T #b99636) split by a
+// 1px gap where the bomb / defuse icon sits, win pips underneath.
+// ------------------------------------------------------------------------------------------------
 static void DrawTimer(float sc) {
   CCSGameRules* gr = CSGameRules();
   if (!gr) return;
@@ -491,6 +482,7 @@ static void DrawTimer(float sc) {
   const float k = Cs2K(sc);
   const int ctWin = gr->m_iNumCTWins, tWin = gr->m_iNumTerroristWins;
   const int ctAlive = gr->m_iMatchStats_PlayersAlive_CT, tAlive = gr->m_iMatchStats_PlayersAlive_T;
+  CCSPlayer* lp = g_pLocalPlayer;
   const bool planted = gr->m_bBombPlanted && g_pPlantedC4 && !g_pPlantedC4->m_bBombDefused && !g_pPlantedC4->m_bExploded;
   const bool freeze = !planted && gr->IsFreezePeriod() && !gr->IsDeathmatch();
 
@@ -498,51 +490,59 @@ static void DrawTimer(float sc) {
              : freeze ? gr->GetFreezeTimeRemaining() : gr->GetRoundRemainingTime();
   secs = std::max(0.f, secs);
   char timerBuf[16]; snprintf(timerBuf, sizeof timerBuf, "%d:%02d", (int)secs / 60, (int)secs % 60);
-  const char* timerTxt = timerBuf;
 
-  const float colW = 75 * k, aliveW = 54 * k, rowH = 34 * k;
-  const float pw = aliveW + colW + colW + aliveW;
-  const float px = W * 0.5f - pw * 0.5f, py = 0;
+  const Color plate = { 0, 0, 0, 0xd4 };            // Tc.plate
+  const float cell = 54 * k, colW = 75 * k, rowH = 27 * k, gap = 1 * k;
+  const float pw = cell * 2 + colW * 2;
+  const float px = std::floor(W * 0.5f - pw * 0.5f), py = 0;
+  const float colX = px + cell;
 
-  // alive blocks (tinted like the CS2 team counter), scores, timer
-  const Color ctTint = { 40, 62, 88, 235 }, tTint = { 74, 60, 30, 235 };
-  surface()->DrawFilledRect(px, py, aliveW, rowH, ctTint);
-  surface()->DrawFilledRect(px + aliveW, py, colW, rowH, { 0, 0, 0, 210 });
-  surface()->DrawFilledRect(px + aliveW + colW, py, colW, rowH, { 0, 0, 0, 235 });
-  surface()->DrawFilledRect(px + aliveW + colW * 2, py, colW, rowH, { 0, 0, 0, 210 });
-  surface()->DrawFilledRect(px + aliveW + colW * 3, py, aliveW, rowH, tTint);
-
-  // alive counts + scores (own buffers: TextFormat rotates through static buffers)
+  // team tiles with the alive count (real CS2 art, number 40px with a soft shadow)
   char ctAliveTxt[8], tAliveTxt[8], ctWinTxt[8], tWinTxt[8];
   snprintf(ctAliveTxt, sizeof ctAliveTxt, "%d", ctAlive);
   snprintf(tAliveTxt, sizeof tAliveTxt, "%d", tAlive);
   snprintf(ctWinTxt, sizeof ctWinTxt, "%d", ctWin);
   snprintf(tWinTxt, sizeof tWinTxt, "%d", tWin);
-  HudTextCentered(FONT_GO_HUGE, ctAliveTxt, px + aliveW * 0.5f, py + rowH * 0.5f - 14 * k, 20 * k, Alpha(hudgo::Text, 0.95f));
-  HudTextCentered(FONT_GO_HUGE, tAliveTxt, px + aliveW * 3 + colW * 2 + aliveW * 0.5f, py + rowH * 0.5f - 14 * k, 20 * k, Alpha(hudgo::Text, 0.95f));
-  HudTextCentered(FONT_GO_HUGE, ctWinTxt, px + aliveW + colW * 0.5f, py + rowH * 0.5f - 15 * k, 22 * k, hudgo::CT);
-  HudTextCentered(FONT_GO_HUGE, tWinTxt, px + aliveW + colW * 2.5f, py + rowH * 0.5f - 15 * k, 22 * k, hudgo::T);
+  const float aliveSize = 40 * k;
+  HudArtDraw("alive_ct", px, py, cell, cell);
+  HudArtDraw("alive_t", colX + colW * 2, py, cell, cell);
+  HudTextGlowCentered(FONT_GO_HUGE, ctAliveTxt, px + cell * 0.5f, py + cell * 0.5f - aliveSize * 0.55f + 2 * k, aliveSize, WHITE, 140);
+  HudTextGlowCentered(FONT_GO_HUGE, tAliveTxt, colX + colW * 2 + cell * 0.5f, py + cell * 0.5f - aliveSize * 0.55f + 2 * k, aliveSize, WHITE, 140);
 
-  // timer (+ C4 icon when planted)
+  // timer row + score row (two halves with a 1px gap between them)
+  const float colInner = colW - 2 * k;
+  const float sTop = py + rowH + gap;
+  const float bgRight = std::floor((colW - gap) * 0.5f), bgLeft = colW - gap - bgRight;
+  surface()->DrawFilledRect(colX, py, colInner, rowH, plate);
+  surface()->DrawFilledRect(colX, sTop, bgLeft, rowH, plate);
+  surface()->DrawFilledRect(colX + bgLeft + gap, sTop, bgRight, rowH, plate);
+
   Color tc = hudgo::Text;
   if (planted) { if (secs < 10.f && std::fmod(gpGlobals->realtime, 0.5f) < 0.25f) tc = hudgo::Danger; }
-  else if (freeze) tc = Alpha(hudgo::Text, 0.92f);
   else if (secs < 10.f) tc = hudgo::Danger;
-  const float tx = px + aliveW + colW;
+  HudTextGlowCentered(FONT_GO_HUGE, timerBuf, colX + colInner * 0.5f, py + rowH * 0.5f - 23 * k * 0.58f, 23 * k, tc);
+
+  const float scoreSize = 22 * k;
+  HudTextGlowCentered(FONT_GO_HUGE, ctWinTxt, colX + bgLeft * 0.5f, sTop + rowH * 0.5f - scoreSize * 0.58f, scoreSize, { 0x6f, 0x9e, 0xc4, 255 });
+  HudTextGlowCentered(FONT_GO_HUGE, tWinTxt, colX + bgLeft + gap + bgRight * 0.5f, sTop + rowH * 0.5f - scoreSize * 0.58f, scoreSize, { 0xb9, 0x96, 0x36, 255 });
+
+  // bomb / defuse status: centred in the gap of the score row (reference bombHeight 84, y -19)
+  const float bcx = colX + colW * 0.5f, bcy = sTop + rowH * 0.5f;
+  const float bombH = 20 * k;
   if (planted) {
-    IconC4(tx + 10 * k, py + rowH * 0.5f - 8 * k, 13 * k, secs < 10.f ? hudgo::Danger : Color{ 245, 190, 70, 245 });
-    HudText(FONT_GO_HUGE, timerTxt, tx + 26 * k, py + rowH * 0.5f - 15 * k, 21 * k, tc);
-  } else {
-    HudTextCentered(FONT_GO_HUGE, timerTxt, tx + colW * 0.5f, py + rowH * 0.5f - 16 * k, 23 * k, tc);
+    const bool hurry = secs < 10.f;
+    Color ic = hurry && std::fmod(gpGlobals->realtime, 0.5f) < 0.25f ? hudgo::Danger : Color{ 240, 196, 60, 255 };
+    if (VGUI_SvgIcon("weapon_c4")) HudSvgDraw("weapon_c4", bcx, bcy, bombH, ic);
+  } else if (lp && lp->m_bIsDefusing) {
+    HudArtDraw("defuse_icon", bcx - bombH * 0.5f, bcy - bombH * 0.5f, bombH, bombH);
   }
 
-  // round-win pips under the score columns
-  const float pipW = 4 * k, pipGap = 2 * k, pipH = 2.5f * k, pipY = py + rowH + 3 * k;
+  // round-win pips under the score row
+  const float pipW = 5 * k, pipGap = 2 * k, pipH = 2.5f * k, pipY = sTop + rowH + 3 * k;
   for (int i = 0; i < std::min(ctWin, 15); i++)
-    surface()->DrawFilledRect(px + aliveW + colW - (i + 1) * (pipW + pipGap), pipY, pipW, pipH, Alpha(hudgo::CT, 0.9f));
+    surface()->DrawFilledRect(colX + bgLeft - (i + 1) * (pipW + pipGap), pipY, pipW, pipH, { 0x6f, 0x9e, 0xc4, 235 });
   for (int i = 0; i < std::min(tWin, 15); i++)
-    surface()->DrawFilledRect(px + aliveW + colW * 2 + i * (pipW + pipGap), pipY, pipW, pipH, Alpha(hudgo::T, 0.9f));
-
+    surface()->DrawFilledRect(colX + bgLeft + gap + i * (pipW + pipGap), pipY, pipW, pipH, { 0xb9, 0x96, 0x36, 235 });
 }
 
 // bottom right: weapon name, grenade strip, ammo plate with "clip / reserve" and magazine pips
@@ -604,45 +604,33 @@ static void DrawAmmo(CCSPlayer* p, float sc) {
   const bool nade = wtype == WEAPONTYPE_GRENADE;
   if (!nade && !w->IsGun()) return;   // knife / C4: no ammo counter (like CS2)
 
-  // --- ammo plate ---
-  Cs2PlateRight(px, py, pw, ph, 120 * k, 0.88f);
+  // --- ammo plate (reference js/weaponammo.js: 340x59, ammo_plate art) ---
+  HudArtDraw("ammo_plate", px, py, pw, ph);
 
   const int clip = std::max(0, w->m_iClip1), res = std::max(0, w->m_iPrimaryReserveAmmoCount);
   char clipBuf[16]; snprintf(clipBuf, sizeof clipBuf, "%d", nade ? std::max(1, clip) : clip);
   const char* clipTxt = clipBuf;
-  const float clipSize = 44 * k, resSize = 24 * k;
+  const float clipSize = 44 * k, resSize = 24 * k;      // Wa.clipSize / Wa.reserveSize
+  const float clipRight = 160 * k, resRight = 110 * k;  // Wa.clipRight / Wa.reserveRight
+  const float magGap = 4 * k;                            // Wa.magGap (the ammo-type glyph itself is not shipped)
   Color cc = hudgo::Text;
-  bool low = false;
   if (!nade) {
-    if (clip == 0) { cc = hudgo::Danger; low = true; }
-    else if (w->m_pWeaponInfo && w->m_pWeaponInfo->clipSize > 0 && clip * 4 <= w->m_pWeaponInfo->clipSize) { cc = { 245, 205, 120, 250 }; low = true; }
+    if (clip == 0) cc = hudgo::Danger;
+    else if (w->m_pWeaponInfo && w->m_pWeaponInfo->clipSize > 0 && clip * 4 <= w->m_pWeaponInfo->clipSize) cc = { 245, 205, 120, 250 };
     if (w->m_bInReload) cc = Alpha(cc, 0.6f);
   }
-  (void)low;
   const float clipW = HudTextW(FONT_GO_HUGE, clipTxt, clipSize);
+  const float cy = py + ph * 0.5f;
+  HudTextGlow(FONT_GO_HUGE, clipTxt, right - clipRight - clipW, cy - clipSize * 0.60f, clipSize, cc);
 
-  if (nade) {
-    HudText(FONT_GO_HUGE, clipTxt, right - 160 * k - clipW, py + ph * 0.5f - clipSize * 0.62f, clipSize, cc);
-  } else {
-    // "clip / reserve" - clip big, slash dim, reserve smaller (reference: clipRight 160, reserveRight 110)
+  if (!nade) {
+    // "clip / reserve" with the ammo type icon on the right (real CS:GO / CS:S art, never a glyph)
     char resBuf[16]; snprintf(resBuf, sizeof resBuf, "%d", res); const char* resTxt = resBuf;
     const float resW = HudTextW(FONT_GO_HUGE, resTxt, resSize);
-    const float resRight = right - 110 * k;
-    HudText(FONT_GO_HUGE, resTxt, resRight - resW, py + ph * 0.5f - resSize * 0.55f, resSize, Alpha(hudgo::Text, 0.95f));
-    const float slashRight = resRight - resW - 4 * k;
-    HudText(FONT_GO_HUGE, "/", slashRight - HudTextW(FONT_GO_HUGE, "/", resSize), py + ph * 0.5f - resSize * 0.55f, resSize, Alpha(hudgo::Text, 0.4f));
-    HudText(FONT_GO_HUGE, clipTxt, right - 160 * k - clipW, py + ph * 0.5f - clipSize * 0.62f, clipSize, cc);
+    HudText(FONT_GO_HUGE, resTxt, right - resRight - resW, cy - resSize * 0.55f + 2 * k, resSize, hudgo::Text);
+    const float slashRight = right - resRight - resW - magGap;
+    HudText(FONT_GO_HUGE, "/", slashRight - HudTextW(FONT_GO_HUGE, "/", resSize), cy - resSize * 0.55f + 2 * k, resSize, Alpha(hudgo::Text, 0.4f));
 
-    // magazine icon left of the reserve count (reference: ammo_reserve_magazine.vsvg)
-    const float mx = right - 24 * k - 20 * k, my = py + ph * 0.5f - 15 * k;
-    Color mag = Alpha(hudgo::Text, 0.6f);
-    surface()->DrawOutlinedRect(mx, my, 20 * k, 30 * k, mag);
-    for (int b = 0; b < 3; b++) {
-      float bx = mx + 4 * k + b * 6 * k;
-      surface()->DrawFilledRect(bx, my + 6 * k, 5 * k, 17 * k, Alpha(hudgo::Text, 0.28f));
-      surface()->DrawFilledRect(bx, my + 6 * k, 5 * k, 5 * k, Alpha(hudgo::Text, 0.42f));   // bullet tip
-    }
-    surface()->DrawFilledRect(mx + 2 * k, my - 2 * k, 16 * k, 3 * k, mag);                    // base plate
   }
 }
 static void DrawLowHpVignette(CCSPlayer* p) {

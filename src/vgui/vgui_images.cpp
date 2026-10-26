@@ -103,6 +103,27 @@ static const Texture2D* LoadImageEx(const std::string& vtf, int flags) {
 
 const Texture2D* VGUI_Image(const std::string& vtf) { return LoadImageEx(vtf, 0); }
 
+// png (or any raylib-supported image) shipped next to the game, e.g. "assets/hud/hp_plate.png".
+// These are the CS2 HUD plates / icons from the mioxive/scaleform-hud-cs2 art folder, drawn as-is.
+const Texture2D* VGUI_FileTexture(const std::string& path) {
+  std::string key = "file:" + path;
+  auto it = s_images.find(key);
+  if (it == s_images.end()) {
+    Texture2D tex{};
+    if (FileExists(path.c_str())) {
+      Image img = LoadImage(path.c_str());
+      if (img.data) {
+        ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+        tex = LoadTextureFromImage(img);
+        SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+        UnloadImage(img);
+      }
+    }
+    it = s_images.emplace(key, tex).first;
+  }
+  return it->second.id ? &it->second : nullptr;
+}
+
 const Texture2D* VGUI_ItemImage(const char* name) {
   const char* svg = !strcmp(name, "kevlar") ? "item_kevlar" : !strcmp(name, "kevlar_helmet") ? "item_assaultsuit" : !strcmp(name, "defuser") ? "item_defuser" : nullptr;
   if (svg) if (const Texture2D* t = LoadSvgIcon(svg)) return t;
