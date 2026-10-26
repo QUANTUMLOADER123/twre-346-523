@@ -63,7 +63,7 @@ bool PressedIn(float x, float y, float w, float h) { return s_pressPos.x >= x &&
 // a click: released over the widget it was pressed on, and the finger did not scroll a list
 bool Clicked(float x, float y, float w, float h) { return In().mouseReleased && !s_dragScroll && !s_activeSlider && Over(x, y, w, h) && PressedIn(x, y, w, h); }
 void HoverSound(const char* id, bool hv) {
-  if (hv && s_lastHover != id) { EmitSound2D("UI.Rollover"); s_lastHover = id; }
+  if (hv && (s_lastHover.empty() || s_lastHover != id)) { EmitSound2D("UI.Rollover"); s_lastHover = id; }
   else if (!hv && s_lastHover == id) s_lastHover.clear();
 }
 Color Mix(Color a, Color b, float t) { return { (unsigned char)(a.r + (b.r - a.r) * t), (unsigned char)(a.g + (b.g - a.g) * t), (unsigned char)(a.b + (b.b - a.b) * t), (unsigned char)(a.a + (b.a - a.a) * t) }; }
@@ -591,89 +591,80 @@ void PaintLoadout() {
   const float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
   float pw = std::min(1400.f, W - 24.f), px = (W - pw) * 0.5f, py = TB, ph = H - TB;
   PanelBg(px, py, pw, ph, "LOADOUT");
+  
   ConVar* teamCv = FindConVar("cl_menu_team");
   int team = teamCv->GetInt() == TEAM_TERRORIST ? TEAM_TERRORIST : TEAM_CT;
   
-  // Team selector
-  float tx = px + 26, ty = py + 62, bw = 200.f;
-  if (FlatButton("COUNTER-TERRORISTS", tx, ty, bw, 34, team == TEAM_CT ? csgo::Alpha(csgo::Accent, 0.95f) : csgo::PanelLight, csgo::PanelHover)) teamCv->SetValue(TEAM_CT);
-  if (FlatButton("TERRORISTS", tx + bw + 8, ty, bw, 34, team == TEAM_TERRORIST ? csgo::Alpha(csgo::Gold, 0.95f) : csgo::PanelLight, csgo::PanelHover)) teamCv->SetValue(TEAM_TERRORIST);
-  team = teamCv->GetInt() == TEAM_TERRORIST ? TEAM_TERRORIST : TEAM_CT;
+  // Layout: loadout left (half), agent right (half)
+  const float halfW = (pw - 20.f) * 0.5f;
+  const float loadoutX = px + 10.f;
+  const float agentX = loadoutX + halfW + 10.f;
+  const float startY = py + 60.f;
+  const float bottomY = py + ph - 120.f; // line for available weapons
+  const float slotH = 60.f;
+  const float colW = (halfW - 24.f) / 3.f;
   
-  // Layout: agent left (200px), 3 columns center, unequipped right
-  const float agentW = 200.f;
-  const float colsW = pw - agentW - 60.f - 250.f; // 250 for unequipped
-  const float colW = (colsW - 24.f) / 3.f;
-  const float startX = px + 26.f + agentW + 10.f;
-  const float startY = ty + 50.f;
-  const float slotH = 70.f;
-  const float unequippedX = startX + colsW + 10.f;
-  const float unequippedW = 240.f;
+  // LEFT: Loadout columns
+  S()->DrawText(FONT_GO_TITLE, "LOADOUT", loadoutX, py + 20.f, csgo::Text);
   
-  // Draw agent on left
-  S()->DrawText(FONT_GO_BOLD, "AGENT", px + 26.f, ty + 50.f, csgo::TextDim);
-  // Agent preview (simplified - just text for now)
-  S()->DrawText(FONT_GO, "Agent model preview", px + 26.f, ty + 80.f, csgo::Text);
-  
-  // 3 columns
   for (int c = 0; c < 3; c++) {
-    float x = startX + c * (colW + 12.f);
+    float x = loadoutX + c * (colW + 12.f);
     S()->DrawText(FONT_GO_BOLD, Loadout_CategoryName(c), x, startY, csgo::TextDim);
     
-    // Get loadout slots for this category
     std::vector<LoadoutSlot2> slots = Loadout_GetSlots2(team);
     std::vector<int> slotWeapons;
     for (const auto& s : slots) {
       if (s.category == c) slotWeapons.push_back(s.weaponId);
     }
     
-    // Draw 5 slots
     for (int i = 0; i < 5; i++) {
-      float y = startY + 26.f + i * (slotH + 6.f);
+      float y = startY + 30.f + i * (slotH + 4.f);
+      if (y + slotH > bottomY - 10.f) break; // don't overflow into available area
+      
       int weaponId = (i < (int)slotWeapons.size()) ? slotWeapons[i] : 0;
       const CCSWeaponInfo* wi = weaponId ? GetWeaponInfo(weaponId) : nullptr;
-      
-      bool isLocked = (c == 0 && i == 0); // First pistol slot locked
+      bool isLocked = (c == 0 && i == 0);
       bool hv = Over(x, y, colW, slotH) && !isLocked;
-      std::string hid = std::string("lo2_") + std::to_string(c) + "_" + std::to_string(i);
+      
+      std::string hid = "lo_" + std::to_string(c) + "_" + std::to_string(i);
       HoverSound(hid.c_str(), hv);
       
       DrawRectangleRec({ x, y, colW, slotH }, hv ? csgo::PanelHover : isLocked ? csgo::Alpha(csgo::Panel, 0.4f) : csgo::Panel);
+      
       if (isLocked) {
-        S()->DrawText(FONT_GO, "LOCKED", x + 10.f, y + slotH * 0.5f - 10.f, csgo::TextDim);
+        S()->DrawText(FONT_GO, "LOCKED", x + colW * 0.5f - 30.f, y + slotH * 0.5f - 10.f, csgo::TextDim);
       } else if (wi) {
-        float imgH = slotH - 30.f;
+        float imgH = slotH - 24.f;
         if (const Texture2D* img = VGUI_WeaponImage(weaponId))
-          VGUI_DrawImageFit(*img, x + 10.f, y + 6.f, colW - 20.f, imgH, WHITE);
-        S()->DrawText(FONT_GO_BOLD, wi->printName, x + 10.f, y + slotH - 22.f, csgo::Text);
-      } else {
-        S()->DrawText(FONT_GO, "EMPTY", x + 10.f, y + slotH * 0.5f - 10.f, csgo::TextDim);
+          VGUI_DrawImageFit(*img, x + 8.f, y + 4.f, colW - 16.f, imgH, WHITE);
+        S()->DrawText(FONT_GO_BOLD, wi->printName, x + 8.f, y + slotH - 18.f, csgo::Text);
       }
       
-      // Click to open swap menu (simplified - cycle through available weapons)
-      if (Clicked(x, y, colW, slotH) && !isLocked) {
+      // Click to cycle weapon
+      if (Clicked(x, y, colW, slotH) && !isLocked && wi) {
         PlayClick();
         std::vector<int> available = Loadout_CategoryWeapons2(c, team);
-        // Find next weapon not in loadout
-        int currentIdx = 0;
+        int currentIdx = -1;
         for (int k = 0; k < (int)available.size(); k++) {
           if (available[k] == weaponId) { currentIdx = k; break; }
         }
-        int nextIdx = (currentIdx + 1) % available.size();
-        int newWeapon = available[nextIdx];
-        // Make sure it's not already equipped
-        for (int attempt = 0; attempt < (int)available.size(); attempt++) {
-          if (!Loadout_IsEquipped2(team, newWeapon)) break;
-          nextIdx = (nextIdx + 1) % available.size();
-          newWeapon = available[nextIdx];
+        // Find next unequipped weapon
+        for (int attempt = 1; attempt <= (int)available.size(); attempt++) {
+          int nextIdx = (currentIdx + attempt) % available.size();
+          int newWeapon = available[nextIdx];
+          if (!Loadout_IsEquipped2(team, newWeapon)) {
+            Loadout_SetWeapon2(team, c, i, newWeapon);
+            break;
+          }
         }
-        Loadout_SetWeapon2(team, c, i, newWeapon);
       }
     }
   }
   
-  // Unequipped weapons on right
-  S()->DrawText(FONT_GO_BOLD, "AVAILABLE", unequippedX, startY, csgo::TextDim);
+  // BOTTOM: Available weapons (drag source)
+  DrawRectangleRec({ px + 10.f, bottomY, pw - 20.f, 2.f }, csgo::Line);
+  S()->DrawText(FONT_GO_BOLD, "AVAILABLE — click to equip", px + 20.f, bottomY + 10.f, csgo::TextDim);
+  
   std::vector<int> allWeapons;
   for (int c = 0; c < 3; c++) {
     std::vector<int> catWeapons = Loadout_CategoryWeapons2(c, team);
@@ -684,18 +675,82 @@ void PaintLoadout() {
     }
   }
   
-  float uy = startY + 26.f;
+  float ax = px + 20.f, ay = bottomY + 35.f, aRowH = 44.f;
   for (int w : allWeapons) {
     const CCSWeaponInfo* wi = GetWeaponInfo(w);
     if (!wi) continue;
-    float rowH = 40.f;
-    bool hv = Over(unequippedX, uy, unequippedW, rowH);
+    float aW = 140.f;
+    if (ax + aW > px + pw - 10.f) { ax = px + 20.f; ay += aRowH + 4.f; }
+    if (ay + aRowH > py + ph - 10.f) break;
+    
+    bool hv = Over(ax, ay, aW, aRowH);
     HoverSound("avail", hv);
-    DrawRectangleRec({ unequippedX, uy, unequippedW, rowH }, hv ? csgo::PanelHover : csgo::Alpha(csgo::Panel, 0.6f));
+    DrawRectangleRec({ ax, ay, aW, aRowH }, hv ? csgo::PanelHover : csgo::Alpha(csgo::Panel, 0.6f));
     if (const Texture2D* img = VGUI_WeaponImage(w))
-      VGUI_DrawImageFit(*img, unequippedX + 6.f, uy + 4.f, 32.f, rowH - 8.f, WHITE);
-    S()->DrawText(FONT_GO, wi->printName, unequippedX + 44.f, uy + rowH * 0.5f - 8.f, csgo::Text);
-    uy += rowH + 4.f;
+      VGUI_DrawImageFit(*img, ax + 4.f, ay + 4.f, 36.f, aRowH - 8.f, WHITE);
+    S()->DrawText(FONT_GO, wi->printName, ax + 44.f, ay + aRowH * 0.5f - 8.f, csgo::Text);
+    
+    // Click available weapon → equip to first empty slot in its category
+    if (Clicked(ax, ay, aW, aRowH)) {
+      PlayClick();
+      // Find which category this weapon belongs to
+      for (int c = 0; c < 3; c++) {
+        std::vector<int> catW = Loadout_CategoryWeapons2(c, team);
+        if (std::find(catW.begin(), catW.end(), w) != catW.end()) {
+          // Find first empty or replaceable slot
+          std::vector<LoadoutSlot2> slots = Loadout_GetSlots2(team);
+          for (auto& s : slots) {
+            if (s.category == c && !s.locked && s.weaponId == 0) {
+              Loadout_SetWeapon2(team, c, s.slotIndex, w);
+              goto next_weapon;
+            }
+          }
+          // If no empty slot, replace last slot
+          for (auto& s : slots) {
+            if (s.category == c && !s.locked) {
+              Loadout_SetWeapon2(team, c, s.slotIndex, w);
+              break;
+            }
+          }
+          break;
+        }
+      }
+      next_weapon:;
+    }
+    ax += aW + 6.f;
+  }
+  
+  // RIGHT: Agent preview + team selector
+  S()->DrawText(FONT_GO_TITLE, "AGENT", agentX, py + 20.f, csgo::Text);
+  
+  // Team buttons
+  float bw = 180.f, bx = agentX, by = py + 60.f;
+  if (FlatButton("COUNTER-TERRORISTS", bx, by, bw, 34, team == TEAM_CT ? csgo::Alpha(csgo::Accent, 0.95f) : csgo::PanelLight, csgo::PanelHover)) teamCv->SetValue(TEAM_CT);
+  if (FlatButton("TERRORISTS", bx + bw + 8.f, by, bw, 34, team == TEAM_TERRORIST ? csgo::Alpha(csgo::Gold, 0.95f) : csgo::PanelLight, csgo::PanelHover)) teamCv->SetValue(TEAM_TERRORIST);
+  team = teamCv->GetInt() == TEAM_TERRORIST ? TEAM_TERRORIST : TEAM_CT;
+  
+  // Agent model preview (render agent)
+  ConVar* agentCv = FindConVar("cl_menu_agent");
+  int agent = agentCv ? agentCv->GetInt() : 0;
+  PlayerPoseInput in;
+  in.origin = Vector(agentX + halfW * 0.5f, py + ph * 0.5f, 0);
+  in.footYaw = 180.f;
+  in.eyeAngles = QAngle(0, 180.f, 0);
+  in.duckAmount = 0;
+  in.moveCycle = 0;
+  in.moveSpeed = 0;
+  in.moveYaw = 0;
+  in.onGround = true;
+  in.weaponId = 0;
+  CSS_DrawAgent(team, agent, in, {});
+  
+  // Agent selector arrows
+  if (FlatButton("<", agentX + 20.f, py + ph - 80.f, 40.f, 40.f, csgo::Panel, csgo::PanelHover)) {
+    if (agentCv) agentCv->SetValue((agent + 3) % 4);
+  }
+  S()->DrawText(FONT_GO_BOLD, CSS_AgentName(team, agent), agentX + 70.f, py + ph - 70.f, csgo::Text);
+  if (FlatButton(">", agentX + halfW - 60.f, py + ph - 80.f, 40.f, 40.f, csgo::Panel, csgo::PanelHover)) {
+    if (agentCv) agentCv->SetValue((agent + 1) % 4);
   }
 }
 
