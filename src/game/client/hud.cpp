@@ -297,8 +297,7 @@ static void DrawHealthArmor(CCSPlayer* p, float sc) {
   float startX = W - 20 * sc - totalW;
   
   // Background
-  surface()->DrawSetColor(0, 0, 0, 160);
-  surface()->DrawFilledRect(startX - 8 * sc, y - 4 * sc, startX + totalW + 8 * sc, y + isz + 12 * sc);
+  surface()->DrawFilledRect(startX - 8 * sc, y - 4 * sc, totalW + 16 * sc, isz + 16 * sc, { 0, 0, 0, 160 });
   
   // HP icon + number
   Color c = HUD; if (hp <= 25) { c = scheme::HudRed; if (std::fmod(gpGlobals->realtime, 0.6f) < 0.3f) c.a = 140; }
@@ -319,11 +318,10 @@ static void DrawTimer(float sc) {
   
   // CS:GO style: score at top center (CT | TIMER | T)
   int ctScore = 0, tScore = 0;
-  for (int i = 1; i <= gpGlobals->maxClients; i++) {
-    CCSPlayer* p = (CCSPlayer*)Player::GetByIndex(i);
-    if (!p || !p->IsConnected()) continue;
-    if (p->m_iTeamNum == TEAM_CT) ctScore += p->m_iFrags;
-    else if (p->m_iTeamNum == TEAM_TERRORIST) tScore += p->m_iFrags;
+  for (CCSPlayer* p : UTIL_GetPlayers()) {
+    if (!p) continue;
+    if (p->m_iTeamNum == TEAM_CT) ctScore += p->m_iKills;
+    else if (p->m_iTeamNum == TEAM_TERRORIST) tScore += p->m_iKills;
   }
   
   float t;
@@ -350,8 +348,7 @@ static void DrawTimer(float sc) {
   float startX = W * 0.5f - totalW * 0.5f;
   
   // Background panel
-  surface()->DrawSetColor(0, 0, 0, 180);
-  surface()->DrawFilledRect(startX - 10 * sc, topY, startX + totalW + 10 * sc, topY + 40 * sc);
+  surface()->DrawFilledRect(startX - 10 * sc, topY, totalW + 20 * sc, 40 * sc, { 0, 0, 0, 180 });
   
   // CT score
   Color ctColor = {100, 150, 255, 255};
