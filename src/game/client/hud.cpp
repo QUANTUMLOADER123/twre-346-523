@@ -365,17 +365,32 @@ void DrawWeaponGlyph(int wtype, float x, float y, float w, float h, Color c) {
 // ------------------------------------------------------------------------------------------------
 static float Cs2K(float sc) { return sc * (768.f / 1080.f); }   // reference 1080p values -> our screen
 
-// left-to-right alpha ramp drawn as thin strips (smooth in the software renderer as well)
-static void HudFadeH(float x, float y, float w, float h, Color solid, bool solidLeft, int steps = 32) {
-  steps = std::max(4, steps);
-  const float sw = w / steps;
-  for (int i = 0; i < steps; i++) {
-    const float t = (i + 0.5f) / steps;                 // 0 = left edge, 1 = right edge
-    const float a = solidLeft ? (1.f - t) : t;
-    Color c = solid;
-    c.a = (unsigned char)(solid.a * Clamp(a, 0.f, 1.f));
-    surface()->DrawFilledRect(x + i * sw, y, sw + 1, h, c);
+// 1D alpha ramp baked into a texture once (real bilinear gradient - no visible steps / strips).
+// The CS2 money plate is gradient(#00000000 -> .25 #000000f6 -> #000000f6): solid on the left,
+// fading out over the right quarter.
+static const Texture2D* HudRampTex() {
+  static Texture2D tex{};
+  if (!tex.id) {
+    const int n = 256;
+    static unsigned char px[n * 4];
+    for (int i = 0; i < n; i++) {
+      const float t = (i + 0.5f) / n;                                  // 0 = left edge, 1 = right edge
+      const float a = t < 0.75f ? 1.f : 1.f - (t - 0.75f) / 0.25f;      // color-stop 0.25 (from the right)
+      px[i * 4 + 0] = 0; px[i * 4 + 1] = 0; px[i * 4 + 2] = 0;
+      px[i * 4 + 3] = (unsigned char)(255.f * a);
+    }
+    Image im{ px, n, 1, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+    tex = LoadTextureFromImage(im);
+    SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+    SetTextureWrap(tex, TEXTURE_WRAP_CLAMP);
   }
+  return &tex;
+}
+// gradient plate: solid on the left, alpha ramps to 0 at the right edge
+static void HudGradientPlate(float x, float y, float w, float h, Color tint) {
+  const Texture2D* t = HudRampTex();
+  if (!t || !t->id) return;
+  DrawTexturePro(*t, { 0, 0, (float)t->width, 1 }, { x, y, w, h }, { 0, 0 }, 0, tint);
 }
 static void HudArtDraw(const char* name, float x, float y, float w, float h, Color tint = WHITE) {
   std::string path = std::string("assets/hud/") + name + ".png";
@@ -405,10 +420,7 @@ static void DrawMoney(CCSPlayer* p, float sc) {
   s_lastMoney = p->m_iAccount;
   const float since = gpGlobals->realtime - s_moneyDeltaTime;
 
-  const Color plate = { 0, 0, 0, 0xf6 };
-  const float fade = pw * 0.25f;                    // color-stop 0.25
-  surface()->DrawFilledRect(x, y, pw - fade + 1, ph, plate);
-  HudFadeH(x + pw - fade, y, fade, ph, plate, true, 40);
+  HudGradientPlate(x, y, pw, ph, { 255, 255, 255, 0xf6 });   // #000000f6 baked in the ramp
 
   // money row: buy-zone icon (green, only inside the buy zone) then the amount
   float rx = x + rowLeft;
@@ -509,26 +521,23 @@ static void DrawTimer(float sc) {
   HudTextGlowCentered(FONT_GO_HUGE, ctAliveTxt, px + cell * 0.5f, py + cell * 0.5f - aliveSize * 0.55f + 2 * k, aliveSize, WHITE, 140);
   HudTextGlowCentered(FONT_GO_HUGE, tAliveTxt, colX + colW * 2 + cell * 0.5f, py + cell * 0.5f - aliveSize * 0.55f + 2 * k, aliveSize, WHITE, 140);
 
-  // timer row + score row (two halves with a 1px gap between them)
-  const float colInner = colW - 2 * k;
-  const float sTop = py + rowH + gap;
-  const float bgRight = std::floor((colW - gap) * 0.5f), bgLeft = colW - gap - bgRight;
-  surface()->DrawFilledRect(colX, py, colInner, rowH, plate);
-  surface()->DrawFilledRect(colX, sTop, bgLeft, rowH, plate);
-  surface()->DrawFilledRect(colX + bgLeft + gap, sTop, bgRight, rowH, plate);
+  // one plate for the timer and the score (CS:GO draws a single rectangle, not a box per digit)
+  const float plateH = rowH * 2;
+  surface()->DrawFilledRect(colX, py, colW, plateH, plate);
 
   Color tc = hudgo::Text;
   if (planted) { if (secs < 10.f && std::fmod(gpGlobals->realtime, 0.5f) < 0.25f) tc = hudgo::Danger; }
-  else if (secs < 10.f) tc = hudgo::Danger;
-  HudTextGlowCentered(FONT_GO_HUGE, timerBuf, colX + colInner * 0.5f, py + rowH * 0.5f - 23 * k * 0.58f, 23 * k, tc);
+  else if (!freeze && secs < 10.f) tc = hudgo::Danger;   // freeze time stays white
+  HudTextGlowCentered(FONT_GO_HUGE, timerBuf, colX + colW * 0.5f, py + rowH * 0.5f - 23 * k * 0.58f, 23 * k, tc);
 
-  const float scoreSize = 22 * k;
-  HudTextGlowCentered(FONT_GO_HUGE, ctWinTxt, colX + bgLeft * 0.5f, sTop + rowH * 0.5f - scoreSize * 0.58f, scoreSize, { 0x6f, 0x9e, 0xc4, 255 });
-  HudTextGlowCentered(FONT_GO_HUGE, tWinTxt, colX + bgLeft + gap + bgRight * 0.5f, sTop + rowH * 0.5f - scoreSize * 0.58f, scoreSize, { 0xb9, 0x96, 0x36, 255 });
+  // scores: CT left, T right, the same distance from the plate centre (22.5 / 52.5 of 75)
+  const float scoreSize = 22 * k, scoreY = py + rowH + rowH * 0.5f - scoreSize * 0.58f;
+  HudTextGlowCentered(FONT_GO_HUGE, ctWinTxt, colX + colW * 0.28f, scoreY, scoreSize, { 0x6f, 0x9e, 0xc4, 255 });
+  HudTextGlowCentered(FONT_GO_HUGE, tWinTxt, colX + colW * 0.72f, scoreY, scoreSize, { 0xb9, 0x96, 0x36, 255 });
 
-  // bomb / defuse status: centred in the gap of the score row (reference bombHeight 84, y -19)
-  const float bcx = colX + colW * 0.5f, bcy = sTop + rowH * 0.5f;
-  const float bombH = 20 * k;
+  // bomb / defuse status: in the middle of the score row, between the two numbers
+  const float bcx = colX + colW * 0.5f, bcy = py + rowH + rowH * 0.5f;
+  const float bombH = 16 * k;
   if (planted) {
     const bool hurry = secs < 10.f;
     Color ic = hurry && std::fmod(gpGlobals->realtime, 0.5f) < 0.25f ? hudgo::Danger : Color{ 240, 196, 60, 255 };
@@ -538,11 +547,12 @@ static void DrawTimer(float sc) {
   }
 
   // round-win pips under the score row
-  const float pipW = 5 * k, pipGap = 2 * k, pipH = 2.5f * k, pipY = sTop + rowH + 3 * k;
+  const float pipW = 5 * k, pipGap = 2 * k, pipH = 2.5f * k, pipY = py + plateH + 3 * k;
+  const float pcx = colX + colW * 0.5f;
   for (int i = 0; i < std::min(ctWin, 15); i++)
-    surface()->DrawFilledRect(colX + bgLeft - (i + 1) * (pipW + pipGap), pipY, pipW, pipH, { 0x6f, 0x9e, 0xc4, 235 });
+    surface()->DrawFilledRect(pcx - 4 * k - (i + 1) * (pipW + pipGap), pipY, pipW, pipH, { 0x6f, 0x9e, 0xc4, 235 });
   for (int i = 0; i < std::min(tWin, 15); i++)
-    surface()->DrawFilledRect(colX + bgLeft + gap + i * (pipW + pipGap), pipY, pipW, pipH, { 0xb9, 0x96, 0x36, 235 });
+    surface()->DrawFilledRect(pcx + 4 * k + i * (pipW + pipGap), pipY, pipW, pipH, { 0xb9, 0x96, 0x36, 235 });
 }
 
 // bottom right: weapon name, grenade strip, ammo plate with "clip / reserve" and magazine pips
