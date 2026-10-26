@@ -282,34 +282,30 @@ static void HudNumber(int font, const char* t, float x, float y, Color c) {
 
 // ------------------------------------------------------------------------------------------------
 static void DrawHealthArmor(CCSPlayer* p, float sc) {
-  // CS:GO style: HP/Armor at bottom RIGHT
+  // CS:GO style: HP/Armor at bottom LEFT with dark gradient background
   int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  float y = H - 52 * sc, isz = 26 * sc;
+  float y = H - 60 * sc, isz = 28 * sc;
   int hp = std::max(0, p->m_iHealth);
+  int armor = p->m_ArmorValue;
   
-  // Calculate width
-  char hpStr[32], armorStr[32];
-  snprintf(hpStr, sizeof(hpStr), "%d", hp);
-  snprintf(armorStr, sizeof(armorStr), "%d", p->m_ArmorValue);
-  float hpW = surface()->GetTextSize(FONT_HUD_NUMBERS, hpStr).x;
-  float armorW = surface()->GetTextSize(FONT_HUD_NUMBERS, armorStr).x;
-  float totalW = isz + 10 * sc + hpW + 30 * sc + isz + 10 * sc + armorW;
-  float startX = W - 20 * sc - totalW;
+  // Background with gradient (dark, semi-transparent)
+  float bgW = 220 * sc, bgH = 50 * sc;
+  float bgX = 20 * sc, bgY = y - 10 * sc;
+  surface()->DrawFilledRect(bgX, bgY, bgW, bgH, { 0, 0, 0, 200 });
+  surface()->DrawFilledRect(bgX, bgY, bgW, bgH * 0.3f, { 40, 40, 40, 150 });  // lighter top
   
-  // Background
-  surface()->DrawFilledRect(startX - 8 * sc, y - 4 * sc, totalW + 16 * sc, isz + 16 * sc, { 0, 0, 0, 160 });
-  
-  // HP icon + number
-  Color c = HUD; if (hp <= 25) { c = scheme::HudRed; if (std::fmod(gpGlobals->realtime, 0.6f) < 0.3f) c.a = 140; }
-  c.a = (unsigned char)(c.a * 0.86f);
-  BeginBlendMode(BLEND_ADDITIVE); IconCross(startX, y + 6 * sc, isz, c); EndBlendMode();
-  HudNumber(FONT_HUD_NUMBERS, hpStr, startX + isz + 10 * sc, y, c);
+  // HP icon + number (white text)
+  Color hpColor = WHITE; if (hp <= 25) { hpColor = scheme::HudRed; if (std::fmod(gpGlobals->realtime, 0.6f) < 0.3f) hpColor.a = 140; }
+  BeginBlendMode(BLEND_ADDITIVE); IconCross(bgX + 10 * sc, bgY + 12 * sc, isz, hpColor); EndBlendMode();
+  HudNumber(FONT_HUD_NUMBERS, TextFormat("%d", hp), bgX + 10 * sc + isz + 8 * sc, bgY + 8 * sc, hpColor);
   
   // Armor icon + number
-  float ax = startX + isz + 10 * sc + hpW + 30 * sc;
-  Color ac = HUD; ac.a = 220;
-  BeginBlendMode(BLEND_ADDITIVE); IconShield(ax, y + 5 * sc, isz, ac, p->m_bHasHelmet); EndBlendMode();
-  HudNumber(FONT_HUD_NUMBERS, armorStr, ax + isz + 10 * sc, y, ac);
+  if (armor > 0) {
+    Color armorColor = WHITE;
+    float ax = bgX + 10 * sc + isz + 8 * sc + 60 * sc;
+    BeginBlendMode(BLEND_ADDITIVE); IconShield(ax, bgY + 12 * sc, isz, armorColor, p->m_bHasHelmet); EndBlendMode();
+    HudNumber(FONT_HUD_NUMBERS, TextFormat("%d", armor), ax + isz + 8 * sc, bgY + 8 * sc, armorColor);
+  }
 }
 
 static void DrawTimer(float sc) {
@@ -367,40 +363,46 @@ static void DrawTimer(float sc) {
 static void DrawAmmoMoney(CCSPlayer* p, float sc) {
   int W = surface()->ScreenWide(), H = surface()->ScreenTall();
   C_WeaponCSBase* w = p->GetActiveCSWeapon();
-  Color c = HUD; c.a = 220;
-  float y = H - 52 * sc;
+  
+  // Ammo and money at bottom RIGHT with dark gradient background
+  float bgW = 280 * sc, bgH = 50 * sc;
+  float bgX = W - bgW - 20 * sc, bgY = H - bgH - 10 * sc;
+  
+  // Background with gradient
+  surface()->DrawFilledRect(bgX, bgY, bgW, bgH, { 0, 0, 0, 200 });
+  surface()->DrawFilledRect(bgX, bgY, bgW, bgH * 0.3f, { 40, 40, 40, 150 });
+  
+  float y = bgY + 10 * sc;
+  Color white = WHITE;
+  
   if (w && (w->IsGun() || w->GetWeaponType() == WEAPONTYPE_GRENADE)) {
     std::string txt;
     if (w->GetWeaponType() == WEAPONTYPE_GRENADE) txt = TextFormat("%d", std::max(1, w->m_iClip1));
     else txt = TextFormat("%d | %d", std::max(0, w->m_iClip1), w->m_iPrimaryReserveAmmoCount);
     float tw = surface()->GetTextSize(FONT_HUD_NUMBERS, txt.c_str()).x;
-    float x = W - 30 * sc - tw - 30 * sc;
-    Color cc = c; if (w->IsGun() && w->m_iClip1 == 0) cc = scheme::HudRed;
-    HudNumber(FONT_HUD_NUMBERS, txt.c_str(), x, y, cc);
-    BeginBlendMode(BLEND_ADDITIVE); IconBullet(W - 40 * sc, y + 6 * sc, 26 * sc, cc); EndBlendMode();
-    // silhouette of the weapon left of the counter
-    if (const Texture2D* ic = VGUI_WeaponIcon(w->m_iWeaponID)) {
-      float ih = 26 * sc, iw = std::min(ih * ic->width / (float)std::max(1, ic->height), 110 * sc);
-      Color tc = c; tc.a = 170;
-      DrawTexturePro(*ic, { 0, 0, (float)ic->width, (float)ic->height }, { x - iw - 16 * sc, y + 8 * sc, iw, ih }, { 0, 0 }, 0, tc);
-    }
+    float x = bgX + bgW - 30 * sc - tw;
+    Color ammoColor = white; if (w->IsGun() && w->m_iClip1 == 0) ammoColor = scheme::HudRed;
+    HudNumber(FONT_HUD_NUMBERS, txt.c_str(), x, y, ammoColor);
+    BeginBlendMode(BLEND_ADDITIVE); IconBullet(bgX + bgW - 40 * sc, y + 6 * sc, 26 * sc, ammoColor); EndBlendMode();
   }
-  // money
+  
+  // Money (above ammo)
   if (s_lastMoney >= 0 && p->m_iAccount != s_lastMoney) { s_moneyDelta = p->m_iAccount - s_lastMoney; s_moneyDeltaTime = gpGlobals->realtime; }
   s_lastMoney = p->m_iAccount;
-  const char* mt = TextFormat("%d", p->m_iAccount);
+  const char* mt = TextFormat("$%d", p->m_iAccount);
   float mw = surface()->GetTextSize(FONT_HUD_NUMBERS, mt).x;
-  float my = H - 104 * sc; float mx = W - 30 * sc - mw;
-  Color mc = c; if (gpGlobals->realtime - s_moneyDeltaTime < 0.5f && s_moneyDelta < 0) mc = scheme::HudRed;
-  HudNumber(FONT_HUD_NUMBERS, mt, mx, my, mc);
-  BeginBlendMode(BLEND_ADDITIVE); surface()->DrawText(FONT_HUD_NUMBERS, "$", mx - 32 * sc, my, mc); EndBlendMode();
+  float my = bgY - 30 * sc;
+  Color moneyColor = white; if (gpGlobals->realtime - s_moneyDeltaTime < 0.5f && s_moneyDelta < 0) moneyColor = scheme::HudRed;
+  HudNumber(FONT_HUD_NUMBERS, mt, bgX + bgW - 30 * sc - mw, my, moneyColor);
+  
   float since = gpGlobals->realtime - s_moneyDeltaTime;
   if (since < 3.f && s_moneyDelta != 0) {
     Color dc = s_moneyDelta > 0 ? Color{ 80, 230, 80, 255 } : scheme::HudRed; dc.a = (unsigned char)(255 * Clamp(3.f - since, 0.f, 1.f));
     const char* dt = TextFormat("%s%d", s_moneyDelta > 0 ? "+" : "-", std::abs(s_moneyDelta));
-    surface()->DrawTextRight(FONT_HUD_SMALL, dt, W - 30 * sc, my - 22 * sc, dc, true);
+    surface()->DrawTextRight(FONT_HUD_SMALL, dt, bgX + bgW - 20 * sc, my - 22 * sc, dc, true);
   }
-  // status icons (left side, 1.6: buy zone, c4, defuser)
+  
+  // status icons (left side: buy zone, c4, defuser)
   float ix = 20 * sc, iy = H * 0.5f;
   if (p->m_bInBuyZone && !CSGameRules()->IsBuyTimeElapsed()) { BeginBlendMode(BLEND_ADDITIVE); surface()->DrawText(FONT_HUD_NUMBERS, "$", ix, iy, { 60, 220, 60, 220 }); EndBlendMode(); iy += 46 * sc; }
   if (p->HasC4()) { Color cc = p->m_bInBombZone ? (std::fmod(gpGlobals->realtime, 0.5f) < 0.25f ? Color{ 60, 255, 60, 255 } : Color{ 30, 120, 30, 255 }) : Color{ 60, 200, 60, 200 }; BeginBlendMode(BLEND_ADDITIVE); IconC4(ix, iy, 28 * sc, cc); EndBlendMode(); iy += 40 * sc; }

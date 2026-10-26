@@ -96,7 +96,10 @@ static std::vector<BuyItem> GetCategory(int cat, int team) {
       add("smokegrenade", WEAPON_SMOKEGRENADE, "Smoke Grenade", GetWeaponInfo(WEAPON_SMOKEGRENADE)->price, 0, nullptr);
       break;
     }
-    default:
+    case LOADOUT_CAT_PISTOLS:
+    case LOADOUT_CAT_HEAVY:
+    case LOADOUT_CAT_SMGS:
+    case LOADOUT_CAT_RIFLES:
       for (int id : Loadout_CategoryWeapons(cat, team)) {
         const CCSWeaponInfo* wi = GetWeaponInfo(id); if (!wi) continue;
         out.push_back({ WeaponIdToAlias(id), id, wi->printName, wi->price, wi->team, nullptr });
@@ -116,11 +119,12 @@ static const Texture2D* ItemImage(const BuyItem& it) { return it.image ? VGUI_It
 static const Texture2D* CategoryImage(int cat, int team) {
   switch (cat) {
     case LOADOUT_CAT_PISTOLS: return VGUI_WeaponImage(WEAPON_DEAGLE);
-    case LOADOUT_CAT_HEAVY: return VGUI_WeaponImage(WEAPON_XM1014);
-    case LOADOUT_CAT_SMGS: return VGUI_WeaponImage(WEAPON_P90);
+    case LOADOUT_CAT_HEAVY:
+    case LOADOUT_CAT_SMGS: return VGUI_WeaponImage(WEAPON_P90);  // MidTier
     case LOADOUT_CAT_RIFLES: return VGUI_WeaponImage(team == TEAM_CT ? WEAPON_M4A1 : WEAPON_AK47);
     case LOADOUT_CAT_GEAR: return VGUI_ItemImage("kevlar_helmet");
-    default: return VGUI_WeaponImage(WEAPON_HEGRENADE);
+    case LOADOUT_CAT_GRENADES: return VGUI_WeaponImage(WEAPON_HEGRENADE);
+    default: return nullptr;
   }
 }
 
