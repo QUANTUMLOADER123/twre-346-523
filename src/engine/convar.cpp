@@ -1,3 +1,6 @@
+#if defined(PLATFORM_ANDROID)
+#include <android/log.h>
+#endif
 #include "convar.hpp"
 #include <cstdarg>
 #include <cstdio>
@@ -83,6 +86,9 @@ ConCommand::ConCommand(const char* name, Callback cb, const char* help, int flag
 std::vector<ConsoleLine>& ConsoleHistory() { static std::vector<ConsoleLine> v; return v; }
 std::vector<ConsoleLine>& ConsoleNotify() { static std::vector<ConsoleLine> v; return v; }
 static void PushLine(const Color32& c, const char* text, bool notify) {
+#if defined(PLATFORM_ANDROID)
+  __android_log_write(ANDROID_LOG_INFO, "cshvh", text);   // console mirrored to logcat (adb logcat -s cshvh)
+#endif
   auto& h = ConsoleHistory();
   // split by newline; append to last line if it did not end with newline
   static bool lastOpen = false;

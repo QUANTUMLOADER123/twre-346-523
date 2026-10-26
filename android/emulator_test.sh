@@ -31,7 +31,7 @@ PID1=$(adb shell pidof com.cshvh.game | tr -d '\r')
 adb shell am force-stop com.cshvh.game
 D=/sdcard/Android/data/com.cshvh.game/files
 printf 'bot_quota 4\nmp_freezetime 1\nmap de_mirage\njointeam 2\njoinclass 1\n' > /tmp/autoexec.cfg
-adb push /tmp/autoexec.cfg $D/cfg/autoexec.cfg
+PUSH=$(adb push /tmp/autoexec.cfg $D/cfg/autoexec.cfg 2>&1; adb shell ls -la $D $D/cfg 2>&1)
 adb shell am start -n com.cshvh.game/android.app.NativeActivity
 sleep 30
 shot map
@@ -40,7 +40,8 @@ adb shell input swipe 300 800 300 500 2500; sleep 1
 adb shell input swipe 1800 600 1500 600 800; sleep 4
 shot moved
 PID=$(adb shell pidof com.cshvh.game | tr -d '\r')
+note "push" "$PUSH"
 note "alive" "menu: pid=${PID1:-DEAD}, in game: pid=${PID:-DEAD}"
-LOG=$(adb logcat -d | grep -E " (cshvh|raylib|DEBUG|libc|AndroidRuntime) *:|FATAL|Fatal signal" | grep -v "Access denied finding\|ro.build.fingerprint" | tail -60)
+LOG=$(adb logcat -d | grep -E " (cshvh|raylib|DEBUG|libc) *:|FATAL|Fatal signal" | grep -v -e "Access denied finding" -e "ro.build.fingerprint" -e "Loaded model" | cut -c 19- | tail -45)
 note "logcat" "$LOG"
 [ -n "$PID" ] || exit 1
