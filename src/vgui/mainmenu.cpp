@@ -933,7 +933,6 @@ void SettingsTab(int tab) {
     CvChoice("FPS limit", "fps_max", { { "30", "30" }, { "60", "60" }, { "90", "90" }, { "120", "120" }, { "144", "144" }, { "240", "240" }, { "300", "300" }, { "Unlimited", "0" } });
     Header("QUALITY");
     CvSlider("Brightness", "r_src_lightscale", 0.6f, 2.f, 0.05f, "%.2f");
-    CvChoice("Texture quality (next map)", "mat_texture_limit", { { "Low", "256" }, { "Medium", "512" }, { "High", "1024" }, { "Very high", "2048" } });
     CvToggle("Fade distant props", "r_propfade");
     CvChoice("Skip tiny props", "r_propscreencull", { { "Off", "0" }, { "< 2 px", "2" }, { "< 4 px (faster)", "4" }, { "< 8 px (fastest)", "8" } });
     CvToggle("Player blob shadows", "r_shadows");

@@ -58,7 +58,7 @@ static void LoadMenuBackground() {
   std::string map = sv_menu_background.GetString();
   if (!srcfs::Exists("maps/" + map + ".bsp")) {
     // the configured map is not there (a fresh install, or an old map name): use the nicest map that is
-    static const char* kPreferred[] = { "de_dust2_old", "de_mirage_ce", "de_inferno_old", "de_nuke_ve", "cs_office", "fy_pool_day" };
+    static const char* kPreferred[] = { "de_dust2_old", "de_mirage_ce", "de_inferno_old", "de_nuke_ve", "de_vertigo", "de_train2014" };
     std::string pick;
     for (const char* c : kPreferred) if (srcfs::Exists(std::string("maps/") + c + ".bsp")) { pick = c; break; }
     if (pick.empty()) {

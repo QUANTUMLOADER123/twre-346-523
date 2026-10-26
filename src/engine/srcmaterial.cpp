@@ -12,12 +12,8 @@
 #include <cmath>
 #include <algorithm>
 
-#ifdef CS_HEADLESS
-ConVar mat_texture_limit("mat_texture_limit", "256", FCVAR_ARCHIVE, "Max texture size for CS:S materials (applied on map load)", true, 16, true, 4096);
-#else
-ConVar mat_texture_limit("mat_texture_limit", "2048", FCVAR_ARCHIVE, "Max texture size for CS:S materials (applied on map load)", true, 16, true, 4096);
-#endif
-int SrcMat_TextureLimit() { return mat_texture_limit.GetInt(); }
+// Every VTF is decoded at its own full resolution: downscaling a map texture made some CS:GO materials
+// (scaled/split ones) line up with the wrong size and the surface came out as garbage.
 
 // ------------------------------------------------------------------------------------------------
 // VTF
@@ -183,7 +179,7 @@ const TexEntry& LoadTex(const std::string& name) {
   auto it = s_tex.find(key); if (it != s_tex.end()) return it->second;
   TexEntry e;
   std::vector<uint8_t> file, rgba; int w = 0, h = 0, fw = 0, fh = 0;
-  if (srcfs::Read("materials/" + key + ".vtf", file) && VTF_Decode(file, rgba, w, h, SrcMat_TextureLimit(), &fw, &fh)) {
+  if (srcfs::Read("materials/" + key + ".vtf", file) && VTF_Decode(file, rgba, w, h, 16384, &fw, &fh)) {
     e.tex = Upload(rgba, w, h); e.fullW = fw; e.fullH = fh; e.ok = true;
     for (size_t i = 3; i < rgba.size(); i += 4) if (rgba[i] < 250) { e.hasAlpha = true; break; }
   }
