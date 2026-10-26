@@ -33,6 +33,9 @@ namespace fs = std::filesystem;
 // The maps are the real VBSP v21 CS:GO builds, so their own materials / cubemaps that are packed inside the bsp
 // (lump 40) come along with them.
 ConVar cl_content_url_maps("cl_content_url_maps", "https://raw.githubusercontent.com/wiktorxxiii/csgo-fastdl/HEAD/csgo/", FCVAR_ARCHIVE, "Base url of the CS:GO maps (maps/*.bsp)");
+// real CS:GO maps (official builds with their materials / props packed inside)
+ConVar cl_content_url_maps_go("cl_content_url_maps_go", "https://raw.githubusercontent.com/wiktorxxiii/csgo-fastdl/HEAD/csgo/", FCVAR_ARCHIVE, "Base url of the CS:GO map mirror (bare maps/x.bsp entries)");
+ConVar cl_content_url_maps_go_api("cl_content_url_maps_go_api", "https://api.github.com/repos/wiktorxxiii/csgo-fastdl/contents/csgo/%s?ref=HEAD", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the CS:GO maps");
 ConVar cl_content_url_maps_api("cl_content_url_maps_api", "https://api.github.com/repos/wiktorxxiii/csgo-fastdl/contents/csgo/%s?ref=HEAD", FCVAR_ARCHIVE, "Fallback url template (%s = file) of the CS:GO maps");
 
 // The shared Source asset library that provides the agents (4 CT + 4 T), the weapon models, the sound effects and the
@@ -59,21 +62,28 @@ const char* kExtras = "content/extras";
 
 // curated CS:GO map set for HvH / deathmatch. Relative entries come from cl_content_url_maps, absolute ones from
 // other public CS:GO FastDL mirrors (a map is a single .bsp file, so every map can live on its own repo).
+// Curated map list: the popular old maps (plus the HvH classics). Each line is a full url so one pack can pull
+// from several mirrors; `cl_content_url_maps_go` is only used for the bare "maps/x.bsp" entries.
 const char* const s_csgoMapFiles[] = {
-  // the popular maps, in their old CS:GO versions (the ones the FastDL mirrors still carry). Each of them brings its
-  // own materials / props / sky inside the bsp (lump 40), so they look right without any extra texture download.
-  "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp", "maps/de_nuke_old.bsp",
-  "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp",
-  "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/de_dust2_old.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_shorttrain/de_shorttrain.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
+  // community fastdl mirror (mostly Source-engine rebuilds of the classics)
+  "maps/de_dust2_16toGO.bsp", "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp",
+  "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp", "maps/de_rats_1337.bsp",
+  // HvH / aim / surf classics
+  "maps/aim_deagle_lego.bsp", "maps/aim_z_pool_stalker_go.bsp", "maps/aim_redline.bsp", "maps/awp_lego_fix_pro_v2.bsp",
+  "maps/fy_pool_day.bsp", "maps/surf_ski_2_GO.bsp", "maps/6v6_ak_m4a1.bsp", "maps/am_mario_arena_1v1.bsp",
+  // real CS:GO geometry (achievement-map conversions of the stock maps)
   "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_dust/de_dust.bsp",
-  // small HvH warm-up maps
-  "maps/aim_redline.bsp", "maps/fy_pool_day.bsp", "maps/6v6_ak_m4a1.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_aztec/de_aztec.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_shorttrain/de_shorttrain.bsp",
+  // more old versions
+  "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/de_dust2_old.bsp",
+  "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/aim_multi_v4.bsp",
+  "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/aim_deagle.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/aim_map_usp.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/awp_india.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/fy_snow.bsp",
-  "https://raw.githubusercontent.com/vunghichngomdz/csgo-fastdl/HEAD/csgo/maps/1v1.bsp",
+  "https://raw.githubusercontent.com/vunghichngomdz/csgo-fastdl/HEAD/maps/1v1.bsp",
   nullptr };
 
 const char* const s_r8Files[] = {
@@ -111,6 +121,7 @@ const char* const s_csgoFiles[] = {
   "sound/weapons/csgo/incgrenade/inc_grenade_detonate_1.wav", "sound/weapons/csgo/incgrenade/inc_grenade_bounce-1.wav",
   nullptr };
 #include "content_base.inc"
+#include "content_weapons.inc"
 
 #define ICON(n) "svg_normal/" n ".svg"
 const char* const s_iconFiles[] = {
@@ -130,11 +141,14 @@ Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-constexpr int kPacks = 5;
+constexpr int kPacks = 6;
 Pack s_packs[kPacks] = {
-  { "csgomaps2", "CS:GO maps", nullptr, 365, s_csgoMapFiles, "content/extras/csgo_maps", false },
-  // agents (4 CT + 4 T), weapon models, sound effects and sound scripts - the exact file list in content_base.inc
-  { "base2", "Agents, weapons and sounds", nullptr, 84, s_baseFiles, "content/css/cstrike", false },
+  { "maps_go", "CS:GO maps (old versions)", nullptr, 580, s_csgoMapFiles, "content/extras/csgo_maps", false },
+  // agents (4 CT + 4 T), the CS:S weapon models used for guns on the ground, sound effects, sound scripts and the
+  // stock Source map textures our CS:GO maps are missing (only the materials they actually reference are listed)
+  { "base3", "Agents, sounds and map textures", nullptr, 126, s_baseFiles, "content/css/cstrike", false },
+  // CS:GO weapon view models + their materials (the exact list is content_weapons.inc)
+  { "weapons", "CS:GO weapon models", nullptr, 320, s_weaponFiles, "content/extras/csgo_weapons", false },
   { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
   { "csgo", "CS:GO SCAR-20, SSG 08, molotov", nullptr, 22, s_csgoFiles, "content/extras/csgo_gsr", false },
   { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
@@ -340,7 +354,7 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
 }
 #else
 bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const char* accept = nullptr) {
-  std::string cmd = "curl -fsSL --connect-timeout 20 " + (accept ? std::string("-H 'Accept: ") + accept + "' " : std::string()) + "'" + url + "'";
+  std::string cmd = "curl -fsSL --connect-timeout 10 --max-time 120 --retry 1 " + (accept ? std::string("-H 'Accept: ") + accept + "' " : std::string()) + "'" + url + "'";
   FILE* f = popen(cmd.c_str(), "r");
   if (!f) { err = "curl not found"; return false; }
   std::vector<uint8_t> buf(256 * 1024);
@@ -360,6 +374,7 @@ bool PackWanted(const Pack& p) {
   // a local CS:GO install already has every stock map and every texture, so both packs are not needed then
   if (!p.core && p.files == s_csgoMapFiles && s_haveCsgo) return false;
   if (p.files == s_baseFiles && s_haveCsgo) return false;   // a CS:GO install brings its own agents, weapons and sounds
+  if (p.files == s_weaponFiles && s_haveCsgo) return false; // ... and its own CS:GO view models
   return !p.core || s_needCore;
 }
 
@@ -396,9 +411,20 @@ bool WriteFileAtomic(const fs::path& path, const std::vector<uint8_t>& data, std
   return true;
 }
 
+// https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>  ->  https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>
+std::string JsDelivrUrl(const std::string& rawUrl) {
+  const std::string kRaw = "https://raw.githubusercontent.com/";
+  if (rawUrl.rfind(kRaw, 0) != 0) return std::string();
+  std::string rest = rawUrl.substr(kRaw.size());
+  size_t s1 = rest.find('/'); if (s1 == std::string::npos) return std::string();
+  size_t s2 = rest.find('/', s1 + 1); if (s2 == std::string::npos) return std::string();
+  size_t s3 = rest.find('/', s2 + 1); if (s3 == std::string::npos) return std::string();
+  return "https://cdn.jsdelivr.net/gh/" + rest.substr(0, s2) + "@" + rest.substr(s2 + 1, s3 - s2 - 1) + rest.substr(s3);
+}
+
 // single-file pack: every file from <url><file>, falling back to the API template
 bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& err) {
-  size_t bytes = 0; int files = 0, failed = 0;
+  size_t bytes = 0; int files = 0, failed = 0, failStreak = 0;
   for (const char* const* f = p.files; *f; f++) {
     if (s_cancel) return false;
     const bool absolute = std::strncmp(*f, "http://", 7) == 0 || std::strncmp(*f, "https://", 8) == 0;
@@ -427,21 +453,36 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
           apiUrl = "https://api.github.com/repos/" + rest.substr(0, s2) + "/contents/" + rest.substr(s3 + 1) + "?ref=HEAD";
       }
     }
-    bool ok = HttpGet(absolute ? std::string(*f) : std::string(p.url) + *f, sink, e1);
-    if (!ok && !s_cancel) {
-      data.clear();
-      if (!apiUrl.empty()) ok = HttpGet(apiUrl, sink, e2, "application/vnd.github.raw");
-      else if (!absolute) {
-        char url[1024]; snprintf(url, sizeof(url), p.api ? p.api : cl_content_url_r8_api.GetString(), *f);
-        ok = HttpGet(url, sink, e2, "application/vnd.github.raw");
-      }
+    const std::string rawUrl = absolute ? std::string(*f) : std::string(p.url) + *f;
+    // mirrors, in order: the jsDelivr CDN (no rate limit and reachable where raw.githubusercontent.com is blocked),
+    // raw.githubusercontent.com, then the GitHub contents API
+    std::vector<std::string> cands;
+    { std::string jd = JsDelivrUrl(rawUrl); if (!jd.empty()) cands.push_back(jd); }
+    cands.push_back(rawUrl);
+    {
+      char url[1024];
+      if (!apiUrl.empty()) cands.push_back(apiUrl);
+      else if (!absolute) { snprintf(url, sizeof(url), p.api ? p.api : cl_content_url_r8_api.GetString(), *f); cands.push_back(url); }
+    }
+    bool ok = false;
+    for (size_t ci = 0; ci < cands.size() && !ok && !s_cancel; ci++) {
+      if (ci) data.clear();
+      if (cands[ci].rfind("https://api.github.com/", 0) == 0) ok = HttpGet(cands[ci], sink, e2, "application/vnd.github.raw");
+      else ok = HttpGet(cands[ci], sink, e1);
     }
     if (!ok || data.empty()) {
       // one dead mirror must not kill the whole pack: remember it, keep going, retry on the next start
       if (err.empty()) err = std::string(*f) + ": " + (e2.empty() ? e1 : e2);
-      failed++;
+      failed++; failStreak++;
+      // no mirror answers at all: stop early with a clear reason instead of grinding through thousands of files
+      if (failStreak >= 16 && files == 0) {
+        s_prog.error = "GitHub is not reachable from this network (" + (e2.empty() ? e1 : e2) + ")";
+        return false;
+      }
+      if (failed > 64 && failed > files) { s_prog.error = "GitHub keeps dropping the connection (" + (e2.empty() ? e1 : e2) + ")"; return false; }
       continue;
     }
+    failStreak = 0;
     if (!WriteFileAtomic(dst, data, err)) return false;
     files++;
     std::lock_guard<std::mutex> l(s_mtx); s_prog.files = filesBefore + files;
@@ -451,11 +492,12 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
 
 void Worker() {
   PruneStaleMaps();
-  s_packs[0].url = cl_content_url_maps.GetString(); s_packs[0].api = cl_content_url_maps_api.GetString();
+  s_packs[0].url = cl_content_url_maps_go.GetString(); s_packs[0].api = cl_content_url_maps_go_api.GetString();
   s_packs[1].url = cl_content_url_base.GetString(); s_packs[1].api = cl_content_url_base_api.GetString();
-  s_packs[2].url = cl_content_url_r8.GetString(); s_packs[2].api = cl_content_url_r8_api.GetString();
-  s_packs[3].url = cl_content_url_csgo.GetString(); s_packs[3].api = cl_content_url_csgo_api.GetString();
-  s_packs[4].url = cl_content_url_icons.GetString(); s_packs[4].api = cl_content_url_icons_api.GetString();
+  s_packs[2].url = cl_content_url_csgo.GetString(); s_packs[2].api = cl_content_url_csgo_api.GetString();
+  s_packs[3].url = cl_content_url_r8.GetString(); s_packs[3].api = cl_content_url_r8_api.GetString();
+  s_packs[4].url = cl_content_url_csgo.GetString(); s_packs[4].api = cl_content_url_csgo_api.GetString();
+  s_packs[5].url = cl_content_url_icons.GetString(); s_packs[5].api = cl_content_url_icons_api.GetString();
   double expected = 0; for (auto& p : s_packs) if (PackWanted(p)) expected += p.approxMB;
   { std::lock_guard<std::mutex> l(s_mtx); s_prog = Progress(); s_prog.state = RUNNING; s_prog.packCount = kPacks; s_prog.totalExpectedMB = expected; }
   std::error_code ec;

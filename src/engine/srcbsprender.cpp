@@ -77,7 +77,11 @@ void CWorldRenderer::BuildSrc() {
   bool fullbright = mat_fullbright.GetBool();
   // ---- materials
   std::vector<const SrcMaterial*> mats(W.materials.size());
-  for (size_t i = 0; i < W.materials.size(); i++) mats[i] = &SrcMat_Find(W.materials[i]);
+  int matOk = 0, matFallback = 0;
+  for (size_t i = 0; i < W.materials.size(); i++) {
+    mats[i] = &SrcMat_Find(W.materials[i]);
+    if (mats[i]->ok) matOk++; else matFallback++;
+  }
   // ---- lightmap atlas
   struct Slot { int x = -1, y = -1; };
   std::vector<Slot> slot(W.faces.size());
@@ -221,8 +225,8 @@ void CWorldRenderer::BuildSrc() {
   numTris = tris; numVerts = tris * 3; numChunks = (int)m_bspChunks.size();
   bakeSeconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - t0).count();
   src = true;
-  Msg("World (CS:S): %d tris, %d batches, lightmap %dx%d, %d props (%d tris, %d missing models), sky '%s' %s, built in %.2fs\n",
-      numTris, numChunks, AW, AH, (int)m_srcProps.size(), propTris, missing, W.skyName.c_str(), m_hasSky ? "ok" : "missing", bakeSeconds);
+  Msg("World (Source): %d tris, %d batches, lightmap %dx%d, %d props (%d tris, %d missing models), sky '%s' %s, materials %d/%d resolved, built in %.2fs\n",
+      numTris, numChunks, AW, AH, (int)m_srcProps.size(), propTris, missing, W.skyName.c_str(), m_hasSky ? "ok" : "missing", matOk, matOk + matFallback, bakeSeconds);
 }
 
 void CWorldRenderer::DrawSrcSky(const CViewSetup& v) {

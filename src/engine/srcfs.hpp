@@ -32,6 +32,7 @@ std::string LoosePath(const std::string& rel);      // real path of a loose file
 std::vector<std::string> List(const std::string& relDir, const std::string& ext);   // file stems in a directory
 // map pakfile
 void MountPak(std::vector<uint8_t> zip);
+int PakFileCount();                                  // files inside the mounted bsp pakfile (diagnostics)
 void UnmountPak();
 std::string Normalize(const std::string& rel);      // lower case, forward slashes, no leading slash, no "./"
 // where SteamCMD installs the dedicated server by default

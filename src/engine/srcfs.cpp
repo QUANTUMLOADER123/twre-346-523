@@ -344,6 +344,7 @@ void MountPak(std::vector<uint8_t> zip) {
     p += 46 + nl + xl + cl;
   }
 }
+int PakFileCount() { return (int)S().pakFiles.size(); }
 void UnmountPak() { State& s = S(); s.pak.clear(); s.pak.shrink_to_fit(); s.pakFiles.clear(); }
 
 std::string DefaultInstallDir() { return "content/css"; }

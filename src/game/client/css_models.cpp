@@ -112,12 +112,50 @@ const CSrcModel* LoadedOrNull(const CSrcModel* m) { return m && !m->meshes.empty
 // barrel along +z and the top along +y), shifted by `mirrorOffset` (barrel height / grip, measured offline from the meshes)
 struct CsgoModel { int wid; const char* view; const char* world; const char* mirrorRoot; Vector mirrorOffset; };
 const CsgoModel kCsgoModels[] = {
+  // every CS:GO weapon: the c_ model is the CS:GO view model without hands (the agent's arms are merged on)
+  { WEAPON_GLOCK, "models/weapons/csgo/c_pist_glock.mdl" },
+  { WEAPON_USP_SILENCER, "models/weapons/csgo/c_pist_usp.mdl" },
+  { WEAPON_P250, "models/weapons/csgo/c_pist_p250.mdl" },
+  { WEAPON_DEAGLE, "models/weapons/csgo/c_pist_deagle.mdl" },
+  { WEAPON_ELITE, "models/weapons/csgo/c_pist_elite.mdl" },
+  { WEAPON_FIVESEVEN, "models/weapons/csgo/c_pist_fiveseven.mdl" },
+  { WEAPON_TEC9, "models/weapons/csgo/c_pist_tec9.mdl" },
+  { WEAPON_CZ75A, "models/weapons/csgo/c_pist_cz75.mdl" },
+  { WEAPON_HKP2000, "models/weapons/csgo/c_pist_p2000.mdl" },
+  { WEAPON_MAC10, "models/weapons/csgo/c_smg_mac10.mdl" },
+  { WEAPON_MP9, "models/weapons/csgo/c_smg_mp9.mdl" },
+  { WEAPON_MP7, "models/weapons/csgo/c_smg_mp7.mdl" },
+  { WEAPON_MP5SD, "models/weapons/csgo/c_smg_mp5sd.mdl" },
+  { WEAPON_UMP45, "models/weapons/csgo/c_smg_ump.mdl" },
+  { WEAPON_P90, "models/weapons/csgo/c_smg_p90.mdl" },
+  { WEAPON_BIZON, "models/weapons/csgo/c_smg_bizon.mdl" },
+  { WEAPON_GALILAR, "models/weapons/csgo/c_rif_galilar.mdl" },
+  { WEAPON_FAMAS, "models/weapons/csgo/c_rif_famas.mdl" },
+  { WEAPON_AK47, "models/weapons/csgo/c_rif_ak47.mdl" },
+  { WEAPON_M4A1, "models/weapons/csgo/c_rif_m4a1.mdl" },
+  { WEAPON_M4A1_SILENCER, "models/weapons/csgo/c_rif_m4a1_s.mdl" },
+  { WEAPON_SG556, "models/weapons/csgo/c_rif_sg556.mdl" },
+  { WEAPON_AUG, "models/weapons/csgo/c_rif_aug.mdl" },
+  { WEAPON_NOVA, "models/weapons/csgo/c_shot_nova.mdl" },
+  { WEAPON_XM1014, "models/weapons/csgo/c_shot_xm1014.mdl" },
+  { WEAPON_MAG7, "models/weapons/csgo/c_shot_mag7.mdl" },
+  { WEAPON_SAWEDOFF, "models/weapons/csgo/c_shot_sawedoff.mdl" },
+  { WEAPON_M249, "models/weapons/csgo/c_mach_m249.mdl" },
+  { WEAPON_NEGEV, "models/weapons/csgo/c_mach_negev.mdl" },
+  { WEAPON_AWP, "models/weapons/csgo/c_snip_awp.mdl" },
+  { WEAPON_G3SG1, "models/weapons/csgo/c_snip_g3sg1.mdl" },
+  { WEAPON_KNIFE, "models/weapons/csgo/knifes/v_knife_default_ct.mdl" },
+  // grenades / C4: view model plus the real CS:GO world model
+  { WEAPON_HEGRENADE, "models/weapons/csgo/v_eq_fraggrenade.mdl", "models/weapons/csgo/w_eq_fraggrenade.mdl" },
+  { WEAPON_FLASHBANG, "models/weapons/csgo/v_eq_flashbang.mdl", "models/weapons/csgo/w_eq_flashbang.mdl" },
+  { WEAPON_SMOKEGRENADE, "models/weapons/csgo/v_eq_smoke.mdl", "models/weapons/csgo/w_eq_smoke_grenade.mdl" },
+  { WEAPON_C4, "models/weapons/csgo/v_eq_c4.mdl", "models/weapons/csgo/w_eq_c4.mdl" },
+  // snipers with a separate scope model: the c_ gun is mirrored onto the gun bone and the scope hangs on its parent bone
   { WEAPON_SCAR20, "models/weapons/csgo/c_snip_scar20.mdl", nullptr, "v_weapon.SCAR_Parent", Vector(-1.08f, -5.48f, -3.54f) },
   { WEAPON_SSG08, "models/weapons/csgo/c_snip_ssg08.mdl", nullptr, "v_weapon.ssg08_parent", Vector(0.28f, -4.28f, -3.f) },
   { WEAPON_MOLOTOV, "models/weapons/csgo/v_eq_molotov.mdl", "models/weapons/csgo/w_eq_molotov.mdl", nullptr, {} },
   { WEAPON_INCGRENADE, "models/weapons/csgo/v_eq_incediary.mdl", "models/weapons/csgo/w_eq_incendiary.mdl", nullptr, {} },
-};
-// ARC9 GSR guns have no built-in optics: the scope is a separate model on the gun root bone (SWEP.Attachments "optics":
+};// ARC9 GSR guns have no built-in optics: the scope is a separate model on the gun root bone (SWEP.Attachments "optics":
 // Bone/Pos/Ang + the attachment's ModelOffset/Scale)
 struct CsgoScope { const char* gun; const char* scope; const char* bone; Vector pos; Vector modelOffset; float scale; };
 const CsgoScope kCsgoScopes[] = {
@@ -132,7 +170,7 @@ const CsgoModel* CsgoModelFor(int wid) {
 }
 // gun drawn from its c_ view model in third person (nullptr: use the w_ model)
 const CSrcModel* MirrorWeapon(int wid, const CsgoModel** info = nullptr) {
-  const CsgoModel* c = CsgoModelFor(wid); if (!c || c->world) return nullptr;
+  const CsgoModel* c = CsgoModelFor(wid); if (!c || c->world || !c->mirrorRoot) return nullptr;   // view model only
   const CSrcModel* m = LoadedOrNull(SrcMdl_Get(c->view)); if (!m || m->seqs.empty()) return nullptr;
   if (info) *info = c;
   return m;
@@ -390,7 +428,7 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
         ConcatTransforms(out.cssBones[hand], gripInv, fix);
         for (auto& b : standIn) { matrix3x4_t t; ConcatTransforms(fix, b, t); b = t; }
       }
-      int wb = wm->FindBone("ValveBiped.weapon_bone"), root = mirror->FindBone(mi->mirrorRoot);
+      int wb = wm->FindBone("ValveBiped.weapon_bone"), root = mi->mirrorRoot ? mirror->FindBone(mi->mirrorRoot) : -1;
       if (wb >= 0 && root >= 0) {
         thread_local std::vector<Vector> cp; thread_local std::vector<Quat> cq; thread_local std::vector<matrix3x4_t> cb;
         SrcSeqRef idle = mirror->FindSeq("idle"); if (!idle) idle = { mirror, 0, -1 };
@@ -493,12 +531,45 @@ void DrawViewModelArms(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBo
   }
   SrcMdl_Draw(*pm, armBones, xf, dp, 0, &mask);
 }
+// the CS:GO models of the ARC9 port have no ACT_* activities - their sequences are named by hand ("idle", "shoot1",
+// "reload", "draw", ...), so an activity is mapped to the matching label when the activity search finds nothing
+const char* const* VmLabelFor(const char* act) {
+  static const char* const kIdle[] = { "idle", nullptr };
+  static const char* const kIdleEmpty[] = { "idle_empty", "idle", nullptr };
+  static const char* const kShoot[] = { "shoot1", "shoot", nullptr };
+  static const char* const kShootAlt[] = { "shoot1_alt", "shoot1", nullptr };
+  static const char* const kDryfire[] = { "shoot1_empty", "shoot1", nullptr };
+  static const char* const kReload[] = { "reload", "reload_short", nullptr };
+  static const char* const kDraw[] = { "draw", nullptr };
+  static const char* const kHolster[] = { "holster", nullptr };
+  static const char* const kMelee[] = { "melee", "melee2", "melee3", nullptr };
+  static const char* const kPullpin[] = { "pullpin", "draw", nullptr };
+  static const char* const kThrow[] = { "throw", "shoot1", nullptr };
+  const std::string a = act;
+  if (a == "ACT_VM_IDLE") return kIdle;
+  if (a == "ACT_VM_IDLE_EMPTY") return kIdleEmpty;
+  if (a == "ACT_VM_HAULBACK") return kShootAlt;
+  if (a == "ACT_VM_DRYFIRE") return kDryfire;
+  if (a == "ACT_VM_PRIMARYATTACK") return kShoot;
+  if (a == "ACT_VM_RELOAD" || a == "ACT_VM_ATTACH_SILENCER" || a == "ACT_VM_DETACH_SILENCER") return kReload;
+  if (a == "ACT_VM_DRAW" || a == "ACT_VM_READY") return kDraw;
+  if (a == "ACT_VM_HOLSTER") return kHolster;
+  if (a == "ACT_VM_HITCENTER" || a == "ACT_VM_MISSCENTER" || a == "ACT_VM_SECONDARYATTACK") return kMelee;
+  if (a == "ACT_VM_PULLPIN") return kPullpin;
+  if (a == "ACT_VM_THROW" || a == "ACT_VM_PLANT") return kThrow;
+  return nullptr;
+}
 SrcSeqRef PickVm(const CSrcModel& m, std::initializer_list<const char*> acts, bool silenced, int variant) {
   for (const char* a : acts) {
     std::vector<SrcSeqRef> v;
     if (silenced) v = m.FindSeqsByActivity(std::string(a) + "_SILENCED");
     if (v.empty()) v = m.FindSeqsByActivity(a);
     if (!v.empty()) return v[(size_t)std::max(0, variant) % v.size()];
+  }
+  for (const char* a : acts) {
+    if (const char* const* labels = VmLabelFor(a)) {
+      for (const char* const* l = labels; *l; l++) { int s = m.FindSequence(*l); if (s >= 0) return { &m, s, -1 }; }
+    }
   }
   return {};
 }

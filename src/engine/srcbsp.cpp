@@ -147,7 +147,10 @@ bool CSrcBsp::Load(const std::string& mapName) {
   auto count = [&](int i, int sz) { return L[i].len / sz; };
 
   // pakfile first: materials referenced below may live inside the map
-  if (L[LUMP_PAKFILE].len > 0) srcfs::MountPak(std::vector<uint8_t>(lump(LUMP_PAKFILE), lump(LUMP_PAKFILE) + L[LUMP_PAKFILE].len));
+  if (L[LUMP_PAKFILE].len > 0) {
+    srcfs::MountPak(std::vector<uint8_t>(lump(LUMP_PAKFILE), lump(LUMP_PAKFILE) + L[LUMP_PAKFILE].len));
+    Msg("%s: pakfile %d KB, %d files mounted\n", mapName.c_str(), (int)(L[LUMP_PAKFILE].len / 1024), srcfs::PakFileCount());
+  }
 
   ParseEntities((const char*)lump(LUMP_ENTITIES), L[LUMP_ENTITIES].len, entities);
   for (auto& e : entities) if (e.Class() == "worldspawn") skyName = e.Get("skyname", "sky_dust");
