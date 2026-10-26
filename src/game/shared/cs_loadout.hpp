@@ -1,22 +1,30 @@
-// cs_loadout.hpp - CS:GO style loadout: some buy menu slots hold one of two guns (M4A4 / M4A1-S, P2000 / USP-S, ...)
-// The choice is made per team in the main menu (LOADOUT) and stored in archived convars (loadout_*).
+// cs_loadout.hpp - CS2-style loadout: agent left, 3 columns × 5 slots, unequipped right
 #pragma once
 #include <vector>
 
-struct LoadoutSlot {
-  const char* cvar;      // convar holding the chosen weapon alias
-  const char* title;     // slot name shown in the loadout screen
-  int team;              // TEAM_CT / TEAM_TERRORIST
-  int category;          // buy menu category (see LOADOUT_CAT_*)
-  int optionA, optionB;  // weapon ids, optionA = default
-};
-enum { LOADOUT_CAT_PISTOLS = 0, LOADOUT_CAT_HEAVY, LOADOUT_CAT_SMGS, LOADOUT_CAT_RIFLES, LOADOUT_CAT_GEAR, LOADOUT_CAT_GRENADES, LOADOUT_NUM_CATEGORIES };
+// Categories for the new loadout
+enum { LOADOUT_PISTOLS = 0, LOADOUT_MIDTIER, LOADOUT_RIFLES, LOADOUT_NUM_NEW };
 
-const std::vector<LoadoutSlot>& Loadout_Slots();
-int Loadout_Get(const LoadoutSlot& s);                 // chosen weapon id (falls back to optionA)
-void Loadout_Set(const LoadoutSlot& s, int weaponId);
-// weapons of a buy menu category for the team (max 6, CS:GO layout, loadout choices applied).
-// Gear / grenades return an empty list (they are not weapons with a loadout).
-std::vector<int> Loadout_CategoryWeapons(int category, int team);
-int Loadout_StartPistol(int team, bool bot);           // spawn pistol (CT: P2000 / USP-S)
+struct LoadoutSlot2 {
+  int category;     // LOADOUT_PISTOLS / MIDTIER / RIFLES
+  int slotIndex;    // 0..4
+  int weaponId;     // currently equipped (0 = empty)
+  int defaultWeapon; // fallback
+  bool locked;      // slot 0 in PISTOLS is always Glock/USP
+};
+
+// Get all 15 slots (3 cats × 5) for a team
+std::vector<LoadoutSlot2> Loadout_GetSlots2(int team);
+
+// Set weapon for a slot
+void Loadout_SetWeapon2(int team, int category, int slotIndex, int weaponId);
+
+// Get all weapons available for a category (for "unequipped" list)
+std::vector<int> Loadout_CategoryWeapons2(int category, int team);
+
+// Check if weapon is equipped
+bool Loadout_IsEquipped2(int team, int weaponId);
+
+// Legacy compatibility
 const char* Loadout_CategoryName(int category);
+int Loadout_StartPistol(int team, bool bot);
