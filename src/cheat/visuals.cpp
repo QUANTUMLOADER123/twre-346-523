@@ -126,7 +126,13 @@ bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& l
     DrawModelWithWeapon(pose, wpn, tp);
     return true;
   }
-  if (s.glow) { StudioDrawParams gp = base; gp.flags = STUDIO_FLAT_COLOR | STUDIO_NO_DEPTH | STUDIO_WIREFRAME; gp.colorOverride = s.glowCol; DrawModelWithWeapon(pose, false, gp); }
+  if (s.glow) {
+    // CS:GO-style glow: draw model slightly larger with semi-transparent color (outline effect)
+    StudioDrawParams gp = base;
+    gp.flags = STUDIO_FLAT_COLOR | STUDIO_NO_DEPTH;
+    gp.colorOverride = { s.glowCol.r, s.glowCol.g, s.glowCol.b, 80 }; // semi-transparent
+    DrawModelWithWeapon(pose, false, gp);
+  }
   if (s.chamsXqz) { StudioDrawParams xp = base; xp.flags = MaterialFlags() | STUDIO_NO_DEPTH; if (xp.flags & STUDIO_TINT) xp.flags = (xp.flags & ~STUDIO_TINT) | STUDIO_FLAT_COLOR; xp.colorOverride = s.chamsXqzCol; DrawModelWithWeapon(pose, wpn, xp); }
   if (s.chams) { StudioDrawParams vp = base; vp.flags = MaterialFlags(); vp.colorOverride = s.chamsCol; DrawModelWithWeapon(pose, wpn, vp); }
   else DrawModelWithWeapon(pose, wpn, base);

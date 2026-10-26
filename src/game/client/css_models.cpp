@@ -407,7 +407,7 @@ static void DrawCsgoScope(const CSrcModel& gun, const std::vector<matrix3x4_t>& 
     const Vector F(0, 0, 1), R(-1, 0, 0), U(0, 1, 0);
     Vector org = Vector(sc.pos.x, -sc.pos.y, sc.pos.z) + F * sc.modelOffset.x + R * sc.modelOffset.y + U * sc.modelOffset.z;
     matrix3x4_t local;
-    const Vector cx = F, cy = R * -1.f, cz = U;   // model axes in the gun frame (checked: eyepiece at the back, objective bell forward)
+    const Vector cx = R * -1.f, cy = F, cz = U;   // scope model: Y=forward (Source), X=left, Z=up
     for (int i = 0; i < 3; i++) { local[i][0] = cx[i] * sc.scale; local[i][1] = cy[i] * sc.scale; local[i][2] = cz[i] * sc.scale; local[i][3] = org[i]; }
     matrix3x4_t att; ConcatTransforms(bones[b], local, att);
     thread_local std::vector<matrix3x4_t> sb; thread_local std::vector<Vector> pos; thread_local std::vector<Quat> q;
