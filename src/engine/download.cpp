@@ -62,23 +62,19 @@ const char* kExtras = "content/extras";
 
 // curated CS:GO map set for HvH / deathmatch. Relative entries come from cl_content_url_maps, absolute ones from
 // other public CS:GO FastDL mirrors (a map is a single .bsp file, so every map can live on its own repo).
-// Curated map list: the popular old maps (plus the HvH classics). Each line is a full url so one pack can pull
-// from several mirrors; `cl_content_url_maps_go` is only used for the bare "maps/x.bsp" entries.
+// Curated map list - only the popular maps, and only their old versions:
+//   dust2, inferno, mirage, nuke, vertigo, train (2014), shorttrain, cs_office + the small HvH classics.
+// Every map can live on its own mirror (full urls), so one dead repository never breaks the pack.
 const char* const s_csgoMapFiles[] = {
-  // community fastdl mirror (mostly Source-engine rebuilds of the classics)
-  "maps/de_dust2_16toGO.bsp", "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp",
-  "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp", "maps/de_rats_1337.bsp",
-  // HvH / aim / surf classics
-  "maps/aim_deagle_lego.bsp", "maps/aim_z_pool_stalker_go.bsp", "maps/aim_redline.bsp", "maps/awp_lego_fix_pro_v2.bsp",
-  "maps/fy_pool_day.bsp", "maps/surf_ski_2_GO.bsp", "maps/6v6_ak_m4a1.bsp", "maps/am_mario_arena_1v1.bsp",
-  // real CS:GO geometry (achievement-map conversions of the stock maps)
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_dust/de_dust.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_aztec/de_aztec.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_shorttrain/de_shorttrain.bsp",
-  // more old versions
+  // the classics, old versions
+  "maps/de_inferno_old.bsp", "maps/de_mirage_ce.bsp", "maps/de_nuke_ve.bsp",
   "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/de_dust2_old.bsp",
-  "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/aim_multi_v4.bsp",
+  "https://raw.githubusercontent.com/Roblox90864/CSGOMapArchive/HEAD/maps/de_vertigo.bsp",
+  "https://raw.githubusercontent.com/Roblox90864/CSGOMapArchive/HEAD/maps/de_train2014.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_shorttrain/de_shorttrain.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
+  // small HvH classics (a few MB each)
+  "maps/aim_redline.bsp", "maps/6v6_ak_m4a1.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/aim_deagle.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/aim_map_usp.bsp",
   "https://raw.githubusercontent.com/GeorgeTefnadze/csgo-fastdl/HEAD/maps/awp_india.bsp",
@@ -143,10 +139,10 @@ std::thread s_thread;
 
 constexpr int kPacks = 6;
 Pack s_packs[kPacks] = {
-  { "maps_go", "CS:GO maps (old versions)", nullptr, 580, s_csgoMapFiles, "content/extras/csgo_maps", false },
+  { "maps_go2", "CS:GO maps (old versions)", nullptr, 253, s_csgoMapFiles, "content/extras/csgo_maps", false },
   // agents (4 CT + 4 T), the CS:S weapon models used for guns on the ground, sound effects, sound scripts and the
   // stock Source map textures our CS:GO maps are missing (only the materials they actually reference are listed)
-  { "base3", "Agents, sounds and map textures", nullptr, 126, s_baseFiles, "content/css/cstrike", false },
+  { "base3", "Agents, sounds and map textures", nullptr, 86, s_baseFiles, "content/css/cstrike", false },
   // CS:GO weapon view models + their materials (the exact list is content_weapons.inc)
   { "weapons", "CS:GO weapon models", nullptr, 320, s_weaponFiles, "content/extras/csgo_weapons", false },
   { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
