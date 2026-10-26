@@ -210,6 +210,8 @@ int FallbackMaterialId(const std::string& key) {
   return MAT_CONCRETE;
 }
 Texture2D Checker();
+// a missing vmt / vtf (a map that carries neither) falls back to the closest procedural Source surface picked from
+// the material name, so an untextured map still looks like concrete / sand / metal instead of a checkerboard
 Texture2D FallbackTex(const std::string& key) {
   if (materials->initialized) {
     MaterialInfo& mi = materials->Get(FallbackMaterialId(key));

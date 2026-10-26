@@ -132,7 +132,7 @@ std::thread s_thread;
 
 constexpr int kPacks = 5;
 Pack s_packs[kPacks] = {
-  { "csgomaps", "CS:GO maps", nullptr, 580, s_csgoMapFiles, "content/extras/csgo_maps", false },
+  { "csgomaps2", "CS:GO maps", nullptr, 580, s_csgoMapFiles, "content/extras/csgo_maps", false },
   // agents (4 CT + 4 T), weapon models, sound effects and sound scripts - the exact file list in content_base.inc
   { "base2", "Agents, weapons and sounds", nullptr, 84, s_baseFiles, "content/css/cstrike", false },
   { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
