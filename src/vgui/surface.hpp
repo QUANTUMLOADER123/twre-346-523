@@ -35,6 +35,12 @@ public:
   Vector2 GetTextSize(int font, const char* text) const;
   int GetTextWide(int font, const char* text) const { return (int)GetTextSize(font, text).x; }
   int GetFontTall(int font) const { return (int)m_fonts[font].size; }
+  // same glyph atlas drawn at an arbitrary pixel size (CS:GO HUD typography needs free sizes)
+  Vector2 GetTextSizeScaled(int font, const char* text, float size) const;
+  void DrawTextScaled(int font, const char* text, float x, float y, float size, Color c) const;
+  void DrawTextScaledShadow(int font, const char* text, float x, float y, float size, Color c, Color shadow = { 0, 0, 0, 170 }) const;
+  void DrawTextScaledRight(int font, const char* text, float rx, float y, float size, Color c, bool shadow = false) const;
+  void DrawTextScaledCentered(int font, const char* text, float cx, float y, float size, Color c, bool shadow = false) const;
   void DrawText(int font, const char* text, float x, float y, Color c) const;
   void DrawTextShadow(int font, const char* text, float x, float y, Color c, Color shadow = { 0, 0, 0, 200 }) const;
   void DrawTextOutline(int font, const char* text, float x, float y, Color c, Color outline = { 0, 0, 0, 220 }) const;

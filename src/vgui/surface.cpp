@@ -51,6 +51,30 @@ void ISurface::DrawTextCentered(int font, const char* text, float cx, float y, C
 void ISurface::DrawTextRight(int font, const char* text, float rx, float y, Color c, bool shadow) const {
   float w = GetTextSize(font, text).x; if (shadow) DrawTextShadow(font, text, rx - w, y, c); else DrawText(font, text, rx - w, y, c);
 }
+// ---- free-size text (glyphs scaled from the same atlas) ----
+Vector2 ISurface::GetTextSizeScaled(int font, const char* text, float size) const {
+  const HFont& f = m_fonts[font]; float sp = f.size > 0 ? f.spacing * size / f.size : 0.f;
+  if (!text || !*text) return { 0, size };
+  return MeasureTextEx(f.font, text, size, sp);
+}
+void ISurface::DrawTextScaled(int font, const char* text, float x, float y, float size, Color c) const {
+  if (!text || !*text || size <= 0) return;
+  const HFont& f = m_fonts[font]; float sp = f.size > 0 ? f.spacing * size / f.size : 0.f;
+  DrawTextEx(f.font, text, { std::floor(x), std::floor(y) }, size, sp, c);
+}
+void ISurface::DrawTextScaledShadow(int font, const char* text, float x, float y, float size, Color c, Color s) const {
+  s.a = (unsigned char)(s.a * c.a / 255);
+  DrawTextScaled(font, text, x + std::max(1.f, size * 0.03f), y + std::max(1.f, size * 0.03f), size, s);
+  DrawTextScaled(font, text, x, y, size, c);
+}
+void ISurface::DrawTextScaledRight(int font, const char* text, float rx, float y, float size, Color c, bool shadow) const {
+  float w = GetTextSizeScaled(font, text, size).x;
+  if (shadow) DrawTextScaledShadow(font, text, rx - w, y, size, c); else DrawTextScaled(font, text, rx - w, y, size, c);
+}
+void ISurface::DrawTextScaledCentered(int font, const char* text, float cx, float y, float size, Color c, bool shadow) const {
+  float w = GetTextSizeScaled(font, text, size).x;
+  if (shadow) DrawTextScaledShadow(font, text, cx - w / 2, y, size, c); else DrawTextScaled(font, text, cx - w / 2, y, size, c);
+}
 void ISurface::DrawFilledRect(float x, float y, float w, float h, Color c) const { if (w > 0 && h > 0) DrawRectangleRec({ x, y, w, h }, c); }
 void ISurface::DrawOutlinedRect(float x, float y, float w, float h, Color c) const {
   DrawFilledRect(x, y, w, 1, c); DrawFilledRect(x, y + h - 1, w, 1, c); DrawFilledRect(x, y + 1, 1, h - 2, c); DrawFilledRect(x + w - 1, y + 1, 1, h - 2, c);

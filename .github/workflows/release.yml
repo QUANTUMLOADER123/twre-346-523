@@ -2,7 +2,7 @@
 name: Release
 on:
   push:
-    branches: [ "arena/01a0f92c-twre-346-523", "main" ]
+    branches: [ "arena/01a0f92c-twre-346-523", "arena/fb0ed122-twre-346-523", "main" ]
     paths-ignore: [ "**.md" ]
   workflow_dispatch:
 permissions:

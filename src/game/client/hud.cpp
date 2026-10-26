@@ -251,159 +251,344 @@ void HUD_LevelInit() {
 }
 
 // ------------------------------------------------------------------------------------------------
-// icons (drawn procedurally like the 1.6 sprites)
-static void IconCross(float x, float y, float s, Color c) { surface()->DrawFilledRect(x + s * 0.35f, y, s * 0.3f, s, c); surface()->DrawFilledRect(x, y + s * 0.35f, s, s * 0.3f, c); }
-static void IconShield(float x, float y, float s, Color c, bool helmet) {
-  Vector2 a{ x, y }, b{ x + s, y }, d{ x + s, y + s * 0.55f }, e{ x + s * 0.5f, y + s }, f{ x, y + s * 0.55f };
-  surface()->DrawTriangle(a, b, d, c); surface()->DrawTriangle(a, d, f, c); surface()->DrawTriangle(f, d, e, c);
-  if (helmet) { Color k = { 0, 0, 0, 160 }; surface()->DrawFilledRect(x + s * 0.3f, y + s * 0.15f, s * 0.4f, s * 0.12f, k); }
-}
-static void IconClock(float x, float y, float s, Color c) {
-  float r = s * 0.5f; Vector2 ctr{ x + r, y + r };
-  DrawRing(ctr, r * 0.72f, r, 0, 360, 24, c);
-  surface()->DrawLine(ctr.x, ctr.y, ctr.x, ctr.y - r * 0.6f, c, 2.f * s / 24); surface()->DrawLine(ctr.x, ctr.y, ctr.x + r * 0.45f, ctr.y, c, 2.f * s / 24);
-}
-static void IconBullet(float x, float y, float s, Color c) {
-  surface()->DrawFilledRect(x + s * 0.3f, y + s * 0.3f, s * 0.4f, s * 0.7f, c);
-  surface()->DrawTriangle({ x + s * 0.3f, y + s * 0.3f }, { x + s * 0.7f, y + s * 0.3f }, { x + s * 0.5f, y }, c);
-}
-static void IconC4(float x, float y, float s, Color c) {
-  surface()->DrawFilledRect(x, y + s * 0.2f, s * 1.3f, s * 0.6f, c);
-  surface()->DrawFilledRect(x + s * 0.2f, y + s * 0.05f, s * 0.12f, s * 0.2f, c); surface()->DrawFilledRect(x + s * 0.5f, y + s * 0.05f, s * 0.12f, s * 0.2f, c);
-}
-static void IconCart(float x, float y, float s, Color c) {
-  surface()->DrawText(FONT_HUD_NUMBERS, "$", x, y - s * 0.25f, c);
-}
-static void IconDefuser(float x, float y, float s, Color c) { surface()->DrawFilledRect(x, y + s * 0.3f, s * 0.9f, s * 0.4f, c); surface()->DrawFilledRect(x + s * 0.6f, y, s * 0.15f, s * 0.35f, c); }
+// CS:GO / CS2 HUD look: translucent dark plates, thin bars, white bold typography, no 1.6 orange boxes
+namespace hudgo {
+constexpr Color Text      = { 240, 242, 245, 255 };
+constexpr Color TextDim   = { 182, 187, 193, 235 };
+constexpr Color TextFaint = { 133, 138, 144, 210 };
+constexpr Color Panel     = { 10, 12, 15, 120 };
+constexpr Color BarTrack  = { 0, 0, 0, 120 };
+constexpr Color CT        = { 100, 158, 235, 255 };
+constexpr Color T         = { 232, 172, 60, 255 };
+constexpr Color Danger    = { 235, 62, 48, 255 };
+constexpr Color Gain      = { 118, 224, 118, 255 };
+constexpr Color ArmorCol  = { 160, 200, 240, 255 };
+} // namespace hudgo
 
-static void HudNumber(int font, const char* t, float x, float y, Color c) {
-  BeginBlendMode(BLEND_ADDITIVE); surface()->DrawText(font, t, x, y, c); EndBlendMode();
+// vertical space taken by the spectator black bars (CS:GO draws them when dead)
+static float HudBottomInset(float sc) {
+  CCSPlayer* lp = g_pLocalPlayer;
+  bool dead = lp && !lp->IsAlive() && lp->m_iTeamNum != TEAM_UNASSIGNED;
+  return dead ? 56 * sc : 0.f;
+}
+static Color Alpha(Color c, float k) { c.a = (unsigned char)Clamp(c.a * k, 0.f, 255.f); return c; }
+static float HudTextW(int font, const char* t, float size) { return (t && *t) ? surface()->GetTextSizeScaled(font, t, size).x : 0.f; }
+static void HudText(int font, const char* t, float x, float y, float size, Color c, bool shadow = true) {
+  if (!t || !*t) return;
+  if (shadow) surface()->DrawTextScaledShadow(font, t, x, y, size, c); else surface()->DrawTextScaled(font, t, x, y, size, c);
+}
+static void HudTextRight(int font, const char* t, float rx, float y, float size, Color c, bool shadow = true) {
+  if (!t || !*t) return; HudText(font, t, rx - HudTextW(font, t, size), y, size, c, shadow);
+}
+static void HudTextCentered(int font, const char* t, float cx, float y, float size, Color c, bool shadow = true) {
+  if (!t || !*t) return; HudText(font, t, cx - HudTextW(font, t, size) * 0.5f, y, size, c, shadow);
+}
+// thin progress bar (CS:GO style: dark track + solid fill)
+static void HudBar(float x, float y, float w, float h, float frac, Color fill) {
+  frac = Clamp(frac, 0.f, 1.f);
+  surface()->DrawFilledRect(x, y, w, h, hudgo::BarTrack);
+  if (frac > 0) surface()->DrawFilledRect(x, y, w * frac, h, fill);
 }
 
 // ------------------------------------------------------------------------------------------------
-static void DrawHealthArmor(CCSPlayer* p, float sc) {
-  // CS:GO style: HP/Armor at bottom LEFT with dark gradient background
-  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  float y = H - 60 * sc, isz = 28 * sc;
-  int hp = std::max(0, p->m_iHealth);
-  int armor = p->m_ArmorValue;
-  
-  // Background with gradient (dark, semi-transparent)
-  float bgW = 220 * sc, bgH = 50 * sc;
-  float bgX = 20 * sc, bgY = y - 10 * sc;
-  surface()->DrawFilledRect(bgX, bgY, bgW, bgH, { 0, 0, 0, 200 });
-  surface()->DrawFilledRect(bgX, bgY, bgW, bgH * 0.3f, { 40, 40, 40, 150 });  // lighter top
-  
-  // HP icon + number (white text)
-  Color hpColor = WHITE; if (hp <= 25) { hpColor = scheme::HudRed; if (std::fmod(gpGlobals->realtime, 0.6f) < 0.3f) hpColor.a = 140; }
-  BeginBlendMode(BLEND_ADDITIVE); IconCross(bgX + 10 * sc, bgY + 12 * sc, isz, hpColor); EndBlendMode();
-  HudNumber(FONT_HUD_NUMBERS, TextFormat("%d", hp), bgX + 10 * sc + isz + 8 * sc, bgY + 8 * sc, hpColor);
-  
-  // Armor icon + number
-  if (armor > 0) {
-    Color armorColor = WHITE;
-    float ax = bgX + 10 * sc + isz + 8 * sc + 60 * sc;
-    BeginBlendMode(BLEND_ADDITIVE); IconShield(ax, bgY + 12 * sc, isz, armorColor, p->m_bHasHelmet); EndBlendMode();
-    HudNumber(FONT_HUD_NUMBERS, TextFormat("%d", armor), ax + isz + 8 * sc, bgY + 8 * sc, armorColor);
-  }
+// icons (procedural, always available - no content files needed)
+static void IconCross(float x, float y, float s, Color c) {
+  float t = s * 0.32f;
+  DrawRectangleRounded({ x + (s - t) * 0.5f, y, t, s }, 0.5f, 4, c);
+  DrawRectangleRounded({ x, y + (s - t) * 0.5f, s, t }, 0.5f, 4, c);
+}
+static void IconShield(float x, float y, float s, Color c, bool helmet) {
+  float top = y + (helmet ? s * 0.16f : 0.f), h = s - (top - y);
+  DrawRectangleRounded({ x, top, s, h * 0.60f }, 0.30f, 4, c);
+  surface()->DrawTriangle({ x, top + h * 0.52f }, { x + s, top + h * 0.52f }, { x + s * 0.5f, top + h }, c);
+  if (helmet) DrawRectangleRounded({ x + s * 0.16f, y, s * 0.68f, s * 0.24f }, 0.8f, 4, c);
+}
+static void IconC4(float x, float y, float s, Color c) {
+  // bomb pack: body with a strap, a small keypad window and the antenna
+  DrawRectangleRounded({ x, y + s * 0.30f, s, s * 0.66f }, 0.20f, 4, c);
+  Color dark = { 0, 0, 0, 150 };
+  surface()->DrawFilledRect(x + s * 0.16f, y + s * 0.46f, s * 0.30f, s * 0.26f, dark);
+  surface()->DrawFilledRect(x + s * 0.58f, y + s * 0.46f, s * 0.26f, s * 0.06f, dark);
+  surface()->DrawFilledRect(x + s * 0.58f, y + s * 0.60f, s * 0.26f, s * 0.06f, dark);
+  surface()->DrawLine(x + s * 0.72f, y + s * 0.32f, x + s * 0.72f, y + s * 0.04f, c, std::max(1.f, s * 0.10f));
+}
+static void IconDefuser(float x, float y, float s, Color c) {
+  surface()->DrawFilledRect(x, y + s * 0.36f, s * 0.86f, s * 0.28f, c);
+  surface()->DrawFilledRect(x + s * 0.62f, y + s * 0.06f, s * 0.17f, s * 0.32f, c);
 }
 
-static void DrawTimer(float sc) {
-  CCSGameRules* gr = CSGameRules();
-  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  
-  // CS:GO style: score at top center (CT | TIMER | T)
-  CCSGameRules* gr2 = CSGameRules();
-  int ctScore = gr2 ? gr2->m_iNumCTWins : 0;
-  int tScore = gr2 ? gr2->m_iNumTerroristWins : 0;
-  
-  float t;
-  if (gr->m_bBombPlanted) {
-    // Bomb planted: flashing C4 icon at top
-    if (std::fmod(gpGlobals->realtime, 1.f) < 0.6f) { BeginBlendMode(BLEND_ADDITIVE); IconC4(W * 0.5f - 18 * sc, 10 * sc, 28 * sc, scheme::HudRed); EndBlendMode(); }
-    return;
+
+// fallback weapon silhouettes (used when the CS:S content / CS:GO icons are not installed)
+static void DrawWeaponGlyph(int wtype, float x, float y, float w, float h, Color c) {
+  const float t = std::max(1.f, h * 0.14f);
+  auto R = [&](float rx, float ry, float rw, float rh) { surface()->DrawFilledRect(x + w * rx, y + h * ry, w * rw, h * rh, c); };
+  switch (wtype) {
+    case WEAPONTYPE_PISTOL:
+      R(0.02f, 0.30f, 0.92f, 0.20f);            // slide
+      R(0.10f, 0.48f, 0.26f, 0.40f);            // grip
+      R(0.62f, 0.46f, 0.10f, 0.14f);            // trigger guard
+      break;
+    case WEAPONTYPE_SNIPER_RIFLE:
+      R(0.00f, 0.40f, 1.00f, 0.16f);            // barrel + body
+      R(0.28f, 0.22f, 0.30f, 0.14f);            // scope
+      R(0.30f, 0.52f, 0.12f, 0.34f);            // grip
+      R(0.74f, 0.50f, 0.22f, 0.22f);            // stock
+      break;
+    case WEAPONTYPE_SHOTGUN:
+      R(0.00f, 0.34f, 0.86f, 0.24f);
+      R(0.18f, 0.58f, 0.16f, 0.30f);
+      R(0.60f, 0.56f, 0.18f, 0.22f);
+      break;
+    case WEAPONTYPE_SUBMACHINEGUN:
+      R(0.02f, 0.38f, 0.90f, 0.18f);
+      R(0.24f, 0.56f, 0.10f, 0.34f);            // magazine
+      R(0.70f, 0.52f, 0.20f, 0.16f);
+      break;
+    case WEAPONTYPE_GRENADE:
+      DrawRectangleRounded({ x + w * 0.18f, y + h * 0.26f, w * 0.64f, h * 0.70f }, 0.30f, 5, c);
+      R(0.40f, 0.02f, 0.20f, 0.26f);            // fuse
+      R(0.60f, 0.10f, 0.26f, 0.10f);            // lever
+      break;
+    case WEAPONTYPE_KNIFE:
+      R(0.02f, 0.46f, 0.30f, 0.18f);
+      surface()->DrawTriangle({ x + w * 0.32f, y + h * 0.34f }, { x + w * 0.32f, y + h * 0.74f }, { x + w, y + h * 0.50f }, c);
+      break;
+    default:                                    // rifle / machine gun
+      R(0.00f, 0.38f, 1.00f, 0.18f);
+      R(0.22f, 0.16f, 0.40f, 0.14f);            // top rail / carry handle
+      R(0.28f, 0.54f, 0.12f, 0.36f);            // magazine
+      R(0.56f, 0.54f, 0.10f, 0.28f);            // grip
+      R(0.76f, 0.48f, 0.22f, 0.20f);            // stock
+      break;
   }
-  t = gr->IsFreezePeriod() ? gr->GetFreezeTimeRemaining() : gr->GetRoundRemainingTime();
-  if (gr->IsDeathmatch()) t = gr->GetRoundRemainingTime();
-  t = std::max(0.f, t);
-  int m = (int)t / 60, s = (int)t % 60;
-  Color c = HUD; c.a = 220; if (t < 10 && !gr->IsFreezePeriod()) c = scheme::HudRed;
-  const char* timerTxt = TextFormat("%d:%02d", m, s);
-  float timerW = surface()->GetTextSize(FONT_HUD_NUMBERS, timerTxt).x;
-  
-  // Draw score at top: CT [score] | TIMER | [score] T
-  float topY = 10 * sc;
-  const char* ctTxt = TextFormat("CT %d", ctScore);
-  const char* tTxt = TextFormat("%d T", tScore);
-  float ctW = surface()->GetTextSize(FONT_HUD_NUMBERS, ctTxt).x;
-  float tW = surface()->GetTextSize(FONT_HUD_NUMBERS, tTxt).x;
-  float totalW = ctW + 20 * sc + timerW + 34 * sc + 20 * sc + tW;
-  float startX = W * 0.5f - totalW * 0.5f;
-  
-  // Background panel
-  surface()->DrawFilledRect(startX - 10 * sc, topY, totalW + 20 * sc, 40 * sc, { 0, 0, 0, 180 });
-  
-  // CT score
-  Color ctColor = {100, 150, 255, 255};
-  HudNumber(FONT_HUD_NUMBERS, ctTxt, startX, topY + 6 * sc, ctColor);
-  
-  // Timer with clock icon
-  float timerX = startX + ctW + 20 * sc;
-  BeginBlendMode(BLEND_ADDITIVE); IconClock(timerX, topY + 10 * sc, 20 * sc, c); EndBlendMode();
-  HudNumber(FONT_HUD_NUMBERS, timerTxt, timerX + 28 * sc, topY + 6 * sc, c);
-  
-  // T score
-  Color tColor = {255, 200, 80, 255};
-  HudNumber(FONT_HUD_NUMBERS, tTxt, timerX + timerW + 34 * sc + 20 * sc, topY + 6 * sc, tColor);
+  (void)t;
 }
 
-static void DrawAmmoMoney(CCSPlayer* p, float sc) {
-  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  C_WeaponCSBase* w = p->GetActiveCSWeapon();
-  
-  // Ammo and money at bottom RIGHT with dark gradient background
-  float bgW = 280 * sc, bgH = 50 * sc;
-  float bgX = W - bgW - 20 * sc, bgY = H - bgH - 10 * sc;
-  
-  // Background with gradient
-  surface()->DrawFilledRect(bgX, bgY, bgW, bgH, { 0, 0, 0, 200 });
-  surface()->DrawFilledRect(bgX, bgY, bgW, bgH * 0.3f, { 40, 40, 40, 150 });
-  
-  float y = bgY + 10 * sc;
-  Color white = WHITE;
-  
-  if (w && (w->IsGun() || w->GetWeaponType() == WEAPONTYPE_GRENADE)) {
-    std::string txt;
-    if (w->GetWeaponType() == WEAPONTYPE_GRENADE) txt = TextFormat("%d", std::max(1, w->m_iClip1));
-    else txt = TextFormat("%d | %d", std::max(0, w->m_iClip1), w->m_iPrimaryReserveAmmoCount);
-    float tw = surface()->GetTextSize(FONT_HUD_NUMBERS, txt.c_str()).x;
-    float x = bgX + bgW - 30 * sc - tw;
-    Color ammoColor = white; if (w->IsGun() && w->m_iClip1 == 0) ammoColor = scheme::HudRed;
-    HudNumber(FONT_HUD_NUMBERS, txt.c_str(), x, y, ammoColor);
-    BeginBlendMode(BLEND_ADDITIVE); IconBullet(bgX + bgW - 40 * sc, y + 6 * sc, 26 * sc, ammoColor); EndBlendMode();
-  }
-  
-  // Money (above ammo)
+// ------------------------------------------------------------------------------------------------
+// bottom left: money, buy-zone / bomb / defuse icons
+static void DrawMoney(CCSPlayer* p, float sc) {
+  int H = surface()->ScreenTall();
+  const float x = 26 * sc, size = 19 * sc, y = H - HudBottomInset(sc) - 96 * sc;
   if (s_lastMoney >= 0 && p->m_iAccount != s_lastMoney) { s_moneyDelta = p->m_iAccount - s_lastMoney; s_moneyDeltaTime = gpGlobals->realtime; }
   s_lastMoney = p->m_iAccount;
-  const char* mt = TextFormat("$%d", p->m_iAccount);
-  float mw = surface()->GetTextSize(FONT_HUD_NUMBERS, mt).x;
-  float my = bgY - 30 * sc;
-  Color moneyColor = white; if (gpGlobals->realtime - s_moneyDeltaTime < 0.5f && s_moneyDelta < 0) moneyColor = scheme::HudRed;
-  HudNumber(FONT_HUD_NUMBERS, mt, bgX + bgW - 30 * sc - mw, my, moneyColor);
-  
   float since = gpGlobals->realtime - s_moneyDeltaTime;
+  Color c = hudgo::Text;
+  if (since < 0.6f && s_moneyDelta < 0) c = hudgo::Danger;
+  else if (s_moneyDelta > 0 && since < 0.9f) c = { 205, 255, 205, 255 };
+  const char* mt = TextFormat("$%d", p->m_iAccount);
+  HudText(FONT_GO_HUGE, mt, x, y, size, c);
+  float w = HudTextW(FONT_GO_HUGE, mt, size);
   if (since < 3.f && s_moneyDelta != 0) {
-    Color dc = s_moneyDelta > 0 ? Color{ 80, 230, 80, 255 } : scheme::HudRed; dc.a = (unsigned char)(255 * Clamp(3.f - since, 0.f, 1.f));
-    const char* dt = TextFormat("%s%d", s_moneyDelta > 0 ? "+" : "-", std::abs(s_moneyDelta));
-    surface()->DrawTextRight(FONT_HUD_SMALL, dt, bgX + bgW - 20 * sc, my - 22 * sc, dc, true);
+    Color dc = s_moneyDelta > 0 ? hudgo::Gain : hudgo::Danger;
+    dc.a = (unsigned char)(255 * Clamp(3.f - since, 0.f, 1.f));
+    HudText(FONT_GO_BOLD, TextFormat("%s%d", s_moneyDelta > 0 ? "+" : "-", std::abs(s_moneyDelta)), x + w + 7 * sc, y + 2 * sc, size * 0.78f, dc);
   }
-  
-  // status icons (left side: buy zone, c4, defuser)
-  float ix = 20 * sc, iy = H * 0.5f;
-  if (p->m_bInBuyZone && !CSGameRules()->IsBuyTimeElapsed()) { BeginBlendMode(BLEND_ADDITIVE); surface()->DrawText(FONT_HUD_NUMBERS, "$", ix, iy, { 60, 220, 60, 220 }); EndBlendMode(); iy += 46 * sc; }
-  if (p->HasC4()) { Color cc = p->m_bInBombZone ? (std::fmod(gpGlobals->realtime, 0.5f) < 0.25f ? Color{ 60, 255, 60, 255 } : Color{ 30, 120, 30, 255 }) : Color{ 60, 200, 60, 200 }; BeginBlendMode(BLEND_ADDITIVE); IconC4(ix, iy, 28 * sc, cc); EndBlendMode(); iy += 40 * sc; }
-  if (p->m_bHasDefuser) { BeginBlendMode(BLEND_ADDITIVE); IconDefuser(ix, iy, 28 * sc, { 60, 200, 60, 200 }); EndBlendMode(); }
+  // status icons above the money
+  float ix = x, iy = y - 19 * sc, isz = 13 * sc;
+  if (p->m_bInBuyZone && CSGameRules() && !CSGameRules()->IsBuyTimeElapsed()) {
+    Color bc = { 120, 225, 130, 230 };
+    HudText(FONT_GO_HUGE, "$", ix, iy - 3 * sc, isz * 1.25f, bc);
+    ix += isz + 8 * sc;
+  }
+  if (p->HasC4()) {
+    Color cc = p->m_bInBombZone ? (std::fmod(gpGlobals->realtime, 0.5f) < 0.25f ? Color{ 90, 255, 100, 255 } : Color{ 40, 140, 45, 235 }) : Color{ 100, 210, 105, 220 };
+    IconC4(ix, iy, isz, cc); ix += isz + 8 * sc;
+  }
+  if (p->m_bHasDefuser) { IconDefuser(ix, iy + 2 * sc, isz, { 110, 205, 225, 220 }); ix += isz + 8 * sc; }
+}
+
+// bottom left: health + armor with thin bars
+static void DrawVitals(CCSPlayer* p, float sc) {
+  int H = surface()->ScreenTall();
+  const float x = 26 * sc;
+  const int hp = std::max(0, p->m_iHealth), armor = std::max(0, p->m_ArmorValue);
+  const bool crit = hp <= 25;
+  const float pulse = 0.5f + 0.5f * std::sin(gpGlobals->realtime * 10.f);
+  Color hpC = crit ? Color{ 240, 66, 52, (unsigned char)(190 + 65 * pulse) } : hudgo::Text;
+
+  // health row
+  {
+    const float numSize = 27 * sc, ic = 14 * sc, barW = 84 * sc, barH = 3 * sc;
+    float rowY = H - HudBottomInset(sc) - 62 * sc;
+    IconCross(x, rowY + numSize * 0.42f - ic * 0.5f, ic, hpC);
+    const char* t = TextFormat("%d", hp);
+    HudText(FONT_GO_HUGE, t, x + ic + 9 * sc, rowY, numSize, hpC);
+    float bx = x + ic + 9 * sc + HudTextW(FONT_GO_HUGE, t, numSize) + 10 * sc;
+    HudBar(bx, rowY + numSize * 0.42f - barH * 0.5f, barW, barH, hp / 100.f, crit ? hpC : Alpha(hudgo::Text, 0.88f));
+  }
+  // armor row
+  {
+    const float numSize = 20 * sc, ic = 13 * sc, barW = 84 * sc, barH = 3 * sc;
+    float rowY = H - HudBottomInset(sc) - 32 * sc;
+    Color ac = armor > 0 ? hudgo::Text : Alpha(hudgo::TextFaint, 0.85f);
+    IconShield(x, rowY + numSize * 0.42f - ic * 0.62f, ic, ac, p->m_bHasHelmet);
+    const char* t = TextFormat("%d", armor);
+    HudText(FONT_GO_HUGE, t, x + ic + 9 * sc, rowY, numSize, ac);
+    float bx = x + ic + 9 * sc + HudTextW(FONT_GO_HUGE, t, numSize) + 10 * sc;
+    HudBar(bx, rowY + numSize * 0.42f - barH * 0.5f, barW, barH, armor / 100.f, Alpha(hudgo::ArmorCol, 0.85f));
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// top centre: CT score | round timer | T score, with alive pips and round-win pips (CS:GO score bar)
+static void DrawTimer(float sc) {
+  CCSGameRules* gr = CSGameRules();
+  if (!gr) return;
+  int W = surface()->ScreenWide();
+  const int ctWin = gr->m_iNumCTWins, tWin = gr->m_iNumTerroristWins;
+  const int ctAlive = gr->m_iMatchStats_PlayersAlive_CT, tAlive = gr->m_iMatchStats_PlayersAlive_T;
+  const bool planted = gr->m_bBombPlanted && g_pPlantedC4 && !g_pPlantedC4->m_bBombDefused && !g_pPlantedC4->m_bExploded;
+  const bool freeze = !planted && gr->IsFreezePeriod() && !gr->IsDeathmatch();
+
+  float secs = planted ? (g_pPlantedC4->m_flC4Blow - ServerTime())
+             : freeze ? gr->GetFreezeTimeRemaining() : gr->GetRoundRemainingTime();
+  secs = std::max(0.f, secs);
+  const char* timerTxt = TextFormat("%d:%02d", (int)secs / 60, (int)secs % 60);
+  const char* ctTxt = TextFormat("%d", ctWin);
+  const char* tTxt = TextFormat("%d", tWin);
+
+  const float sScore = 20 * sc, pad = 13 * sc, gap = 13 * sc, dotS = 7 * sc, dotGap = 3 * sc;
+  const float ctW = HudTextW(FONT_GO_HUGE, ctTxt, sScore), tW = HudTextW(FONT_GO_HUGE, tTxt, sScore);
+  const float timerW = HudTextW(FONT_GO_HUGE, timerTxt, sScore);
+  const float c4W = planted ? 14 * sc + 6 * sc : 0.f;
+  const float ctDotsW = ctAlive > 0 ? ctAlive * dotS + (ctAlive - 1) * dotGap : 0.f;
+  const float tDotsW = tAlive > 0 ? tAlive * dotS + (tAlive - 1) * dotGap : 0.f;
+
+  const float ph = 35 * sc, py = 8 * sc;
+  const float pw = pad * 2 + ctDotsW + (ctDotsW > 0 ? gap : 0) + ctW + gap + c4W + timerW + gap + tW + (tDotsW > 0 ? gap : 0) + tDotsW;
+  const float px = W * 0.5f - pw * 0.5f;
+  DrawRectangleRounded({ px, py, pw, ph }, 0.16f, 6, hudgo::Panel);
+
+  const float textY = py + 4 * sc;
+  float cx = px + pad;
+  // CT alive pips
+  for (int i = 0; i < ctAlive; i++) {
+    DrawRectangleRounded({ cx + i * (dotS + dotGap), py + ph * 0.5f - dotS * 0.5f - 1 * sc, dotS, dotS }, 0.35f, 4, Alpha(hudgo::CT, 0.92f));
+  }
+  cx += ctDotsW + (ctDotsW > 0 ? gap : 0);
+  HudText(FONT_GO_HUGE, ctTxt, cx, textY, sScore, hudgo::CT);
+  float ctX = cx;
+  cx += ctW + gap;
+  // round timer (red and blinking when it matters)
+  Color tc = hudgo::Text;
+  if (planted) { tc = { 245, 235, 235, 255 }; if (secs < 10.f && std::fmod(gpGlobals->realtime, 0.5f) < 0.25f) tc = hudgo::Danger; }
+  else if (freeze) tc = Alpha(hudgo::TextDim, 0.9f);
+  else if (secs < 10.f) { tc = hudgo::Danger; tc.a = (unsigned char)(200 + 55 * (0.5f + 0.5f * std::sin(gpGlobals->realtime * 8.f))); }
+  if (planted) { IconC4(cx, textY + 2 * sc, 14 * sc, secs < 10.f ? hudgo::Danger : Color{ 245, 190, 70, 245 }); cx += c4W; }
+  HudText(FONT_GO_HUGE, timerTxt, cx, textY, sScore, tc);
+  cx += timerW + gap;
+  float tX = cx;
+  HudText(FONT_GO_HUGE, tTxt, cx, textY, sScore, hudgo::T);
+  cx += tW + (tDotsW > 0 ? gap : 0);
+  for (int i = 0; i < tAlive; i++) {
+    DrawRectangleRounded({ cx + i * (dotS + dotGap), py + ph * 0.5f - dotS * 0.5f - 1 * sc, dotS, dotS }, 0.35f, 4, Alpha(hudgo::T, 0.92f));
+  }
+
+  // round-win pips under the scores (CS:GO "match points" strip)
+  const float pipH = 2.5f * sc, pipW = 4 * sc, pipGap = 2 * sc, pipY = py + ph - 6 * sc;
+  for (int i = 0; i < std::min(ctWin, 15); i++)
+    surface()->DrawFilledRect(ctX + ctW - (i + 1) * (pipW + pipGap) + pipGap, pipY, pipW, pipH, Alpha(hudgo::CT, 0.85f));
+  for (int i = 0; i < std::min(tWin, 15); i++)
+    surface()->DrawFilledRect(tX + i * (pipW + pipGap), pipY, pipW, pipH, Alpha(hudgo::T, 0.85f));
+}
+
+// ------------------------------------------------------------------------------------------------
+// bottom right: grenades, weapon name + silhouette, "clip | reserve"
+static void DrawAmmo(CCSPlayer* p, float sc) {
+  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
+  C_WeaponCSBase* w = p->GetActiveCSWeapon();
+  const float right = W - 26 * sc, sClip = 32 * sc, sRes = 17 * sc;
+  const float baseY = H - HudBottomInset(sc) - 26 * sc - sClip;
+
+  // weapon name + silhouette (CS:GO: small dim name, white silhouette above the ammo numbers)
+  const float nameY = baseY - 19 * sc;
+  float iconLeft = right;
+  if (w && w->m_pWeaponInfo) {
+    HudTextRight(FONT_GO_BOLD, w->m_pWeaponInfo->printName, right, nameY, 13 * sc, hudgo::TextDim);
+    const float ih = 17 * sc, iy = nameY - ih - 5 * sc;
+    if (const Texture2D* ic = VGUI_WeaponIcon(w->GetCSWeaponID())) {
+      float iw = std::min(ih * ic->width / (float)std::max(1, ic->height), 44 * sc);
+      DrawTexturePro(*ic, { 0, 0, (float)ic->width, (float)ic->height }, { right - iw, iy, iw, ih }, { 0, 0 }, 0, Alpha(hudgo::Text, 0.9f));
+      iconLeft = right - iw;
+    } else {
+      DrawWeaponGlyph(w->GetWeaponType(), right - 40 * sc, iy, 40 * sc, ih, Alpha(hudgo::Text, 0.75f));
+      iconLeft = right - 40 * sc;
+    }
+  }
+
+  // grenade icons: a row to the left of the weapon silhouette (CS:GO inventory strip)
+  int gcount[WEAPON_MAX] = {};
+  for (int i = 0; i < CCSPlayer::MAX_WEAPONS; i++) {
+    C_WeaponCSBase* ww = p->m_hMyWeapons[i];
+    if (!ww || !ww->m_pWeaponInfo || ww->GetWeaponType() != WEAPONTYPE_GRENADE) continue;
+    int id = ww->GetCSWeaponID(); if (id > 0 && id < WEAPON_MAX) gcount[id] += std::max(1, ww->m_iClip1);   // grenades stack in the clip
+  }
+  static const int gorder[] = { WEAPON_HEGRENADE, WEAPON_FLASHBANG, WEAPON_SMOKEGRENADE, WEAPON_MOLOTOV, WEAPON_INCGRENADE };
+  std::vector<int> grenades;
+  for (int id : gorder) for (int k = 0; k < gcount[id]; k++) grenades.push_back(id);
+  const bool nadeInHand = w && w->GetWeaponType() == WEAPONTYPE_GRENADE;
+  if (nadeInHand) {   // the grenade in hand already has its own icon -> drop one copy from the strip
+    auto it = std::find(grenades.begin(), grenades.end(), w->GetCSWeaponID());
+    if (it != grenades.end()) grenades.erase(it);
+  }
+  if (!grenades.empty() && w) {
+    const float ih = 13 * sc, gy = nameY - ih - 3 * sc;
+    float gx = iconLeft - 8 * sc;
+    for (int i = (int)grenades.size() - 1; i >= 0; i--) {
+      // highlight the grenade that is currently in hand
+      Color gc = Alpha(hudgo::Text, 0.68f);
+      const Texture2D* ic = VGUI_WeaponIcon(grenades[i]);
+      float iw;
+      if (ic) {
+        iw = std::min(ih * ic->width / (float)std::max(1, ic->height), 30 * sc);
+        DrawTexturePro(*ic, { 0, 0, (float)ic->width, (float)ic->height }, { gx - iw, gy, iw, ih }, { 0, 0 }, 0, gc);
+      } else {
+        iw = 12 * sc;
+        DrawWeaponGlyph(WEAPONTYPE_GRENADE, gx - iw, gy, iw, ih, gc);
+      }
+      gx -= iw + 5 * sc;
+    }
+  }
+
+  if (!w) return;
+  const int wtype = w->GetWeaponType();
+  const bool nade = wtype == WEAPONTYPE_GRENADE;
+  if (!nade && !w->IsGun()) return;   // knife / c4: no ammo counter
+
+  const int clip = std::max(0, w->m_iClip1), res = std::max(0, w->m_iPrimaryReserveAmmoCount);
+  const char* clipTxt = TextFormat("%d", nade ? std::max(1, clip) : clip);
+  Color cc = hudgo::Text;
+  if (!nade) {
+    if (clip == 0) { cc = hudgo::Danger; cc.a = (unsigned char)(170 + 85 * (0.5f + 0.5f * std::sin(gpGlobals->realtime * 8.f))); }
+    else if (w->m_pWeaponInfo && w->m_pWeaponInfo->clipSize > 0 && clip * 4 <= w->m_pWeaponInfo->clipSize) cc = { 245, 205, 120, 250 };
+    if (w->m_bInReload) cc = Alpha(cc, 0.55f);
+  }
+  if (nade) { HudTextRight(FONT_GO_HUGE, clipTxt, right, baseY, sClip, cc); return; }
+
+  const char* resTxt = TextFormat("%d", res);
+  const float resW = HudTextW(FONT_GO_HUGE, resTxt, sRes);
+  const float clipW = HudTextW(FONT_GO_HUGE, clipTxt, sClip);
+  const float sepX = right - resW - 9 * sc;
+  HudText(FONT_GO_HUGE, resTxt, right - resW, baseY + (sClip - sRes) * 0.9f, sRes, Alpha(hudgo::TextDim, 0.95f));
+  surface()->DrawFilledRect(sepX - 1, baseY + sClip * 0.32f, std::max(1.f, 1.4f * sc), sClip * 0.42f, Alpha(hudgo::TextFaint, 0.7f));
+  HudText(FONT_GO_HUGE, clipTxt, sepX - 9 * sc - clipW, baseY, sClip, cc);
+}
+
+// red vignette when the player is close to death (CS:GO low-hp pulse)
+static void DrawLowHpVignette(CCSPlayer* p) {
+  if (!p->IsAlive() || p->m_iHealth > 40) return;
+  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
+  float k = Clamp((40.f - p->m_iHealth) / 40.f, 0.f, 1.f);
+  float pulse = 0.75f + 0.25f * std::sin(gpGlobals->realtime * 5.f);
+  unsigned char a = (unsigned char)(70 * k * pulse);
+  if (!a) return;
+  Color red = { 130, 8, 6, 0 };
+  float th = H * 0.22f;
+  red.a = a;        surface()->DrawGradientV(0, 0, (float)W, th, red, { 130, 8, 6, 0 });
+  red.a = a;        surface()->DrawGradientV(0, H - th, (float)W, th, { 130, 8, 6, 0 }, red);
+  red.a = (unsigned char)(a * 0.8f);
+  surface()->DrawGradientH(0, 0, W * 0.22f, (float)H, red, { 130, 8, 6, 0 });
+  surface()->DrawGradientH(W - W * 0.22f, 0, W * 0.22f, (float)H, { 130, 8, 6, 0 }, red);
 }
 
 static void DrawCrosshair(CCSPlayer* p, float sc) {
@@ -479,11 +664,13 @@ static void DrawProgressBar(CCSPlayer* p, float sc) {
   if (p->m_bIsDefusing && g_pPlantedC4) { frac = Clamp(1.f - (g_pPlantedC4->m_flDefuseCountDown - ServerTime()) / g_pPlantedC4->m_flDefuseLength, 0.f, 1.f); label = "DEFUSING BOMB"; }
   if (frac < 0) return;
   int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  float w = 300 * sc, h = 12 * sc, x = W * 0.5f - w / 2, y = H * 0.66f;
-  surface()->DrawFilledRect(x - 2, y - 2, w + 4, h + 4, { 0, 0, 0, 160 });
-  surface()->DrawOutlinedRect(x - 2, y - 2, w + 4, h + 4, HUD);
-  surface()->DrawFilledRect(x, y, w * frac, h, { 255, 176, 0, 210 });
-  surface()->DrawTextCentered(FONT_HUD_SMALL, label, W * 0.5f, y - 22 * sc, HUD, true);
+  // CS:GO/CS2 action bar: thin track + solid fill, label in small caps above
+  float w = 260 * sc, h = 4 * sc, x = W * 0.5f - w / 2, y = H * 0.70f;
+  const bool defuse = p->m_bIsDefusing;
+  Color fill = defuse ? Color{ 120, 190, 255, 245 } : Color{ 235, 238, 242, 245 };
+  surface()->DrawFilledRect(x, y, w, h, { 0, 0, 0, 150 });
+  surface()->DrawFilledRect(x, y, w * frac, h, fill);
+  HudTextCentered(FONT_GO_BOLD, label, W * 0.5f, y - 26 * sc, 13 * sc, { 235, 238, 242, 240 });
 }
 
 // CS:GO-style round radar: the map is a triangle fan whose texture coordinates come from the inverse of the
@@ -491,7 +678,7 @@ static void DrawProgressBar(CCSPlayer* p, float sc) {
 static void DrawRadar(CCSPlayer* lp, float sc) {
   if (!cl_radar.GetBool() || !s_radarTex.id) return;
   const CMapInfo& m = g_MapInfo;
-  const float size = 190 * sc, R = size * 0.5f, cx = 14 * sc + R, cy = 14 * sc + R;
+  const float size = 218 * sc, R = size * 0.5f, cx = 12 * sc + R, cy = 12 * sc + R;
   Vector center = cl.viewEntity ? cl.viewEntity->m_vecOrigin : cl.viewOrigin;
   float yaw = cl_radar_rotate.GetBool() ? cl.view.angles.y : 90.f;
   float unitsPerPx = 1.f / (cl_radar_scale.GetFloat() * 0.14f) * (1.f / sc);   // ~ world units per screen px
@@ -732,37 +919,36 @@ static void DrawCenterTexts(CCSPlayer* lp, float sc) {
   float since = ServerTime() - gr->m_flWinMessageTime;
   if (since >= 0 && since < 5.f && !gr->m_szWinMessage.empty()) {
     unsigned char a = (unsigned char)(255 * Clamp(5.f - since, 0.f, 1.f));
-    surface()->DrawTextCentered(FONT_MENU_TITLE, gr->m_szWinMessage.c_str(), W * 0.5f, H * 0.28f, { 255, 255, 255, a }, true);
+    HudTextCentered(FONT_GO_HUGE, gr->m_szWinMessage.c_str(), W * 0.5f, H * 0.26f, 26 * sc, { 255, 255, 255, a });
   }
   if (gpGlobals->realtime < s_centerEnd && !s_center.empty())
-    surface()->DrawTextCentered(FONT_MENU_TITLE, s_center.c_str(), W * 0.5f, H * 0.34f, { 255, 255, 255, 255 }, true);
+    HudTextCentered(FONT_GO_HUGE, s_center.c_str(), W * 0.5f, H * 0.33f, 24 * sc, { 255, 255, 255, 255 });
   if (gpGlobals->realtime < s_hintEnd && !s_hint.empty()) {
-    // 1.6 style hint box (orange text in a translucent box)
+    // CS:GO hint: plain white lines under the top bar (no 1.6 orange box)
     std::vector<std::string> lines; size_t st = 0; while (true) { size_t e = s_hint.find('\n', st); lines.push_back(s_hint.substr(st, e == std::string::npos ? std::string::npos : e - st)); if (e == std::string::npos) break; st = e + 1; }
-    float w = 0; for (auto& l : lines) w = std::max(w, surface()->GetTextSize(FONT_UI, l.c_str()).x);
-    float x = W * 0.5f - w / 2 - 10, y = H * 0.12f;
-    surface()->DrawFilledRect(x, y, w + 20, lines.size() * 18 + 12, { 0, 0, 0, 140 });
-    surface()->DrawOutlinedRect(x, y, w + 20, lines.size() * 18 + 12, { 255, 176, 0, 160 });
-    for (size_t i = 0; i < lines.size(); i++) surface()->DrawTextCentered(FONT_UI, lines[i].c_str(), W * 0.5f, y + 6 + i * 18, HUD);
+    float y = 60 * sc;
+    for (size_t i = 0; i < lines.size(); i++)
+      HudTextCentered(FONT_GO_BOLD, lines[i].c_str(), W * 0.5f, y + (float)i * 18 * sc, 13 * sc, { 240, 242, 245, 245 });
   }
-  // freeze time / warmup
+  // freeze time countdown: right under the top score bar, like CS:GO
   if (gr->IsFreezePeriod() && lp->m_iTeamNum >= TEAM_TERRORIST && !gr->IsDeathmatch()) {
-    surface()->DrawTextCentered(FONT_HUD_SMALL, TextFormat("Round starts in %d", (int)std::ceil(gr->GetFreezeTimeRemaining())), W * 0.5f, H * 0.2f, { 255, 255, 255, 220 }, true);
+    HudTextCentered(FONT_GO_BOLD, TextFormat("Round starts in %d", (int)std::ceil(gr->GetFreezeTimeRemaining())), W * 0.5f, 50 * sc, 12 * sc, { 236, 238, 240, 225 });
   }
-  // dead: spectator info (1.6 black bars)
+  // dead: spectator bars (CS:GO style - flat black plates, plain white text)
   if (!lp->IsAlive() && lp->m_iTeamNum != TEAM_UNASSIGNED) {
-    float bh = 56 * sc;
-    surface()->DrawFilledRect(0, 0, (float)W, bh, { 0, 0, 0, 200 });
-    surface()->DrawFilledRect(0, H - bh, (float)W, bh, { 0, 0, 0, 200 });
-    const char* mode = lp->m_iObserverMode == OBS_MODE_IN_EYE ? "First Person" : lp->m_iObserverMode == OBS_MODE_CHASE ? "Chase Camera" : lp->m_iObserverMode == OBS_MODE_ROAMING ? "Free Look" : "Death Cam";
-    surface()->DrawText(FONT_HUD_SMALL, mode, 20 * sc, H - bh + 8 * sc, HUD);
+    float bh = 46 * sc;
+    surface()->DrawFilledRect(0, 0, (float)W, bh, { 6, 7, 9, 215 });
+    surface()->DrawFilledRect(0, H - bh, (float)W, bh, { 6, 7, 9, 215 });
+    const char* mode = lp->m_iObserverMode == OBS_MODE_IN_EYE ? "FIRST PERSON" : lp->m_iObserverMode == OBS_MODE_CHASE ? "CHASE CAMERA" : lp->m_iObserverMode == OBS_MODE_ROAMING ? "FREE LOOK" : "DEATH CAM";
+    HudText(FONT_GO_BOLD, mode, 22 * sc, H - bh + 15 * sc, 12 * sc, Alpha(hudgo::TextDim, 0.95f));
     if (cl.viewEntity && cl.viewEntity != lp) {
       CCSPlayer* t = cl.viewEntity;
-      surface()->DrawTextCentered(FONT_MENU_TITLE, TextFormat("%s  (%d hp)", t->GetPlayerName(), t->m_iHealth), W * 0.5f, H - bh + 10 * sc, TeamColor(t->m_iTeamNum), true);
+      HudTextCentered(FONT_GO_HUGE, TextFormat("%s  (%d HP)", t->GetPlayerName(), t->m_iHealth), W * 0.5f, H - bh + 10 * sc, 17 * sc, { 240, 242, 245, 245 });
     }
-    surface()->DrawTextRight(FONT_UI, "MOUSE1/MOUSE2 - next/prev player   SPACE - change mode", W - 20 * sc, H - 22 * sc, { 200, 200, 200, 200 });
-    surface()->DrawTextRight(FONT_HUD_SMALL, TextFormat("Terrorists : %d    CT : %d", gr->m_iNumTerroristWins, gr->m_iNumCTWins), W - 20 * sc, 10 * sc, HUD);
-    if (gr->m_flRestartRoundTime <= 0 && lp->m_iTeamNum >= TEAM_TERRORIST && gr->IsDeathmatch()) surface()->DrawTextCentered(FONT_HUD_SMALL, "Respawning...", W * 0.5f, 18 * sc, HUD);
+    HudTextRight(FONT_GO_BOLD, "MOUSE1 / MOUSE2 - next / previous player      SPACE - change mode", W - 22 * sc, H - bh - 20 * sc, 11 * sc, Alpha(hudgo::TextFaint, 0.9f));
+    HudTextRight(FONT_GO_BOLD, TextFormat("TERRORISTS %d      CT %d", gr->m_iNumTerroristWins, gr->m_iNumCTWins), W - 22 * sc, 16 * sc, 12 * sc, Alpha(hudgo::TextDim, 0.95f));
+    if (gr->m_flRestartRoundTime <= 0 && lp->m_iTeamNum >= TEAM_TERRORIST && gr->IsDeathmatch())
+      HudTextCentered(FONT_GO_BOLD, "RESPAWNING...", W * 0.5f, 18 * sc, 13 * sc, Alpha(hudgo::Text, 0.9f));
   }
 }
 
@@ -811,13 +997,17 @@ void HUD_Paint() {
   DrawCenterTexts(lp, sc);
   if (vp->IsAlive() && cl.firstPerson) DrawCrosshair(vp, sc);
   if (lp->IsAlive()) {
-    DrawHealthArmor(lp, sc);
-    DrawAmmoMoney(lp, sc);
+    DrawLowHpVignette(lp);
+    DrawMoney(lp, sc);
+    DrawVitals(lp, sc);
+    DrawAmmo(lp, sc);
     DrawDamageIndicator(lp, sc);
     DrawProgressBar(lp, sc);
     DrawHitmarker(sc);
   } else if (vp != lp && vp->IsAlive()) {
-    DrawHealthArmor(vp, sc);
+    // spectator: show the watched player's health / armor / ammo
+    DrawVitals(vp, sc);
+    DrawAmmo(vp, sc);
   }
   if (!cl.showScores) DrawOverheads(lp, sc);
   if (lp->m_iTeamNum != TEAM_UNASSIGNED || lp->IsAlive()) DrawTimer(sc);
