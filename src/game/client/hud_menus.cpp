@@ -100,9 +100,13 @@ static std::vector<BuyItem> GetCategory(int cat, int team) {
     case LOADOUT_CAT_HEAVY:
     case LOADOUT_CAT_SMGS:
     case LOADOUT_CAT_RIFLES:
-      for (int id : Loadout_CategoryWeapons(cat, team)) {
-        const CCSWeaponInfo* wi = GetWeaponInfo(id); if (!wi) continue;
-        out.push_back({ WeaponIdToAlias(id), id, wi->printName, wi->price, wi->team, nullptr });
+      // Only show weapons that are actually equipped in the loadout
+      std::vector<LoadoutSlot2> slots = Loadout_GetSlots2(team);
+      for (const auto& s : slots) {
+        if (s.category == cat && s.weaponId != 0) {
+          const CCSWeaponInfo* wi = GetWeaponInfo(s.weaponId);
+          if (wi) out.push_back({ WeaponIdToAlias(s.weaponId), s.weaponId, wi->printName, wi->price, wi->team, nullptr });
+        }
       }
       break;
   }
@@ -153,11 +157,10 @@ void HUD_DrawBuyMenu() {
   std::vector<BuyItem> items;
   
   if (s_buyCategory < 0) {
-    // 6 categories: 5 active + 1 empty
-    const char* catNames[] = { "PISTOLS", "MID-TIER", "RIFLES", "EQUIPMENT", "GRENADES", "" };
-    for (int i = 0; i < 6; i++) {
-      bool isEmpty = (i == 5);
-      entries.push_back({ catNames[i], "", isEmpty ? nullptr : CategoryImage(i, team), !isEmpty, i + 1, isEmpty });
+    // 5 categories: 3 weapons + equipment + grenades
+    const char* catNames[] = { "PISTOLS", "MID-TIER", "RIFLES", "EQUIPMENT", "GRENADES" };
+    for (int i = 0; i < 5; i++) {
+      entries.push_back({ catNames[i], "", CategoryImage(i, team), true, i + 1, false });
     }
   } else {
     items = GetCategory(s_buyCategory, team);
