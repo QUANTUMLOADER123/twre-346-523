@@ -393,7 +393,12 @@ void CL_LevelInit() {
   cl.teamMenuOpen = true;   // MOTD -> team select like CS
   cl.buyMenuOpen = false; cl.showScores = false;
 }
-void CL_LevelShutdown() { FX_Clear(); S_StopAll(); }
+void CL_LevelShutdown() {
+  FX_Clear(); S_StopAll();
+  cl.viewEntity = nullptr;           // the entities are about to be deleted
+  VM_Reset();
+  cheat::LevelInit();
+}
 void CL_OnTickEnd() {}
 
 // ------------------------------------------------------------------------------------------------

@@ -27,7 +27,7 @@ void Init() {
   Log(v.misc.accent, "welcome back, %s. press INSERT to open the menu", "user");
 }
 void Shutdown() { Config_Save("default"); }
-void LevelInit() { Rage_LevelInit(); Visuals_LevelInit(); g.choked = 0; g.shots.clear(); }
+void LevelInit() { Rage_LevelInit(); Visuals_LevelInit(); g.choked = 0; g.shots.clear(); g.target = nullptr; g.targetValid = false; }
 
 static bool IsShooting(const CUserCmd& cmd, CCSPlayer* lp) {
   C_WeaponCSBase* w = lp->GetActiveCSWeapon();
