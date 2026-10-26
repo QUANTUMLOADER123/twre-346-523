@@ -616,21 +616,32 @@ void PaintLoadout() {
       
       // Highlight if dragging over this slot
       bool dragOver = s_dragWeapon != 0 && Over(x, y, colW, slotH);
-      DrawRectangleRec({ x, y, colW, slotH }, dragOver ? csgo::Alpha(csgo::Accent, 0.5f) : hv ? csgo::PanelHover : isLocked ? csgo::Alpha(csgo::Panel, 0.4f) : csgo::Panel);
+      DrawRectangleRec({ x, y, colW, slotH }, dragOver ? csgo::Alpha(csgo::Accent, 0.5f) : hv ? csgo::PanelHover : isLocked ? csgo::Alpha(csgo::Panel, 0.6f) : csgo::Panel);
       
-      if (isLocked) {
-        S()->DrawText(FONT_GO, "LOCKED", x + colW * 0.5f - 30.f, y + slotH * 0.5f - 10.f, csgo::TextDim);
-      } else if (wi) {
+      // For locked slot, show default pistol (Glock for T, USP for CT)
+      int displayWeaponId = isLocked ? (team == TEAM_TERRORIST ? WEAPON_GLOCK : WEAPON_USP_SILENCER) : weaponId;
+      const CCSWeaponInfo* displayWi = displayWeaponId ? GetWeaponInfo(displayWeaponId) : nullptr;
+      
+      if (displayWi) {
         float imgH = slotH - 30.f;
-        if (const Texture2D* img = VGUI_WeaponImage(weaponId))
-          VGUI_DrawImageFit(*img, x + 10.f, y + 6.f, colW - 20.f, imgH, WHITE);
-        S()->DrawText(FONT_GO_BOLD, wi->printName, x + 10.f, y + slotH - 20.f, csgo::Text);
+        Color tint = isLocked ? csgo::TextDim : WHITE;
+        if (const Texture2D* img = VGUI_WeaponImage(displayWeaponId))
+          VGUI_DrawImageFit(*img, x + 10.f, y + 6.f, colW - 20.f, imgH, tint);
+        S()->DrawText(FONT_GO_BOLD, displayWi->printName, x + 10.f, y + slotH - 20.f, isLocked ? csgo::TextDim : csgo::Text);
+        if (isLocked) {
+          S()->DrawText(FONT_GO, "DEFAULT", x + colW - 80.f, y + 10.f, csgo::TextDim);
+        }
       }
       
-      // Drop here if dragging
+      // Drop here when released over slot
       if (s_dragWeapon != 0 && !isLocked && dragOver && !In().mouseDown) {
         PlayClick();
         Loadout_SetWeapon2(team, c, i, s_dragWeapon);
+        s_dragWeapon = 0;
+      }
+      
+      // Cancel drag if released anywhere
+      if (s_dragWeapon != 0 && !In().mouseDown && !dragOver) {
         s_dragWeapon = 0;
       }
     }
