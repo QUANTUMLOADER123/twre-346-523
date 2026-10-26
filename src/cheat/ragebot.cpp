@@ -407,9 +407,18 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
   bool perfect = v.rage.compensateSpread || weapon_accuracy_nospread.GetBool();
   bool sniper = IsSniper(w->GetCSWeaponID());
   bool onGround = (lp->m_fFlags & FL_ONGROUND) != 0;
+  // auto stop only right before a real shot:
+  //  - we actually want to shoot (auto fire on, or the attack button is held)
+  //  - the weapon is ready now, or (between shots) becomes ready within a few ticks
+  //  - never while reloading / empty / in freeze time / planting (CanShoot covers this), never in the air
+  bool wantShoot = v.rage.autoFire || (cmd.buttons & IN_ATTACK);
+  float readyIn = std::max(w->m_flNextPrimaryAttack, lp->m_flNextAttack) - LocalAttackTime(lp);
+  bool soonReady = !w->IsReloading() && w->m_iClip1 > 0 && !CSGameRules()->IsFreezePeriod() && !lp->m_bIsDefusing && !lp->m_bIsPlanting &&
+                   readyIn <= TICKS_TO_TIME(3);
+  bool stopAllowed = v.rage.quickStop && onGround && wantShoot && (canShoot || (v.rage.quickStopBetweenShots && soonReady));
   if (!perfect && v.rage.autoscope && sniper && !w->IsZoomed() && onGround) {
-    if (LocalAttackTime(lp) >= w->m_flNextSecondaryAttack) cmd.buttons |= IN_ATTACK2;
-    if (v.rage.quickStop) QuickStop(cmd, lp, viewAngles, v.rage.quickStop == 2);
+    if (LocalAttackTime(lp) >= w->m_flNextSecondaryAttack && wantShoot) cmd.buttons |= IN_ATTACK2;
+    if (stopAllowed) QuickStop(cmd, lp, viewAngles, v.rage.quickStop == 2);
     return;
   }
   if (!perfect && v.rage.delayShot && lp->m_flDuckAmount > 0.05f && lp->m_flDuckAmount < 0.95f) return;
@@ -425,7 +434,7 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
     hc = HitChance(lp, w, eye, aim, best);
     if (need > 0 && hc < need) {
       // quick stop only when standing still would actually reach the hitchance (otherwise keep moving / anti-aiming)
-      if (v.rage.quickStop && onGround && (canShoot || v.rage.quickStopBetweenShots)) {
+      if (stopAllowed) {
         const CCSWeaponInfo& wi = w->GetCSWpnData();
         bool ducked = lp->m_flDuckAmount > 0.9f;
         float still = (ducked ? (w->IsZoomed() ? wi.inaccuracyCrouchAlt : wi.inaccuracyCrouch) : (w->IsZoomed() ? wi.inaccuracyStandAlt : wi.inaccuracyStand)) / 1000.f;
@@ -433,7 +442,7 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
       }
       return;
     }
-    if (v.rage.quickStop && v.rage.quickStopBetweenShots && !canShoot) QuickStop(cmd, lp, viewAngles, v.rage.quickStop == 2);
+    if (stopAllowed && !canShoot) QuickStop(cmd, lp, viewAngles, v.rage.quickStop == 2);
     if (!canShoot) return;
   }
   aim.x = Clamp(aim.x, -89.f, 89.f); aim.y = AngleNormalize(aim.y); aim.z = 0;

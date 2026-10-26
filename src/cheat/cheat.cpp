@@ -71,13 +71,22 @@ void CreateMove(CUserCmd& cmd) {
   //    (and the tickbase jump makes the weapon ready again, which is the "double" shot)
   int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 1);
   int charge = lp->m_nTickbaseShift;
-  if (shooting) g.lastShotTime = ServerTime();
-  if (g.doubletapping && shooting && charge > 0) cmd.tickbaseShift = std::max(cmd.tickbaseShift, charge);
+  // only real gun shots use the charge: knife slashes / grenades / c4 never teleport or trigger a recharge
+  C_WeaponCSBase* aw = lp->GetActiveCSWeapon();
+  bool gunShot = shooting && aw && aw->IsGun();
+  if (!gunShot && cmd.tickbaseShift > 0 && g.doubletapping) cmd.tickbaseShift = 0;
+  if (gunShot) g.lastShotTime = ServerTime();
+  if (g.doubletapping && gunShot && charge > 0) cmd.tickbaseShift = std::max(cmd.tickbaseShift, charge);
   else if (!g.doubletapping && charge > 0) cmd.tickbaseShift = charge;   // released (key / menu / fake duck) -> teleport
-  else if (g.doubletapping && !shooting && cmd.tickbaseShift == 0 && charge < maxShift && ServerTime() - g.lastShotTime > 0.25f && !(cmd.buttons & IN_ATTACK))
-    cmd.tickbaseShift = -1;
-  // defensive dt: shift every time we peek (break lag compensation on the first seen tick)
-  if (g.doubletapping && v.rage.doubletapMode == 1 && !shooting && g.dtReady && lp->m_vecVelocity.Length2D() > 100.f && (gpGlobals->tickcount % 16) == 0) cmd.tickbaseShift = maxShift;
+  else if (g.doubletapping && !shooting && cmd.tickbaseShift == 0 && charge < maxShift && ServerTime() - g.lastShotTime > 0.25f &&
+           !(cmd.buttons & (IN_ATTACK | IN_ATTACK2)))
+    cmd.tickbaseShift = -1;   // recharge: the whole cmd is held back -> clean hang in place (see host.cpp)
+  // defensive dt: one shift when an enemy first becomes hittable while we peek (not periodically -> no stop&go)
+  static bool s_defUsed = false;
+  if (!g.targetValid) s_defUsed = false;
+  if (g.doubletapping && v.rage.doubletapMode == 1 && !shooting && g.dtReady && g.targetValid && !s_defUsed && lp->m_vecVelocity.Length2D() > 100.f) {
+    cmd.tickbaseShift = maxShift; s_defUsed = true;
+  }
   FixMovement(cmd, view);
   cmd.viewangles.x = Clamp(cmd.viewangles.x, -89.f, 89.f);
   cmd.viewangles.y = AngleNormalize(cmd.viewangles.y);

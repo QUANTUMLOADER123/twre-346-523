@@ -16,6 +16,10 @@
 #include "../../engine/convar.hpp"
 #include "../../engine/bsp.hpp"
 #include "../../engine/hlfs.hpp"
+#include "../../engine/srcfs.hpp"
+#include "../../engine/srcbsp.hpp"
+#include "../../engine/srcmaterial.hpp"
+#include "../../engine/srcmdl.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -58,6 +62,8 @@ const char* CMapInfo::GetPlaceName(const Vector& p) const {
 }
 
 bool CMapInfo::Load(const std::string& path) {
+  if (path.rfind("css:", 0) == 0) return LoadSrc(path.substr(4));
+  g_SrcBsp.Unload(); SrcMdl_Clear(); SrcMat_Clear();
   if (path.size() > 4 && hlfs::Lower(path.substr(path.size() - 4)) == ".bsp") return LoadBsp(path);
   g_Bsp.Unload();
   std::ifstream f(path);
@@ -305,7 +311,10 @@ bool CMapInfo::Load(const std::string& path) {
 // original CS 1.6 maps
 std::string ResolveMapFile(const std::string& name) {
   if (name.size() > 4 && hlfs::Lower(name.substr(name.size() - 4)) == ".bsp") return name;
+  if (name.rfind("css:", 0) == 0) return name;
   std::string local = "assets/maps/" + name + ".map";
+  // Counter-Strike: Source first, then CS 1.6, then the built-in remakes
+  if (srcfs::Available() && srcfs::Exists("maps/" + name + ".bsp")) return "css:" + name;
   if (hl_content.GetBool()) {
     std::string p = hlfs::Find("maps/" + name + ".bsp");
     if (!p.empty()) return p;
@@ -374,6 +383,73 @@ bool CMapInfo::LoadBsp(const std::string& path) {
   return true;
 }
 
+// ------------------------------------------------------------------------------------------------
+// Counter-Strike: Source maps
+bool CMapInfo::LoadSrc(const std::string& mapName) {
+  *this = CMapInfo();
+  name = hlfs::Lower(mapName); title = name; file = "css:" + name; isBsp = true; isSrc = true;
+  g_Bsp.Unload();
+  // materials / models of the previous map (its pakfile may have overridden them)
+  SrcMdl_Clear(); SrcMat_Clear();
+  g_EngineTrace.Clear();
+  if (!g_SrcBsp.Load(name)) { Warning("CS:S map %s failed to load\n", name.c_str()); g_EngineTrace.Finalize(); return false; }
+  const CSrcBsp& W = g_SrcBsp;
+  mins = W.worldMins; maxs = W.worldMaxs;
+  g_EngineTrace.worldMins = mins; g_EngineTrace.worldMaxs = maxs;
+  g_EngineTrace.Finalize();
+  sunDir = W.sunDir; sunColor = W.sunColor;
+  wallHeight = maxs.z - mins.z;
+  bool hasBomb = false, hasHostages = false;
+  auto modelBox = [&](const BspEntity& e, Vector& a, Vector& b) {
+    int mi = e.ModelIndex(); if (mi <= 0 || mi >= (int)W.modelBounds.size()) return false;
+    Vector o = e.GetVector("origin");
+    a = W.modelBounds[mi].first + o; b = W.modelBounds[mi].second + o; return true;
+  };
+  // Source player origins are already at the feet; settle them on the floor in case they float / clip
+  auto dropToFloor = [&](Vector o) {
+    trace_t tr; g_EngineTrace.TraceHull(o + Vector(0, 0, 16), o - Vector(0, 0, 128), Vector(-16, -16, 0), Vector(16, 16, 72), MASK_PLAYERSOLID_BRUSHONLY, nullptr, &tr);
+    if (!tr.startsolid && tr.fraction < 1.f) return tr.endpos;
+    return o;
+  };
+  std::vector<MapZone> sites;
+  for (const BspEntity& e : W.entities) {
+    std::string cls = e.Class();
+    if (cls == "info_player_terrorist" || cls == "info_player_counterterrorist") {
+      MapSpawn s; s.team = cls == "info_player_terrorist" ? 2 : 3;
+      s.origin = dropToFloor(e.GetVector("origin"));
+      s.yaw = e.Has("angles") ? e.GetVector("angles").y : e.GetFloat("angle");
+      spawns.push_back(s);
+    } else if (cls == "func_bomb_target") {
+      hasBomb = true; MapZone z;
+      if (!modelBox(e, z.mins, z.maxs)) continue;
+      sites.push_back(z);
+    } else if (cls == "info_bomb_target") {
+      hasBomb = true; MapZone z; Vector o = e.GetVector("origin"); z.mins = o - Vector(128, 128, 64); z.maxs = o + Vector(128, 128, 128); sites.push_back(z);
+    } else if (cls == "func_buyzone") {
+      MapZone z; if (!modelBox(e, z.mins, z.maxs)) continue;
+      int team = e.GetInt("TeamNum", e.GetInt("teamnum", 0));
+      if (team == 0 || team == 2) { z.type = ZONE_BUY_T; zones.push_back(z); }
+      if (team == 0 || team == 3) { z.type = ZONE_BUY_CT; zones.push_back(z); }
+    } else if (cls == "hostage_entity" || cls == "func_hostage_rescue" || cls == "info_hostage_rescue") hasHostages = true;
+  }
+  // bomb sites in entity order: first = A, second = B
+  for (size_t i = 0; i < sites.size() && i < 2; i++) { sites[i].type = i == 0 ? ZONE_BOMBSITE_A : ZONE_BOMBSITE_B; zones.push_back(sites[i]); }
+  for (int team = 2; team <= 3; team++) {
+    int type = team == 2 ? ZONE_BUY_T : ZONE_BUY_CT;
+    if (FindZone(type)) continue;
+    MapZone z; z.type = type; z.mins = Vector(1e9f, 1e9f, 1e9f); z.maxs = Vector(-1e9f, -1e9f, -1e9f); bool any = false;
+    for (auto& s : spawns) if (s.team == team) { z.mins = VecMin(z.mins, s.origin); z.maxs = VecMax(z.maxs, s.origin); any = true; }
+    if (!any) continue;
+    z.mins -= Vector(200, 200, 64); z.maxs += Vector(200, 200, 128);
+    zones.push_back(z);
+  }
+  mode = hasBomb ? "bomb" : (hasHostages ? "hostage" : "elimination");
+  desc = "Counter-Strike: Source";
+  Msg("Map %s (CS:S VBSP v%d): %d spawns, %d zones, %d faces, %d brushes, %d disp tris, %d props (%d prop hulls)\n", name.c_str(), W.version,
+      (int)spawns.size(), (int)zones.size(), (int)W.faces.size(), W.numCollisionBrushes, W.numDispTris, (int)W.props.size(), W.numPropHulls);
+  return true;
+}
+
 std::vector<MapListEntry> ListMaps() {
   std::vector<MapListEntry> out;
   std::error_code ec;
@@ -396,6 +472,17 @@ std::vector<MapListEntry> ListMaps() {
       std::string file = hlfs::Find("maps/" + n + ".bsp"); if (file.empty()) continue;
       auto it = std::find_if(out.begin(), out.end(), [&](const MapListEntry& m) { return m.name == n; });
       MapListEntry m; m.name = n; m.title = n; m.file = file; m.desc = "CS 1.6";
+      m.mode = n.rfind("de_", 0) == 0 ? "bomb" : (n.rfind("cs_", 0) == 0 ? "hostage" : "elimination");
+      if (it != out.end()) { m.title = it->title; *it = m; } else out.push_back(m);
+    }
+  }
+  // Counter-Strike: Source maps win over both
+  if (srcfs::Available()) {
+    for (const std::string& n0 : srcfs::List("maps", ".bsp")) {
+      std::string n = hlfs::Lower(n0);
+      if (n.rfind("test_", 0) == 0) continue;
+      auto it = std::find_if(out.begin(), out.end(), [&](const MapListEntry& m) { return m.name == n; });
+      MapListEntry m; m.name = n; m.title = n; m.file = "css:" + n; m.desc = "CS:S";
       m.mode = n.rfind("de_", 0) == 0 ? "bomb" : (n.rfind("cs_", 0) == 0 ? "hostage" : "elimination");
       if (it != out.end()) { m.title = it->title; *it = m; } else out.push_back(m);
     }

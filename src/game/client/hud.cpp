@@ -13,6 +13,9 @@
 #include "../shared/soundemitter.hpp"
 #include "../server/nav_mesh.hpp"
 #include "../../engine/hlfs.hpp"
+#include "../../engine/srcfs.hpp"
+#include "../../engine/srcmaterial.hpp"
+#include "../../engine/keyvalues.hpp"
 #include "rlgl.h"
 #include <deque>
 #include <sstream>
@@ -90,7 +93,33 @@ static void OnEvent(const IGameEvent& e) {
 static Vector s_radarW0, s_radarDU, s_radarDV;
 
 // CS 1.6 overview (overviews/<map>.txt + .bmp from the player's install), HL1 spectator overview layout
+// CS:S: resource/overviews/<map>.txt (pos_x, pos_y, scale) + materials/overviews/<map>.vtf
+static bool LoadSrcOverviewRadar(const CMapInfo& m) {
+  float px = 0, py = 0, scale = 0;
+  std::vector<uint8_t> txt;
+  if (srcfs::Read("resource/overviews/" + m.name + ".txt", txt)) {
+    auto kv = KeyValues::Parse((const char*)txt.data(), txt.size());
+    const KeyValues* root = kv && !kv->children.empty() ? kv->children[0].get() : nullptr;
+    if (root) { px = root->GetFloat("pos_x"); py = root->GetFloat("pos_y"); scale = root->GetFloat("scale"); }
+  }
+  if (scale <= 0) {   // stock maps (the overview scripts are not part of every content pack)
+    struct O { const char* n; float x, y, s; };
+    static const O known[] = { { "de_dust2", -2476, 3239, 4.4f }, { "de_inferno", -2087, 3870, 4.9f }, { "de_nuke", -3453, 2887, 7.f } };
+    for (auto& o : known) if (m.name == o.n) { px = o.x; py = o.y; scale = o.s; }
+  }
+  if (scale <= 0) return false;
+  std::vector<uint8_t> rgba; int w = 0, h = 0;
+  if (!VTF_Load("materials/overviews/" + m.name + ".vtf", rgba, w, h, 1024) && !VTF_Load("materials/overviews/" + m.name + "_radar.vtf", rgba, w, h, 1024)) return false;
+  Image img{ rgba.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+  float upp = scale * 1024.f / (float)w;
+  s_radarW0 = Vector(px, py, 0); s_radarDU = Vector(upp, 0, 0); s_radarDV = Vector(0, -upp, 0);
+  s_radarTex = LoadTextureFromImage(img); SetTextureFilter(s_radarTex, TEXTURE_FILTER_BILINEAR);
+  Msg("Radar: materials/overviews/%s.vtf (scale %.2f)\n", m.name.c_str(), scale);
+  return true;
+}
+
 static bool LoadOverviewRadar(const CMapInfo& m) {
+  if (m.isSrc) return LoadSrcOverviewRadar(m);
   std::vector<uint8_t> txt; if (!hlfs::Read("overviews/" + m.name + ".txt", txt)) return false;
   std::string t(txt.begin(), txt.end());
   float zoom = 1.f, ox = 0, oy = 0; int rotated = 0; std::string image = "overviews/" + m.name + ".bmp";

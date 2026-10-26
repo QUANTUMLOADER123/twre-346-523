@@ -32,6 +32,8 @@ struct CMapInfo {
 
   bool Load(const std::string& path); // parse + compile into enginetrace (.bsp -> LoadBsp)
   bool LoadBsp(const std::string& path);
+  bool LoadSrc(const std::string& mapName);   // Counter-Strike: Source map (g_SrcBsp), path "css:<name>"
+  bool isSrc = false;            // CS:S map (also sets isBsp)
   const char* GetPlaceName(const Vector& p) const;
   const MapZone* FindZone(int type) const { for (auto& z : zones) if (z.type == type) return &z; return nullptr; }
   bool InZone(const Vector& p, int type) const { for (auto& z : zones) if (z.type == type && z.Contains(p)) return true; return false; }

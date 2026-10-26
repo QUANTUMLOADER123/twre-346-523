@@ -20,6 +20,7 @@ public:
   Vector ComputeLightAt(const Vector& p, const Vector& n, int aoRays, int sunRays); // full lighting evaluation
   bool built = false;
   bool bsp = false;                                     // original GoldSrc map (bsprender.cpp)
+  bool src = false;                                     // Counter-Strike: Source map (srcbsprender.cpp)
   int numTris = 0, numVerts = 0, numChunks = 0, drawnChunks = 0;
   float bakeSeconds = 0;
   const CMapInfo* map = nullptr;
@@ -30,7 +31,16 @@ private:
   void DrawBsp(const CViewSetup& view);
   void DrawBspSky(const CViewSetup& view);
   LightSample SampleLightBsp(const Vector& pos);
-  enum BspPass { BSPPASS_OPAQUE = 0, BSPPASS_LIGHTMAP, BSPPASS_ALPHATEST, BSPPASS_TRANSLUCENT, BSPPASS_ADDITIVE };
+  // Source maps (srcbsprender.cpp)
+  void BuildSrc();
+  void UnloadSrc();
+  void DrawSrc(const CViewSetup& view);
+  void DrawSrcSky(const CViewSetup& view);
+  LightSample SampleLightSrc(const Vector& pos);
+  struct SrcPropInst { struct CSrcModel* model = nullptr; Matrix xform{}; Color tint{ 255, 255, 255, 255 }; Vector mins, maxs; int skin = 0; float fadeMax = 0; };
+  std::vector<SrcPropInst> m_srcProps;
+  Texture2D m_srcSky[6]{};
+  enum BspPass { BSPPASS_OPAQUE = 0, BSPPASS_LIGHTMAP, BSPPASS_ALPHATEST, BSPPASS_TRANSLUCENT, BSPPASS_ADDITIVE, BSPPASS_BLEND2 };
   struct BspChunk { int pass = 0; Mesh mesh{}; Material material{}; Vector mins, maxs; float dist = 0; };
   std::vector<BspChunk> m_bspChunks;
   std::vector<Texture2D> m_bspTextures;

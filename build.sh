@@ -68,7 +68,7 @@ case "$TARGET" in
     OUT=bin/cshvh.exe ;;
   headless)
     CC="${CC:-gcc}"; CXX="${CXX:-g++}"
-    CFLAGS="$CFLAGS -DPLATFORM_MEMORY -DGRAPHICS_API_OPENGL_SOFTWARE"
+    CFLAGS="$CFLAGS -DPLATFORM_MEMORY -DGRAPHICS_API_OPENGL_SOFTWARE -DRLSW_MAX_TEXTURES=8192"   # CS:S maps use hundreds of textures
     CXXFLAGS="$CXXFLAGS -DCS_HEADLESS"
     LIBS="-lm -lpthread -ldl"
     OUT=bin/cshvh_headless ;;

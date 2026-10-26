@@ -106,6 +106,9 @@ void Host_RunTick() {
       // (even mid-air) while the tickbase "owes" us ticks
       lp->m_nTickbaseShift++;
       lp->m_LastCmd = cmd;
+      // nothing was simulated this tick: kill the render interpolation too, otherwise the camera would keep
+      // lerping last tick's movement every tick (= the "walks forward and back" jitter while recharging)
+      lp->m_vecOldOrigin = lp->m_vecOrigin;
     } else {
       RunPlayerCommand(lp, cmd);
       if (cmd.tickbaseShift > 0 && lp->IsAlive()) {

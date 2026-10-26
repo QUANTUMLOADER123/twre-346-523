@@ -2,6 +2,7 @@
 #include "../shared/mapinfo.hpp"
 #include "../../engine/enginetrace.hpp"
 #include "../../engine/bsp.hpp"
+#include "../../engine/srcbsp.hpp"
 #include "../../engine/convar.hpp"
 #include "../../engine/random.hpp"
 #include <queue>
@@ -18,7 +19,7 @@ int Opposite(int k) { static const int o[8] = { 1, 0, 3, 2, 7, 6, 5, 4 }; return
 
 void CNavMesh::Build() {
   m_areas.clear(); m_columns.clear(); m_built = false;
-  if (g_MapInfo.isBsp && g_Bsp.loaded) BuildFromBsp(); else BuildFromGrid();
+  if (g_MapInfo.isBsp && (g_Bsp.loaded || g_SrcBsp.loaded)) BuildFromBsp(); else BuildFromGrid();
   FinishBuild();
 }
 
@@ -75,13 +76,31 @@ void CNavMesh::BuildFromGrid() {
 void CNavMesh::BuildFromBsp() {
   auto t0 = std::chrono::steady_clock::now();
   const CBspWorld& W = g_Bsp;
+  const bool src = g_SrcBsp.loaded;   // CS:S map: brush collision in g_EngineTrace instead of GoldSrc hulls
+  const Vector wmins = src ? g_SrcBsp.worldMins : W.worldMins, wmaxs = src ? g_SrcBsp.worldMaxs : W.worldMaxs;
+  // standing hull trace between hull *centers* (GoldSrc hull 1 convention: center = feet + 36)
+  struct HTr { bool allsolid = false, startsolid = false; float fraction = 1; Vector endpos, normal; bool sky = false; };
+  auto T1 = [&](const Vector& a, const Vector& b) {
+    HTr r;
+    if (src) {
+      trace_t tr; g_EngineTrace.TraceHull(a, b, Vector(-16, -16, -36), Vector(16, 16, 36), MASK_PLAYERSOLID_BRUSHONLY, nullptr, &tr);
+      r.allsolid = tr.allsolid; r.startsolid = tr.startsolid; r.fraction = tr.fraction; r.endpos = tr.endpos; r.normal = tr.plane.normal; r.sky = (tr.surface.flags & SURF_SKY) != 0;
+    } else {
+      BspTrace tr; W.Trace(1, a, b, tr, true);
+      r.allsolid = tr.allsolid; r.startsolid = tr.startsolid; r.fraction = tr.fraction; r.endpos = tr.endpos; r.normal = tr.normal; r.sky = tr.hitContents == BSP_CONTENTS_SKY;
+    }
+    return r;
+  };
   m_cell = 32.f;
-  m_x0 = std::floor(W.worldMins.x / m_cell) * m_cell; m_y0 = std::floor(W.worldMins.y / m_cell) * m_cell;
-  m_cw = (int)std::ceil((W.worldMaxs.x - m_x0) / m_cell) + 1; m_ch = (int)std::ceil((W.worldMaxs.y - m_y0) / m_cell) + 1;
+  m_x0 = std::floor(wmins.x / m_cell) * m_cell; m_y0 = std::floor(wmins.y / m_cell) * m_cell;
+  m_cw = (int)std::ceil((wmaxs.x - m_x0) / m_cell) + 1; m_ch = (int)std::ceil((wmaxs.y - m_y0) / m_cell) + 1;
   if ((long long)m_cw * m_ch > 4000000) { Warning("Nav: map too large (%dx%d columns)\n", m_cw, m_ch); m_cw = m_ch = 0; return; }
   m_columns.assign((size_t)m_cw * m_ch, {});
-  const float top = W.worldMaxs.z - 40.f, bottom = W.worldMins.z + 1.f;
-  auto solid1 = [&](const Vector& c) { int pc = W.PointContents(c, 1, 0); return pc == BSP_CONTENTS_SOLID || pc == BSP_CONTENTS_SKY; };
+  const float top = wmaxs.z - 40.f, bottom = wmins.z + 1.f;
+  auto solid1 = [&](const Vector& c) {
+    if (src) return T1(c, c).startsolid;
+    int pc = W.PointContents(c, 1, 0); return pc == BSP_CONTENTS_SOLID || pc == BSP_CONTENTS_SKY;
+  };
   for (int cy = 0; cy < m_ch; cy++) for (int cx = 0; cx < m_cw; cx++) {
     float x = m_x0 + (cx + 0.5f) * m_cell, y = m_y0 + (cy + 0.5f) * m_cell;
     float z = top;
@@ -89,14 +108,14 @@ void CNavMesh::BuildFromBsp() {
     while (z > bottom && guard++ < 64) {
       Vector c(x, y, z);
       // skip through solid space (hull 1 is the expanded world, so walls and floors are thick)
-      if (solid1(c)) { z -= 8.f; continue; }
-      BspTrace tr; W.Trace(1, c, Vector(x, y, bottom), tr, true);
+      if (solid1(c)) { z -= src ? 16.f : 8.f; continue; }
+      HTr tr = T1(c, Vector(x, y, bottom));
       if (tr.allsolid || tr.fraction >= 1.f) break;
       float hitZ = tr.endpos.z;
-      if (tr.normal.z >= 0.7f && tr.hitContents != BSP_CONTENTS_SKY) {
+      if (tr.normal.z >= 0.7f && !tr.sky) {
         Vector feet(x, y, hitZ - 36.f);
         // water / slime / lava floors are not used
-        int pc = W.PointContents(feet + Vector(0, 0, 2), 0, 0);
+        int pc = src ? BSP_CONTENTS_EMPTY : W.PointContents(feet + Vector(0, 0, 2), 0, 0);
         if (pc != BSP_CONTENTS_SLIME && pc != BSP_CONTENTS_LAVA) {
           CNavArea a; a.center = feet; a.z = feet.z; a.walkable = true; a.column = cy * m_cw + cx;
           m_columns[a.column].push_back((int)m_areas.size()); m_areas.push_back(a);
@@ -106,10 +125,10 @@ void CNavMesh::BuildFromBsp() {
     }
   }
   // links: test hull movement towards each of the 8 neighbouring columns
-  auto clear = [&](const Vector& a, const Vector& b) { BspTrace tr; W.Trace(1, a, b, tr, true); return !tr.startsolid && tr.fraction >= 1.f; };
+  auto clear = [&](const Vector& a, const Vector& b) { HTr tr = T1(a, b); return !tr.startsolid && tr.fraction >= 1.f; };
   auto floorAt = [&](float x, float y, float fromZ, float& out) {
-    BspTrace tr; Vector s(x, y, fromZ + 36.f); if (solid1(s)) return false;
-    W.Trace(1, s, Vector(x, y, fromZ - 120.f), tr, true);
+    Vector s(x, y, fromZ + 36.f); if (solid1(s)) return false;
+    HTr tr = T1(s, Vector(x, y, fromZ - 120.f));
     if (tr.fraction >= 1.f || tr.startsolid) return false; out = tr.endpos.z - 36.f; return true;
   };
   const int n = (int)m_areas.size();

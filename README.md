@@ -5,9 +5,10 @@
 Код устроен как в Source SDK: `C_BaseEntity → C_BaseAnimating → C_BaseCombatCharacter → C_BasePlayer → CCSPlayer`,
 `C_WeaponCSBase`, `CCSGameRules`, `CGameMovement`, `CLagCompensationManager`, `CUserCmd`, ConVar/ConCommand, игровые события.
 
-> Проект не связан с Valve. Код, текстуры и звуки сделаны с нуля: текстуры и звуки генерируются процедурно.
-> **Если у тебя установлена CS 1.6, игра запускает её оригинальные карты (BSP) и звуки** прямо из папки игры,
-> см. раздел [«Оригинальный контент CS 1.6»](#оригинальный-контент-cs-16). В репозитории файлов Valve нет.
+> Проект не связан с Valve. В репозитории файлов Valve нет.
+> **Карты, текстуры, модели и звуки Counter-Strike: Source игра скачивает сама** одной командой: официальный SteamCMD
+> анонимно (без аккаунта и покупки) ставит бесплатный CS:S Dedicated Server. См. [«Контент Counter-Strike: Source»](#контент-counter-strike-source).
+> Без него работают встроенные карты, а при установленной CS 1.6 её карты и звуки ([«Оригинальный контент CS 1.6»](#оригинальный-контент-cs-16)).
 > Встроенные карты сделаны «по мотивам» классических раскладок. 3D-модели взяты из свободных CC0-паков, подробнее в [CREDITS.md](CREDITS.md).
 
 ## Запуск
@@ -82,6 +83,32 @@ Watermark, список биндов, индикаторы и спектатор
 
 Боты при `bot_hvh 1` тоже играют «HvH»: используют desync, jitter и fake lag.
 
+## Контент Counter-Strike: Source
+
+Half-Life и CS:S покупать не нужно. Valve бесплатно раздаёт **Counter-Strike: Source Dedicated Server** (Steam app 232330,
+около 2 ГБ) через свой SteamCMD с анонимным входом. В нём есть все карты, материалы, модели и звуки CS:S.
+
+**Как скачать** (любой способ):
+* в игре открыть консоль (`~`) и ввести **`css_download`**: откроется окно загрузки, по окончании ввести `css_rescan` или перезапустить игру;
+* или запустить **`tools\get_css_content.bat`** (Windows) / `tools/get_css_content.sh` (Linux).
+
+Контент ставится в `content/css/` (папка в `.gitignore`). Если CS:S уже установлена через Steam, она находится сама,
+другую папку можно указать через `css_gamedir "D:/Games/Counter-Strike Source"`. Порядок выбора: CS:S → CS 1.6 → встроенные карты.
+`css_content 0` выключает CS:S.
+
+**Что берётся из CS:S:**
+* **карты** (VBSP v19–21: de_dust2, de_inferno, de_nuke, de_train, cs_office…): геометрия, дисплейсменты со смешиванием
+  двух текстур, родные лайтмапы, небо, прозрачные и альфа-тестовые материалы, брашевые сущности;
+* **коллизия** по брашам карты с плоскостями-бевелами, дисплейсменты, статические пропы по выпуклым оболочкам из `.phy`;
+* **статические пропы** (ящики, бочки, машины, купола…) из `.mdl/.vvd/.vtx` с освещением по лайтмапе;
+* спавны, зоны закупки и бомбы из сущностей, **радар** из `materials/overviews/<карта>.vtf`;
+* **звуки** через родные скрипты `scripts/game_sounds*.txt`: выстрелы, перезарядка, нож, гранаты, C4, шаги по материалам,
+  попадания, радио, интерфейс. Для оружия из CS:GO берётся ближайший аналог (R8 → Deagle, P250 → P228, SSG08 → Scout…).
+
+Файлы читаются прямо из VPK-архивов (`cstrike_pak_dir.vpk`), распаковывать ничего не нужно. **Синтезированных «бипов» больше нет:**
+если нет ни CS:S, ни CS 1.6, звук просто не играет. Модели игроков и оружия от первого лица из CS:S пока не подключены:
+игроки свои (CC0), а модели от первого лица берутся из CS 1.6, если она есть.
+
 ## Оригинальный контент CS 1.6
 
 Файлы Valve защищены авторским правом, поэтому в репозитории их нет и игра их не скачивает. Но если у тебя есть
@@ -115,8 +142,8 @@ draw, idle, выстрелы, перезарядка, удары ножом, ч�
 
 **Звуки.** Используются `weapons/*.wav` (выстрелы, перезарядка, нож, гранаты, C4), `player/pl_*.wav` (шаги), `radio/*.wav`,
 звуки попаданий и интерфейса. У оружия из CS:GO, которого нет в 1.6, берётся ближайший аналог: R8 → deagle, P250 → p228,
-SSG08 → scout, SCAR-20 → sg550, SG553 → sg552, MP9 → tmp, Nova → m3. Если какого-то файла нет, для него остаётся синтез.
-`snd_original 0` выключает оригинальные звуки, `snd_restart` перечитывает их, `play Weapon_ak47.Single` проигрывает звук
+SSG08 → scout, SCAR-20 → sg550, SG553 → sg552, MP9 → tmp, Nova → m3. Если какого-то файла нет, звук не играет (синтеза больше нет).
+`snd_original 0` выключает звуки 1.6, `snd_css 0` звуки CS:S, `snd_restart` перечитывает их, `play Weapon_ak47.Single` проигрывает звук
 для проверки. Можно и просто скопировать `cstrike/sound` в `./sound/` рядом с игрой.
 
 ## Сборка
@@ -159,11 +186,13 @@ sudo apt install build-essential libx11-dev libxrandr-dev libxinerama-dev libxcu
 ```
 src/engine/       ConVar/консоль, математика (Vector/QAngle/matrix3x4_t), трассировка лучей и хуллов по брашам,
                   процедурные материалы, рендер мира (запечённый свет), studio-модели (glTF, скелет, IK), host/тики,
-                  hlfs (файлы установленной CS 1.6), bsp/bsprender (карты GoldSrc: хуллы, лайтмапы, WAD, небо), mdl (модели MDL v10)
+                  hlfs (файлы установленной CS 1.6), bsp/bsprender (карты GoldSrc: хуллы, лайтмапы, WAD, небо), mdl (модели MDL v10),
+                  srcfs (CS:S: VPK, папки, pakfile), keyvalues, srcmaterial (VMT/VTF, DXT), srcbsp/srcbsprender (карты VBSP),
+                  srcmdl (модели Source MDL v44–49 + VVD/VTX, кости, анимации)
 src/game/shared/  C_BaseEntity, CCSPlayer, C_WeaponCSBase + все пушки, gamemovement (Source-движение),
                   CCSGameRules (раунды, экономика, бомба), гранаты, lag compensation, анимстейт (desync/LBY), события
 src/game/server/  навигационная сетка и боты (CCSBot)
-src/game/client/  ввод/бинды, HUD (как в CS), VGUI-меню закупки и команд, viewmodel, эффекты, звук (процедурный синтез или WAV из CS 1.6)
+src/game/client/  ввод/бинды, HUD (как в CS), VGUI-меню закупки и команд, viewmodel, эффекты, звук (WAV из CS:S или CS 1.6)
 src/vgui/         ISurface, контролы (Frame/Button/Slider/ComboBox/…), главное меню CS 1.6, консоль
 src/cheat/        aimwhere: меню, ragebot, antiaim, visuals, misc
 tools/            mapgen.py, gen_vs.py (решение Visual Studio), simtest (симуляция матча без графики), worldtest, modeltest

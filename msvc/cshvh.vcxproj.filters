@@ -63,10 +63,28 @@
     <ClCompile Include="..\src\engine\host.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\engine\keyvalues.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\engine\materialsystem.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
     <ClCompile Include="..\src\engine\mdl.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcbsp.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcbsprender.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcfs.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcmaterial.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcmdl.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
     <ClCompile Include="..\src\engine\studio.cpp">
@@ -176,6 +194,9 @@
     <ClInclude Include="..\src\engine\host.hpp">
       <Filter>src\engine</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\engine\keyvalues.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\engine\materialsystem.hpp">
       <Filter>src\engine</Filter>
     </ClInclude>
@@ -186,6 +207,18 @@
       <Filter>src\engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\engine\random.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\srcbsp.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\srcfs.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\srcmaterial.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\srcmdl.hpp">
       <Filter>src\engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\engine\studio.hpp">
