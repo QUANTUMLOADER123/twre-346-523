@@ -350,7 +350,12 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
 
 fs::path PackMarker(const Pack& p) { return fs::path(p.files ? kExtras : kDest) / (std::string(".pack_") + p.id); }
 bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(p), ec); }
-bool PackWanted(const Pack& p) { return !PackDone(p) && (!p.core || s_needCore); }
+bool PackWanted(const Pack& p) {
+  if (PackDone(p)) return false;
+  // a local CS:GO install already has every stock map, so the map pack is not needed then
+  if (!p.core && p.files == s_csgoMapFiles && srcfs::CsgoAvailable()) return false;
+  return !p.core || s_needCore;
+}
 
 bool WriteFileAtomic(const fs::path& path, const std::vector<uint8_t>& data, std::string& err) {
   std::error_code ec; fs::create_directories(path.parent_path(), ec);
