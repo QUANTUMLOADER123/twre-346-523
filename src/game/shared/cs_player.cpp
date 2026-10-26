@@ -225,17 +225,16 @@ void CCSPlayer::PostThink(const CUserCmd& cmd, float ft) {
     else if (!wantUse && m_bIsDefusing && g_pPlantedC4->m_hBombDefuser == this) g_pPlantedC4->AbortDefuse();
   } else m_bIsDefusing = false;
   
-  // doors: use key opens func_door_rotating nearby
+  // doors: use key opens func_door_rotating nearby (placeholder - full implementation needs server-side door logic)
   if (cmd.buttons & IN_USE) {
     Vector eye = EyePosition();
     Vector forward; AngleVectors(v_angle, &forward);
     Vector traceEnd = eye + forward * 96.f;
     trace_t tr; UTIL_TraceLine(eye, traceEnd, MASK_SOLID, this, &tr);
     if (tr.m_pEnt && tr.fraction < 1.f) {
-      const char* cls = tr.m_pEnt->GetClassName();
+      const char* cls = tr.m_pEnt->GetClassname();
       if (cls && (!strcmp(cls, "func_door_rotating") || !strcmp(cls, "func_door"))) {
-        // open the door (simple: toggle state)
-        tr.m_pEnt->Use(this, this, USE_TOGGLE, 1.f);
+        // TODO: implement door opening (needs server-side door entity with Use method)
       }
     }
   }
