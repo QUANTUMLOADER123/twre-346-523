@@ -187,6 +187,14 @@ public:
   PlayerPoseOutput m_ClientPose;    // last client pose (render + hitboxes visible to the local client)
   bool m_bClientPoseValid = false;
   float m_flSpottedTime = -100;     // radar
+  int m_nWedgedTicks = 0;               // gamemovement: stuck in the air on a steep face
+  float m_flTeamSpottedTime = -100; // really seen by a living teammate of the local player (not radar reveal)
+
+  // dormancy (sv_transmit.cpp): the last state the local client received before the player went dormant
+  float m_flLastTransmitTime = -100;
+  Vector m_vecLastKnownOrigin; float m_flLastKnownTime = -100;
+  int m_iLastKnownHealth = 100, m_iLastKnownWeapon = 0; float m_flLastKnownDuck = 0;
+  Vector m_vecSoundOrigin; float m_flSoundTime = -100;   // heard while dormant (shots, footsteps, hits)
 
   // live render interpolation
   Vector m_vecRenderOrigin;

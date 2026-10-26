@@ -15,6 +15,8 @@
 #include "../game/shared/mapinfo.hpp"
 #include "../game/shared/soundemitter.hpp"
 #include "../game/shared/cs_player.hpp"
+#include "../game/shared/cs_loadout.hpp"
+#include "../game/shared/weapon_parse.hpp"
 #include "raylib.h"
 #include <algorithm>
 #include <cmath>
@@ -30,7 +32,7 @@ namespace mainmenu {
 namespace {
 // ------------------------------------------------------------------------------------------------
 // state
-enum Panel { P_HOME, P_PLAY, P_AGENTS, P_SERVERS, P_SETTINGS };
+enum Panel { P_HOME, P_PLAY, P_AGENTS, P_LOADOUT, P_SERVERS, P_SETTINGS };
 Panel s_panel = P_HOME;
 float s_panelAnim = 0;           // 0..1 fade of the open panel
 const float TB = 56;             // top bar height
@@ -94,6 +96,11 @@ void IconConsole(float cx, float cy, float r, Color c) {
   DrawLineEx({ cx - r * 0.8f, cy - r * 0.5f }, { cx - r * 0.25f, cy }, r * 0.2f, c);
   DrawLineEx({ cx - r * 0.25f, cy }, { cx - r * 0.8f, cy + r * 0.5f }, r * 0.2f, c);
   DrawLineEx({ cx, cy + r * 0.55f }, { cx + r * 0.8f, cy + r * 0.55f }, r * 0.2f, c);
+}
+void IconGun(float cx, float cy, float r, Color c) {
+  DrawRectangleRec({ cx - r, cy - r * 0.45f, r * 2.f, r * 0.42f }, c);                  // slide
+  DrawRectangleRec({ cx - r * 0.95f, cy - r * 0.1f, r * 0.55f, r * 0.95f }, c);         // grip
+  DrawRectangleRec({ cx - r * 0.3f, cy - r * 0.05f, r * 0.45f, r * 0.14f }, c);         // trigger guard
 }
 void IconBack(float cx, float cy, float r, Color c) {
   DrawLineEx({ cx + r * 0.3f, cy - r * 0.7f }, { cx - r * 0.4f, cy }, r * 0.24f, c);
@@ -276,7 +283,7 @@ void PaintTopBar(bool ingame) {
   if (iconBtn("quit", IconPower, false)) s_quitAsk = true;
   if (iconBtn("settings", IconGear, s_panel == P_SETTINGS)) s_panel = s_panel == P_SETTINGS ? P_HOME : P_SETTINGS;
   DrawRectangleRec({ x + 6, 12, 1, TB - 24 }, csgo::Line); x += 14;
-  static const NavItem nav[] = { { "PLAY", P_PLAY, IconPlay }, { "AGENTS", P_AGENTS, IconAgent }, { "SERVERS", P_SERVERS, IconGlobe } };
+  static const NavItem nav[] = { { "PLAY", P_PLAY, IconPlay }, { "AGENTS", P_AGENTS, IconAgent }, { "LOADOUT", P_LOADOUT, IconGun }, { "SERVERS", P_SERVERS, IconGlobe } };
   for (const NavItem& n : nav) {
     float tw = (float)S()->GetTextWide(FONT_GO_BOLD, n.label), w = tw + 56;
     bool active = s_panel == n.panel, hv = Over(x, 0, w, TB);
@@ -577,6 +584,57 @@ void PaintAgents() {
 
 // ------------------------------------------------------------------------------------------------
 // SERVERS
+// ------------------------------------------------------------------------------------------------
+// LOADOUT (CS:GO "Снаряжение"): which gun sits in the buy menu slots that hold one of two weapons
+void PaintLoadout() {
+  const float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
+  float pw = std::min(1100.f, W - 24.f), px = (W - pw) * 0.5f, py = TB, ph = H - TB;
+  PanelBg(px, py, pw, ph, "LOADOUT");
+  ConVar* teamCv = FindConVar("cl_menu_team");
+  int team = teamCv->GetInt() == TEAM_TERRORIST ? TEAM_TERRORIST : TEAM_CT;
+  float tx = px + 26, ty = py + 62, bw = std::min(220.f, (pw - 60) * 0.25f);
+  if (FlatButton("COUNTER-TERRORISTS", tx, ty, bw, 34, team == TEAM_CT ? csgo::Alpha(csgo::Accent, 0.95f) : csgo::PanelLight, csgo::PanelHover)) teamCv->SetValue(TEAM_CT);
+  if (FlatButton("TERRORISTS", tx + bw + 8, ty, bw, 34, team == TEAM_TERRORIST ? csgo::Alpha(csgo::Gold, 0.95f) : csgo::PanelLight, csgo::PanelHover)) teamCv->SetValue(TEAM_TERRORIST);
+  team = teamCv->GetInt() == TEAM_TERRORIST ? TEAM_TERRORIST : TEAM_CT;
+  S()->DrawText(FONT_GO, "Click a highlighted slot to swap the gun.  * other team's gun (mp_buy_anyteam)", tx + bw * 2 + 24, ty + 8, csgo::TextDim);
+  // columns: pistols / heavy / SMGs / rifles, up to 6 slots each
+  const int cats[4] = { LOADOUT_CAT_PISTOLS, LOADOUT_CAT_HEAVY, LOADOUT_CAT_SMGS, LOADOUT_CAT_RIFLES };
+  const float gx = tx, gy = ty + 50, gw = pw - 52, gh = py + ph - gy - 20;
+  const float cw = (gw - 3 * 12) / 4, rowH = std::min(96.f, (gh - 30) / 6 - 6);
+  for (int c = 0; c < 4; c++) {
+    float x = gx + c * (cw + 12);
+    S()->DrawText(FONT_GO_BOLD, Loadout_CategoryName(cats[c]), x, gy, csgo::TextDim);
+    std::vector<int> ids = Loadout_CategoryWeapons(cats[c], team);
+    for (size_t i = 0; i < ids.size() && i < 6; i++) {
+      float y = gy + 26 + i * (rowH + 6);
+      // is this a slot with an alternative?
+      const LoadoutSlot* slot = nullptr;
+      for (const LoadoutSlot& ls : Loadout_Slots()) if (ls.team == team && ls.category == cats[c] && (Loadout_Get(ls) == ids[i])) { slot = &ls; break; }
+      const CCSWeaponInfo* wi = GetWeaponInfo(ids[i]);
+      bool hv = slot && Over(x, y, cw, rowH);
+      std::string hid = std::string("lo") + std::to_string(c) + "_" + std::to_string(i); HoverSound(hid.c_str(), hv);
+      DrawRectangleRec({ x, y, cw, rowH }, hv ? csgo::PanelHover : slot ? csgo::Alpha(csgo::Panel, 1.f) : csgo::Alpha(csgo::Panel, 0.55f));
+      if (slot) DrawRectangleRec({ x, y, 3, rowH }, team == TEAM_CT ? csgo::Accent : csgo::Gold);
+      float imgH = rowH - 34;
+      if (const Texture2D* img = VGUI_WeaponImage(ids[i])) VGUI_DrawImageFit(*img, x + 10, y + 6, cw - 20, imgH, slot ? WHITE : Color{ 170, 170, 170, 255 });
+      S()->DrawText(FONT_GO_BOLD, wi ? wi->printName : "?", x + 10, y + rowH - 24, slot ? csgo::Text : csgo::TextDim);
+      if (wi) S()->DrawText(FONT_GO, TextFormat("$%d", wi->price), x + 14 + S()->GetTextWide(FONT_GO_BOLD, wi->printName), y + rowH - 23, csgo::TextFaint);
+      if (slot) {
+        int other = ids[i] == slot->optionA ? slot->optionB : slot->optionA;
+        const CCSWeaponInfo* oi = GetWeaponInfo(other);
+        bool otherTeamOnly = oi && oi->team && oi->team != team;
+        std::string alt = std::string("or ") + (oi ? oi->printName : "?") + (otherTeamOnly ? "*" : "");
+        S()->DrawTextRight(FONT_GO, alt.c_str(), x + cw - 8, y + rowH - 23, hv ? WHITE : csgo::Alpha(team == TEAM_CT ? csgo::Accent : csgo::Gold, 0.9f));
+        if (Clicked(x, y, cw, rowH)) {
+          PlayClick();
+          Loadout_Set(*slot, other);
+          if (otherTeamOnly) if (ConVar* any = FindConVar("mp_buy_anyteam")) if (!any->GetBool()) any->SetValue(1);
+        }
+      }
+    }
+  }
+}
+
 void PaintServers() {
   const float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
   float px = 0, py = TB, pw = W, ph = H - TB;
@@ -872,7 +930,7 @@ void PaintSettings() {
 
 static ConCommand cmd_gameui_panel("gameui_panel", [](const CCommand& a) {
   std::string n = a.Arg(1);
-  s_panel = n == "play" ? P_PLAY : n == "agents" ? P_AGENTS : n == "servers" ? P_SERVERS : n == "settings" ? P_SETTINGS : P_HOME;
+  s_panel = n == "play" ? P_PLAY : n == "agents" ? P_AGENTS : n == "loadout" ? P_LOADOUT : n == "servers" ? P_SERVERS : n == "settings" ? P_SETTINGS : P_HOME;
   if (a.ArgC() > 2) s_setTab = std::clamp(atoi(a.Arg(2)), 0, 8);
   gameui::Show();
 }, "Open a main menu panel: play, agents, servers, settings [tab 0-8], home");
@@ -885,7 +943,7 @@ bool OnEscape() {
   if (s_captureKey) { s_captureKey = nullptr; return true; }
   if (s_connecting >= 0) { s_connecting = -1; return true; }
   if (s_panel != P_HOME) {
-    if (s_panel == P_SETTINGS) Cbuf_AddText("host_writeconfig\n");
+    if (s_panel == P_SETTINGS || s_panel == P_LOADOUT) Cbuf_AddText("host_writeconfig\n");
     s_panel = P_HOME; return true;
   }
   return false;
@@ -898,7 +956,7 @@ void Paint() {
   if (In().mouseReleased) s_clearDrag = true;
   const bool ingame = CL_IsInGame();
   static Panel last = P_HOME;
-  if (last == P_SETTINGS && s_panel != P_SETTINGS) Cbuf_AddText("host_writeconfig\n");
+  if ((last == P_SETTINGS || last == P_LOADOUT) && s_panel != last) Cbuf_AddText("host_writeconfig\n");
   if (last != s_panel) s_panelAnim = 0;
   last = s_panel;
   s_panelAnim = std::min(1.f, s_panelAnim + GetFrameTime() * 7.f);
@@ -907,6 +965,7 @@ void Paint() {
     case P_HOME: PaintHome(ingame); break;
     case P_PLAY: PaintPlay(); break;
     case P_AGENTS: PaintAgents(); break;
+    case P_LOADOUT: PaintLoadout(); break;
     case P_SERVERS: PaintServers(); break;
     case P_SETTINGS: PaintSettings(); break;
   }

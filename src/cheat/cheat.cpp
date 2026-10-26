@@ -112,7 +112,7 @@ void FrameStageNotify() {
   cl.forceCrosshair = v.vis.forceCrosshair;
   cl.thirdpersonDist = v.vis.thirdpersonDist;
   CCSPlayer* lp = g_pLocalPlayer;
-  if (lp && v.vis.radarReveal) for (CCSPlayer* p : UTIL_GetPlayers(true)) if (p->IsEnemy(lp)) p->m_flSpottedTime = (float)gpGlobals->realtime;
+  if (lp && v.vis.radarReveal) for (CCSPlayer* p : UTIL_GetPlayers(true)) if (p->IsEnemy(lp) && !p->IsDormant()) p->m_flSpottedTime = (float)gpGlobals->realtime;
 }
 
 void DrawWorld3D(const CViewSetup& view) { Visuals_DrawWorld3D(view); }

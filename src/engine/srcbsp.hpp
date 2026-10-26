@@ -55,6 +55,12 @@ public:
   int numCollisionBrushes = 0, numDispTris = 0, numPropHulls = 0;
   std::vector<std::pair<Vector, Vector>> modelBounds;   // brush model index -> bounds
 
+  // PVS (LUMP_VISIBILITY, compiled by vvis): which leaf clusters can possibly see each other.
+  // Used by the server to decide which players are sent to a client (dormancy, sv_transmit.cpp).
+  bool HasVis() const { return m_numClusters > 0; }
+  int PointCluster(const Vector& p) const;              // -1 = solid / outside / no vis data
+  bool ClusterVisible(int from, int to) const;          // true when unknown (no vis, invalid cluster)
+
   // light at a point (lightmap of the face below, linear 0..n) for models
   bool LightPoint(const Vector& p, Vector& color) const;
   static Vector DecodeLuxel(const uint8_t* rgbe);     // ColorRGBExp32 -> linear
@@ -66,6 +72,11 @@ private:
   struct FaceRaw { int plane; int side; int firstEdge, numEdges; int texinfo, dispinfo; uint8_t styles[4]; int lightofs; int lmMins[2], lmSize[2]; };
   std::vector<Plane> m_planes; std::vector<Node> m_nodes; std::vector<TexInfo> m_texinfo; std::vector<FaceRaw> m_rawFaces;
   std::vector<Vector> m_verts;
+  std::vector<int16_t> m_leafCluster;                   // leaf -> cluster
+  int m_numClusters = 0;
+  std::vector<int> m_pvsOfs;                            // cluster -> byte offset of its compressed PVS row
+  std::vector<uint8_t> m_visData;
+  mutable std::vector<std::vector<uint8_t>> m_pvsRows;  // decompressed lazily
   bool RecursiveLight(int node, const Vector& a, const Vector& b, Vector& color) const;
   bool AddConvexHull(const std::vector<Vector>& pts, int surf);
   void LoadPhyHulls(const std::string& model, std::vector<std::vector<Vector>>& out);

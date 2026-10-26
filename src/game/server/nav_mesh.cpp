@@ -105,15 +105,23 @@ void CNavMesh::BuildFromBsp() {
     float x = m_x0 + (cx + 0.5f) * m_cell, y = m_y0 + (cy + 0.5f) * m_cell;
     float z = top;
     int guard = 0;
-    while (z > bottom && guard++ < 64) {
+    while (z > bottom && guard++ < 400) {
       Vector c(x, y, z);
       // skip through solid space (hull 1 is the expanded world, so walls and floors are thick)
-      if (solid1(c)) { z -= src ? 16.f : 8.f; continue; }
-      HTr tr = T1(c, Vector(x, y, bottom));
+      if (solid1(c)) {
+        // narrow passages (doors, gaps) that don't line up with the column grid: nudge the hull sideways
+        bool fit = false;
+        if (src) {
+          static const float off[8][2] = { { 10, 0 }, { -10, 0 }, { 0, 10 }, { 0, -10 }, { 10, 10 }, { -10, -10 }, { 10, -10 }, { -10, 10 } };
+          for (auto& o : off) { Vector c2(x + o[0], y + o[1], z); if (!solid1(c2)) { c = c2; fit = true; break; } }
+        }
+        if (!fit) { z -= src ? 16.f : 8.f; continue; }
+      }
+      HTr tr = T1(c, Vector(c.x, c.y, bottom));
       if (tr.allsolid || tr.fraction >= 1.f) break;
       float hitZ = tr.endpos.z;
       if (tr.normal.z >= 0.7f && !tr.sky) {
-        Vector feet(x, y, hitZ - 36.f);
+        Vector feet(c.x, c.y, hitZ - 36.f);
         // water / slime / lava floors are not used
         int pc = src ? BSP_CONTENTS_EMPTY : W.PointContents(feet + Vector(0, 0, 2), 0, 0);
         if (pc != BSP_CONTENTS_SLIME && pc != BSP_CONTENTS_LAVA) {
@@ -194,8 +202,9 @@ void CNavMesh::FinishBuild() {
 int CNavMesh::Lookup(const Vector& p, bool reachableOnly, int maxRing) const {
   if (m_columns.empty()) return -1;
   int cx = (int)std::floor((p.x - m_x0) / m_cell), cy = (int)std::floor((p.y - m_y0) / m_cell);
-  int best = -1; float bestD = 1e18f;
-  for (int r = 0; r <= maxRing && best < 0; r++) {
+  int best = -1; float bestD = 1e18f, bestDz = 0;
+  // keep widening while the best node is on another floor (e.g. a catwalk right above us)
+  for (int r = 0; r <= maxRing && (best < 0 || bestDz > 48.f); r++) {
     for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx++) {
       if (std::max(std::abs(dx), std::abs(dy)) != r) continue;
       int x = cx + dx, y = cy + dy;
@@ -206,7 +215,7 @@ int CNavMesh::Lookup(const Vector& p, bool reachableOnly, int maxRing) const {
         float dz = a.z - p.z;
         if (dz > 72.f) dz *= 3.f;            // prefer floors below the point (feet / falling objects)
         float d = (a.center - p).Length2DSqr() + dz * dz * 4.f;
-        if (d < bestD) { bestD = d; best = i; }
+        if (d < bestD) { bestD = d; best = i; bestDz = std::fabs(a.z - p.z); }
       }
     }
   }

@@ -309,6 +309,14 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
     const CSrcModel* wm = WorldWeapon(in.weaponId, sil);
     if (wm && !wm->meshes.empty()) {
       BoneMerge(*wm, *m, out.cssBones, out.cssWeaponBones);
+      // the player animations move weapon_bone on their own (CS:S lets IK pull the hands onto the gun, we don't
+      // run IK): put the gun into the right hand instead - weapon_bone_RHand is where the hand grips the weapon
+      int hand = m->FindBone("ValveBiped.Bip01_R_Hand"), grip = m->FindBone("ValveBiped.weapon_bone_RHand");
+      if (hand >= 0 && grip >= 0 && hand < (int)out.cssBones.size() && grip < (int)out.cssBones.size()) {
+        matrix3x4_t gripInv, fix; MatrixInvert(out.cssBones[grip], gripInv);
+        ConcatTransforms(out.cssBones[hand], gripInv, fix);
+        for (auto& b : out.cssWeaponBones) { matrix3x4_t t; ConcatTransforms(fix, b, t); b = t; }
+      }
       out.cssWeapon = wm; out.hasWeapon = true;
       for (size_t i = 0; i < wm->attachments.size(); i++)
         if (wm->attachments[i].name == "muzzle_flash" || wm->attachments[i].name == "muzzle" || wm->attachments[i].name == "1") { out.muzzle = wm->AttachmentPos((int)i, out.cssWeaponBones, out.cssToWorld); out.hasMuzzle = true; break; }
@@ -436,6 +444,10 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   QAngle ang = view.angles; ang.x += sway.x * 0.3f; ang.y += sway.y * 0.3f;
   Vector org = view.origin + view.forward * (std::sin(bt) * 0.4f * bob) - view.up * (landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * bob);
   matrix3x4_t xf; AngleMatrix(ang, org, xf);
+  // CS:S v_ models are built left-handed (the game mirrors them for cl_righthand 1), the CS:GO R8 is right-handed
+  static ConVar* righthand = FindConVar("cl_righthand");
+  const bool wantRight = !righthand || righthand->GetBool();
+  if (wantRight != r8) for (int i = 0; i < 3; i++) xf[i][1] = -xf[i][1];   // mirror along the view's right axis
 
   StudioLight L;
   if (g_WorldRender.built) { LightSample s = g_WorldRender.SampleLight(view.origin); L.ambient = s.ambient * 1.15f; L.direct = s.direct * 0.8f; L.dir = s.dir; }

@@ -15,7 +15,7 @@ namespace cheat {
 static CCSPlayer* ClosestEnemyToCrosshair(CCSPlayer* lp, const QAngle& view) {
   CCSPlayer* best = nullptr; float bf = 1e9f;
   for (CCSPlayer* o : UTIL_GetPlayers(true)) {
-    if (!lp->IsEnemy(o)) continue;
+    if (!lp->IsEnemy(o) || o->IsDormant()) continue;
     QAngle a = CalcAngle(lp->EyePosition(), o->m_vecOrigin + Vector(0, 0, 50));
     float f = std::fabs(AngleDiff(a.y, view.y));
     if (f < bf) { bf = f; best = o; }

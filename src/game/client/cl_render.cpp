@@ -243,6 +243,7 @@ void CCSPlayer::DrawModel(const CViewSetup& view) {
   bool isViewEnt = (cl.viewEntity == this) && cl.firstPerson;
   if (isViewEnt) return;
   if (!IsAlive() && m_flDeathTime <= 0) return;
+  if (IsAlive() && IsDormant()) return;          // not sent to us this tick (out of our PVS)
   bool useNet = IsAlive() && !IsLocalPlayer();
   BuildRenderPose(g_Host.frameAlpha, useNet);
   if (!m_bRenderPoseValid) return;
@@ -422,7 +423,7 @@ static void CL_UpdateSpotting() {
         trace_t tr; UTIL_TraceLine(eye, t, MASK_VISIBLE, o, &tr);
         if (tr.fraction >= 0.99f && !LineGoesThroughSmoke(eye, t)) { seen = true; break; }
       }
-      if (seen) { e->m_flSpottedTime = (float)gpGlobals->realtime + 0.2f; break; }
+      if (seen) { e->m_flSpottedTime = (float)gpGlobals->realtime + 0.2f; e->m_flTeamSpottedTime = (float)gpGlobals->realtime + 0.2f; break; }
     }
   }
 }

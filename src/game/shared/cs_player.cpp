@@ -1,6 +1,7 @@
 // cs_player.cpp - CCSPlayer shared/server logic: spawn, usercmd processing, network snapshots (choke/desync),
 // damage & death, inventory, buy menu backend.
 #include "cs_player.hpp"
+#include "cs_loadout.hpp"
 #include "weapon_csbase.hpp"
 #include "gamemovement.hpp"
 #include "cs_gamerules.hpp"
@@ -85,7 +86,7 @@ void CCSPlayer::Spawn() {
   m_nTickbaseShift = 0;
   // inventory: everyone keeps a knife + team pistol
   if (!Weapon_OwnsThisType(WEAPON_KNIFE)) GiveWeapon(WEAPON_KNIFE);
-  if (!Weapon_GetSlot(WEAPON_SLOT_PISTOL)) GiveWeapon(m_iTeamNum == TEAM_CT ? WEAPON_USP_SILENCER : WEAPON_GLOCK);
+  if (!Weapon_GetSlot(WEAPON_SLOT_PISTOL)) GiveWeapon(Loadout_StartPistol(m_iTeamNum, m_bIsBot));
   // refill ammo
   for (auto* w : m_hMyWeapons) if (w && w->IsGun()) { w->m_iClip1 = w->GetCSWpnData().clipSize; w->m_iPrimaryReserveAmmoCount = w->GetCSWpnData().reserveAmmo; w->m_bInReload = false; w->ResetZoom(); }
   C_WeaponCSBase* best = Weapon_GetSlot(WEAPON_SLOT_RIFLE); if (!best) best = Weapon_GetSlot(WEAPON_SLOT_PISTOL); if (!best) best = Weapon_OwnsThisType(WEAPON_KNIFE);

@@ -26,11 +26,13 @@ static void AirStrafe(CUserCmd& cmd, CCSPlayer* lp, const QAngle& view) {
     else if (l) offset = 90; else if (r) offset = -90; else if (b) offset = 180; else if (f) offset = 0; else keys = false;
   }
   if (!keys) return;
-  // Strict directional strafer (no smoothing, no speed build-up):
-  //  every tick we solve for the exact air-acceleration vector that rotates the velocity onto the wished
-  //  direction (view yaw + WASD offset) as fast as physics allows while keeping |v| constant.
-  //  - it never accelerates: above the weapon's ground speed it brakes down to it, below it simply keeps the speed
-  //  - once aligned there is no input at all -> perfectly straight lines / exact 45 degree diagonals
+  // Fast directional strafer: no speed limit in the air, only acceleration.
+  //  Air acceleration can only add speed perpendicular-ish to the velocity (sv_air_max_wishspeed caps the
+  //  projection), so the biggest gain per tick is a full push at 90 degrees - it also turns the velocity by
+  //  atan(wishcap / speed). We push 90 degrees towards the wished direction (view yaw + WASD offset) while we're
+  //  off course, an exact partial push when the remaining error is smaller than one step, and alternate sides when
+  //  aligned -> straight lines / exact 45 degree diagonals while the speed keeps building up.
+  //  On the ground the speed is reset (sv_bhop_reset) and the build-up starts again with the next jump.
   C_WeaponCSBase* w = lp->GetActiveCSWeapon();
   float cap = w ? w->GetMaxSpeed() : 250.f;
   if (lp->m_bIsScoped && w) cap *= 0.75f;
@@ -42,36 +44,33 @@ static void AirStrafe(CUserCmd& cmd, CCSPlayer* lp, const QAngle& view) {
   const float wishCap = awVar ? awVar->GetFloat() : 30.f;
   const float ft = gpGlobals->interval_per_tick;
   const float accMax = airAccel * cap * ft;                       // accelspeed with a full-length wish vector
-  auto press = [&](float moveYaw, float wishspeed) {               // wishspeed in units/s (move vector length)
+  auto press = [&](float moveYaw) {
     float rel = DEG2RADF(AngleDiff(moveYaw, view.y));
-    cmd.forwardmove = std::cos(rel) * wishspeed;
-    cmd.sidemove = -std::sin(rel) * wishspeed;
+    cmd.forwardmove = std::cos(rel) * cap;
+    cmd.sidemove = -std::sin(rel) * cap;
   };
-  if (speed < 1.f) { press(wishYaw, cap); return; }
+  if (speed < 30.f) { press(wishYaw); return; }
   const float velYaw = RAD2DEGF(std::atan2(vel.y, vel.x));
   const float delta = AngleDiff(wishYaw, velYaw);
-  const float targetSpeed = speed > cap ? std::max(cap, speed - wishCap) : speed;
-  if (std::fabs(delta) < 0.05f && std::fabs(targetSpeed - speed) < 0.05f) return;   // aligned: coast straight
-  // feasibility of reaching v* = rotate(v, delta*t) scaled to lerp(speed, targetSpeed, t) in one tick
-  struct Sol { bool ok; float yaw, ws; };
-  auto solve = [&](float t) -> Sol {
-    float yaw = DEG2RADF(velYaw + delta * t);
-    float m = speed + (targetSpeed - speed) * t;
-    float dx = std::cos(yaw) * m - vel.x, dy = std::sin(yaw) * m - vel.y;
-    float a = std::sqrt(dx * dx + dy * dy);
-    if (a < 1e-4f) return { true, velYaw, 0.f };
-    float ux = dx / a, uy = dy / a;
-    float addspeed = wishCap - (vel.x * ux + vel.y * uy);           // what AirAccelerate allows along this dir
-    if (a > accMax + 1e-3f || a > addspeed + 1e-3f) return { false, 0, 0 };
-    return { true, RAD2DEGF(std::atan2(uy, ux)), a / (airAccel * ft) };
+  // velocity yaw change of a push at angle phi (degrees, relative to the velocity)
+  auto turn = [&](float phi) {
+    float r = DEG2RADF(phi);
+    float add = std::min(accMax, wishCap - speed * std::cos(r));
+    if (add <= 0) return 0.f;
+    return RAD2DEGF(std::atan2(std::sin(r) * add, speed + std::cos(r) * add));
   };
-  Sol best = solve(1.f);
-  if (!best.ok) {
-    float lo = 0.f, hi = 1.f;
-    best = solve(0.f);
-    for (int i = 0; i < 24; i++) { float mid = (lo + hi) * 0.5f; Sol sm = solve(mid); if (sm.ok) { lo = mid; best = sm; } else hi = mid; }
-  }
-  if (best.ok && best.ws > 0.01f) press(best.yaw, std::min(best.ws, cap));
+  const float step = turn(90.f);
+  static int s_side = 1;
+  if (std::fabs(delta) > 135.f) { press(velYaw + (delta > 0 ? 135.f : -135.f)); return; }   // sharp reversal: brake + turn
+  if (std::fabs(delta) > step) { press(velYaw + (delta > 0 ? 90.f : -90.f)); return; }
+  // on course: zig-zag +-step/2 around the wished yaw - every tick is a (nearly) full gaining push and the
+  // average heading is exactly the wished one
+  const int side = delta > 0.001f ? 1 : delta < -0.001f ? -1 : (s_side = -s_side);   // swing over to the other side
+  const float d2 = AngleDiff(wishYaw + side * step * 0.5f, velYaw);
+  if (std::fabs(d2) >= step) { press(velYaw + (d2 > 0 ? 90.f : -90.f)); return; }
+  float lo = RAD2DEGF(std::acos(Clamp(wishCap / speed, -1.f, 1.f))), hi = 90.f, want = std::fabs(d2);
+  for (int k = 0; k < 20; k++) { float mid = (lo + hi) * 0.5f; if (turn(mid) < want) lo = mid; else hi = mid; }
+  press(velYaw + (d2 > 0 ? hi : -hi));
 }
 
 static void EdgeJump(CUserCmd& cmd, CCSPlayer* lp) {

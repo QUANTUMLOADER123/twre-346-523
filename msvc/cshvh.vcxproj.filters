@@ -138,10 +138,16 @@
     <ClCompile Include="..\src\game\server\nav_mesh.cpp">
       <Filter>src\game\server</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\game\server\sv_transmit.cpp">
+      <Filter>src\game\server</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\game\shared\baseentity.cpp">
       <Filter>src\game\shared</Filter>
     </ClCompile>
     <ClCompile Include="..\src\game\shared\cs_gamerules.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\cs_loadout.cpp">
       <Filter>src\game\shared</Filter>
     </ClCompile>
     <ClCompile Include="..\src\game\shared\cs_player.cpp">
@@ -278,10 +284,16 @@
     <ClInclude Include="..\src\game\server\nav_mesh.hpp">
       <Filter>src\game\server</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\game\server\sv_transmit.hpp">
+      <Filter>src\game\server</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\game\shared\baseentity.hpp">
       <Filter>src\game\shared</Filter>
     </ClInclude>
     <ClInclude Include="..\src\game\shared\cs_gamerules.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\cs_loadout.hpp">
       <Filter>src\game\shared</Filter>
     </ClInclude>
     <ClInclude Include="..\src\game\shared\cs_player.hpp">

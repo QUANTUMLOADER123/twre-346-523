@@ -12,6 +12,7 @@
 #include "../game/shared/gameevents.hpp"
 #include "../game/shared/mapinfo.hpp"
 #include "../game/server/cs_bot.hpp"
+#include "../game/server/sv_transmit.hpp"
 #include "../game/server/nav_mesh.hpp"
 #include <cmath>
 #include <algorithm>
@@ -82,6 +83,34 @@ static void RunPlayerCommand(CCSPlayer* p, CUserCmd& cmd) {
   gpGlobals->curtime = saved;
 }
 
+// doubletap / recharge handling shared by the local client and HvH bots:
+//  tickbaseShift < 0: recharge - the command is held back, the server doesn't simulate the player (clean hang)
+//  tickbaseShift > 0: release - the owed ticks are simulated at once (teleport / instant second shot)
+static void RunShiftedCommand(CCSPlayer* p, CUserCmd& cmd, int& cmdCounter) {
+  int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 1);
+  if (cmd.tickbaseShift < 0 && p->IsAlive() && p->m_nTickbaseShift < maxShift) {
+    p->m_nTickbaseShift++;
+    p->m_LastCmd = cmd;
+    // nothing was simulated this tick: kill the render interpolation too, otherwise the camera would keep
+    // lerping last tick's movement every tick (= the "walks forward and back" jitter while recharging)
+    p->m_vecOldOrigin = p->m_vecOrigin;
+    return;
+  }
+  RunPlayerCommand(p, cmd);
+  if (cmd.tickbaseShift > 0 && p->IsAlive()) {
+    int n = std::min(cmd.tickbaseShift, p->m_nTickbaseShift);
+    CUserCmd extra = cmd;
+    extra.buttons &= ~(IN_ATTACK | IN_ATTACK2);
+    for (int i = 0; i < n; i++) {
+      extra.command_number = ++cmdCounter;
+      extra.random_seed = MD5_PseudoRandom(extra.command_number) & 0x7fffffff;
+      extra.bSendPacket = (i == n - 1);
+      RunPlayerCommand(p, extra);
+    }
+    p->m_nTickbaseShift -= n;
+  }
+}
+
 void Host_RunTick() {
   gpGlobals->tickcount++;
   gpGlobals->curtime = ServerTime();
@@ -104,37 +133,14 @@ void Host_RunTick() {
     cmd.tick_count = gpGlobals->tickcount;
     cmd.random_seed = MD5_PseudoRandom(cmd.command_number) & 0x7fffffff;
     CL_CreateMove(cmd);
-    int maxShift = std::min(sv_maxdtshift.GetInt(), sv_maxusrcmdprocessticks.GetInt() - 1);
-    if (cmd.tickbaseShift < 0 && lp->IsAlive() && lp->m_nTickbaseShift < maxShift) {
-      // recharge: the command is held back - the server doesn't simulate us at all, so we freeze in place
-      // (even mid-air) while the tickbase "owes" us ticks
-      lp->m_nTickbaseShift++;
-      lp->m_LastCmd = cmd;
-      // nothing was simulated this tick: kill the render interpolation too, otherwise the camera would keep
-      // lerping last tick's movement every tick (= the "walks forward and back" jitter while recharging)
-      lp->m_vecOldOrigin = lp->m_vecOrigin;
-    } else {
-      RunPlayerCommand(lp, cmd);
-      if (cmd.tickbaseShift > 0 && lp->IsAlive()) {
-        // release: all owed ticks are simulated at once with the current input -> we teleport n ticks ahead
-        int n = std::min(cmd.tickbaseShift, lp->m_nTickbaseShift);
-        CUserCmd extra = cmd;
-        extra.buttons &= ~(IN_ATTACK | IN_ATTACK2);
-        for (int i = 0; i < n; i++) {
-          extra.command_number = ++g_Host.lastLocalCmd;
-          extra.random_seed = MD5_PseudoRandom(extra.command_number) & 0x7fffffff;
-          extra.bSendPacket = (i == n - 1);
-          RunPlayerCommand(lp, extra);
-        }
-        lp->m_nTickbaseShift -= n;
-      }
-    }
+    RunShiftedCommand(lp, cmd, g_Host.lastLocalCmd);
   }
   // bots
   for (CCSPlayer* p : UTIL_GetPlayers()) {
     if (!p->IsBot() || !p->m_pBot) continue;
     CUserCmd cmd; p->m_pBot->Upkeep(cmd);
-    RunPlayerCommand(p, cmd);
+    static int s_botExtraCmd = 1 << 24;
+    RunShiftedCommand(p, cmd, s_botExtraCmd);
   }
   // world entities
   for (size_t i = 0; i < g_EntityList.All().size(); i++) {
@@ -145,6 +151,7 @@ void Host_RunTick() {
   }
   CSGameRules()->Think();
   g_LagCompensation.FrameUpdatePostEntityThink();
+  SV_UpdateTransmit();               // dormancy: which enemies the local client receives
   g_NavMesh.DecayDanger(gpGlobals->interval_per_tick);
   // purge expired smokes
   auto& sm = GetActiveSmokes();
@@ -218,7 +225,7 @@ static ConCommand cmd_setpos("setpos", [](const CCommand& a) {
   p->m_vecOldOrigin = p->m_vecOrigin; p->m_vecVelocity.Init();
 }, "Move player to specified origin (must have sv_cheats).", FCVAR_CHEAT);
 static ConCommand cmd_setang("setang", [](const CCommand& a) { CCSPlayer* p = LP(); if (!p || a.ArgC() < 3) return; p->v_angle = QAngle(a.ArgF(1), a.ArgF(2), 0); extern void CL_SetViewAngles(const QAngle&); CL_SetViewAngles(p->v_angle); }, "Snap player eyes to specified pitch yaw <roll:optional>");
-static ConCommand cmd_getpos("getpos", [](const CCommand&) { CCSPlayer* p = LP(); if (!p) return; Msg("setpos %.2f %.2f %.2f;setang %.2f %.2f %.2f\n", p->m_vecOrigin.x, p->m_vecOrigin.y, p->m_vecOrigin.z, p->v_angle.x, p->v_angle.y, 0.f); }, "dump position and angles to the console");
+static ConCommand cmd_getpos("getpos", [](const CCommand&) { CCSPlayer* p = LP(); if (!p) return; Msg("setpos %.2f %.2f %.2f;setang %.2f %.2f %.2f  // speed %.1f%s\n", p->m_vecOrigin.x, p->m_vecOrigin.y, p->m_vecOrigin.z, p->v_angle.x, p->v_angle.y, 0.f, p->m_vecVelocity.Length2D(), (p->m_fFlags & FL_ONGROUND) ? " ground" : ""); }, "dump position and angles to the console");
 static ConCommand cmd_give("give", [](const CCommand& a) { if (!RequireCheats()) return; CCSPlayer* p = LP(); if (!p || !p->IsAlive() || a.ArgC() < 2) return; if (C_WeaponCSBase* w = p->GiveNamedItem(a.Arg(1))) p->Weapon_Switch(w); else Msg("Unknown item %s\n", a.Arg(1)); }, "Give item to player.", FCVAR_CHEAT);
 static ConCommand cmd_buy("buy", [](const CCommand& a) { CCSPlayer* p = LP(); if (!p || a.ArgC() < 2) return; for (int i = 1; i < a.ArgC(); i++) p->BuyItem(a.Arg(i)); }, "Buy an item: buy <ak47|m4a1|awp|vesthelm|...>");
 static ConCommand cmd_drop("drop", [](const CCommand&) { CCSPlayer* p = LP(); if (!p || !p->IsAlive()) return; C_WeaponCSBase* w = p->GetActiveCSWeapon(); if (w && w->GetWeaponType() != WEAPONTYPE_KNIFE) p->Weapon_Drop(w, true); }, "Drop the current weapon");

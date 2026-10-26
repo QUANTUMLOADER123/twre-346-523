@@ -18,6 +18,11 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
   rlDrawRenderBatchActive();
   if (p.flags & STUDIO_NO_DEPTH) rlDisableDepthTest();
   if (p.flags & STUDIO_NO_CULL) rlDisableBackfaceCulling();
+  // mirrored transform (right-handed view models): the winding flips, so cull the other side
+  const matrix3x4_t& X = modelToWorld;
+  const float det = X[0][0] * (X[1][1] * X[2][2] - X[1][2] * X[2][1]) - X[0][1] * (X[1][0] * X[2][2] - X[1][2] * X[2][0]) + X[0][2] * (X[1][0] * X[2][1] - X[1][1] * X[2][0]);
+  const bool mirrored = det < 0.f;
+  if (mirrored) rlSetCullFace(RL_CULL_FACE_FRONT);
   thread_local std::vector<Vector> wp; thread_local std::vector<Color> wc; thread_local std::vector<uint8_t> vok;
   // opaque meshes first, translucent ones after
   for (int pass = 0; pass < 2; pass++) {
@@ -99,4 +104,5 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
   rlSetTexture(0);
   rlDrawRenderBatchActive();
   if (p.flags & (STUDIO_NO_DEPTH | STUDIO_NO_CULL)) { rlEnableDepthTest(); rlEnableBackfaceCulling(); }
+  if (mirrored) rlSetCullFace(RL_CULL_FACE_BACK);
 }

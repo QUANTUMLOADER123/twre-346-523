@@ -200,9 +200,7 @@ static bool W2S(const Vector& p, Vector2D& out) { return cl.view.WorldToScreen(p
 static void Txt(int font, const char* t, float x, float y, Col c) { surface()->DrawTextOutline(font, t, x, y, c, { 0, 0, 0, (unsigned char)(c.a * 0.8f) }); }
 static void TxtC(int font, const char* t, float cx, float y, Col c) { Txt(font, t, cx - surface()->GetTextSize(font, t).x * 0.5f, y, c); }
 
-static bool GetBox(CCSPlayer* p, float& x, float& y, float& w, float& h) {
-  Vector o = p->m_bRenderPoseValid ? p->m_vecRenderOrigin : p->m_vecOrigin;
-  float duck = p->m_LagRecords.empty() ? p->m_flDuckAmount : p->m_LagRecords.front().duckAmount;
+static bool GetBoxAt(const Vector& o, float duck, float& x, float& y, float& w, float& h) {
   float top = 72.f - 18.f * duck + 4.f;
   float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
   for (int i = 0; i < 8; i++) {
@@ -214,6 +212,11 @@ static bool GetBox(CCSPlayer* p, float& x, float& y, float& w, float& h) {
   float hh = maxy - miny, ww = hh * 0.5f, cx = (minx + maxx) * 0.5f;
   x = std::floor(cx - ww * 0.5f); y = std::floor(miny); w = std::floor(ww); h = std::floor(hh);
   return w > 1 && h > 1;
+}
+static bool GetBox(CCSPlayer* p, float& x, float& y, float& w, float& h) {
+  Vector o = p->m_bRenderPoseValid ? p->m_vecRenderOrigin : p->m_vecOrigin;
+  float duck = p->m_LagRecords.empty() ? p->m_flDuckAmount : p->m_LagRecords.front().duckAmount;
+  return GetBoxAt(o, duck, x, y, w, h);
 }
 
 static const int s_skel[][2] = { { HITBOX_HEAD, HITBOX_NECK }, { HITBOX_NECK, HITBOX_UPPER_CHEST }, { HITBOX_UPPER_CHEST, HITBOX_CHEST }, { HITBOX_CHEST, HITBOX_LOWER_CHEST },
@@ -229,13 +232,26 @@ static bool BreakingLC(CCSPlayer* p) {
 
 static void DrawPlayerESP(CCSPlayer* lp, CCSPlayer* p) {
   auto& s = v.vis;
+  // dormant (not sent to us): only the last received position or a sound we heard, fading out
+  const bool dormant = p->IsDormant();
+  float alpha = 1.f;
+  Vector dormantPos;
+  if (dormant) {
+    if (!s.dormant) return;
+    float known = p->m_flLastKnownTime; dormantPos = p->m_vecLastKnownOrigin;
+    if (p->m_flSoundTime > known) { known = p->m_flSoundTime; dormantPos = p->m_vecSoundOrigin; }
+    float age = ServerTime() - known;
+    if (known < 0 || age > s.dormantTime || age < 0) return;
+    alpha = Clamp(1.f - age / std::max(0.5f, s.dormantTime), 0.f, 1.f) * 0.8f;
+    if (alpha < 0.02f) return;
+  }
   float x, y, w, h;
-  bool onScreen = GetBox(p, x, y, w, h);
+  bool onScreen = dormant ? GetBoxAt(dormantPos, p->m_flLastKnownDuck, x, y, w, h) : GetBox(p, x, y, w, h);
   int sw = GetScreenWidth(), sh = GetScreenHeight();
   if (onScreen && (x + w < 0 || x > sw || y + h < 0 || y > sh)) onScreen = false;
   if (!onScreen) {
     if (s.oof && p->IsEnemy(lp)) {
-      QAngle a = CalcAngle(cl.view.origin, p->m_vecOrigin);
+      QAngle a = CalcAngle(cl.view.origin, dormant ? dormantPos : p->m_vecOrigin);
       float yaw = DEG2RADF(cl.view.angles.y - a.y - 90.f);
       float r = s.oofRadius;
       Vector2 c{ sw * 0.5f, sh * 0.5f };
@@ -243,28 +259,37 @@ static void DrawPlayerESP(CCSPlayer* lp, CCSPlayer* p) {
       Vector2 l{ c.x + std::cos(yaw - 0.08f) * (r - 18), c.y + std::sin(yaw - 0.08f) * (r - 18) };
       Vector2 rr{ c.x + std::cos(yaw + 0.08f) * (r - 18), c.y + std::sin(yaw + 0.08f) * (r - 18) };
       float pulse = 0.55f + 0.45f * std::sin((float)GetTime() * 5.f);
-      Col oc = s.oofCol.Alpha((int)(s.oofCol.a * pulse));
+      Col oc = (dormant ? s.dormantCol : s.oofCol).Alpha((int)((dormant ? s.dormantCol : s.oofCol).a * pulse * alpha));
       surface()->DrawTriangle(tip, rr, l, oc); surface()->DrawTriangle(tip, l, rr, oc);
     }
     return;
   }
-  float alpha = 1.f;
   int a255 = (int)(255 * alpha);
+  const Col boxCol = dormant ? s.dormantCol : s.boxCol, nameCol = dormant ? s.dormantCol : s.nameCol;
   if (s.box) {
     surface()->DrawOutlinedRect(x - 1, y - 1, w + 2, h + 2, { 0, 0, 0, (unsigned char)(170 * alpha) });
     surface()->DrawOutlinedRect(x + 1, y + 1, w - 2, h - 2, { 0, 0, 0, (unsigned char)(170 * alpha) });
-    surface()->DrawOutlinedRect(x, y, w, h, s.boxCol.Alpha((int)(s.boxCol.a * alpha)));
+    surface()->DrawOutlinedRect(x, y, w, h, boxCol.Alpha((int)(boxCol.a * alpha)));
   }
-  if (s.name) TxtC(FONT_ESP, p->GetPlayerName(), x + w * 0.5f, y - 13, s.nameCol.Alpha(a255));
+  if (s.name) TxtC(FONT_ESP, p->GetPlayerName(), x + w * 0.5f, y - 13, nameCol.Alpha((int)(nameCol.a * alpha)));
   if (s.health) {
-    float hp = Clamp(p->m_iHealth / 100.f, 0.f, 1.f);
+    const int health = dormant ? p->m_iLastKnownHealth : p->m_iHealth;
+    float hp = Clamp(health / 100.f, 0.f, 1.f);
     surface()->DrawFilledRect(x - 6, y - 1, 4, h + 2, { 0, 0, 0, (unsigned char)(150 * alpha) });
     Color hc = { (unsigned char)(255 * std::min(1.f, 2 * (1 - hp))), (unsigned char)(255 * std::min(1.f, 2 * hp)), 40, (unsigned char)a255 };
+    if (dormant) hc = { s.dormantCol.r, s.dormantCol.g, s.dormantCol.b, (unsigned char)a255 };
     surface()->DrawFilledRect(x - 5, y + h * (1 - hp), 2, h * hp, hc);
-    if (p->m_iHealth < 100) Txt(FONT_ICONS_SMALL, TextFormat("%d", p->m_iHealth), x - 10, y + h * (1 - hp) - 5, MkCol(255, 255, 255, a255));
+    if (health < 100) Txt(FONT_ICONS_SMALL, TextFormat("%d", health), x - 10, y + h * (1 - hp) - 5, MkCol(255, 255, 255, a255));
   }
   float by = y + h + 2;
   C_WeaponCSBase* wpn = p->GetActiveCSWeapon();
+  if (dormant) {
+    if (s.weapon && p->m_iLastKnownWeapon > 0) {
+      std::string n = GetWeaponInfo(p->m_iLastKnownWeapon)->printName; for (auto& ch : n) ch = (char)toupper(ch);
+      TxtC(FONT_ICONS_SMALL, n.c_str(), x + w * 0.5f, by, s.dormantCol.Alpha(a255));
+    }
+    return;     // nothing else is known about a dormant player
+  }
   if (s.ammo && wpn && wpn->IsGun() && wpn->GetCSWpnData().clipSize > 0) {
     float frac = Clamp((float)wpn->m_iClip1 / wpn->GetCSWpnData().clipSize, 0.f, 1.f);
     if (wpn->IsReloading()) frac = Clamp((ServerTime() - wpn->m_flReloadStartTime) / std::max(0.01f, wpn->m_flReloadFinishTime - wpn->m_flReloadStartTime), 0.f, 1.f);

@@ -50,6 +50,7 @@ public:
   Vector m_vecOrigin;            // abs origin
   Vector m_vecOldOrigin;         // last tick (render interpolation)
   Vector m_vecVelocity;
+  bool IsDormant() const { return m_bDormant; }   // not sent to the local client (out of its PVS) - sv_transmit.cpp
   Vector m_vecBaseVelocity;
   Vector m_vecAbsVelocity;
   QAngle m_angRotation;

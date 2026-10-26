@@ -14,6 +14,7 @@ ConVar sv_maxvelocity("sv_maxvelocity", "3500", FCVAR_REPLICATED, "Maximum speed
 ConVar sv_stepsize("sv_stepsize", "18", FCVAR_REPLICATED, "Step height");
 ConVar sv_jump_impulse("sv_jump_impulse", "301.993377", FCVAR_REPLICATED, "Initial upward velocity for player jumps");
 ConVar sv_enablebunnyhopping("sv_enablebunnyhopping", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Allow player speed to exceed maximum running speed when jumping");
+ConVar sv_bhop_reset("sv_bhop_reset", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Touching the ground resets the horizontal speed to the running speed (air strafe speed has to be built up again every jump)");
 ConVar sv_autobunnyhopping("sv_autobunnyhopping", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Players automatically re-jump while holding jump button");
 ConVar sv_falldamage_scale("sv_falldamage_scale", "1", FCVAR_REPLICATED, "Fall damage scale");
 ConVar sv_noclipspeed("sv_noclipspeed", "5", FCVAR_ARCHIVE, "Noclip speed factor");
@@ -309,6 +310,10 @@ bool CGameMovement::CheckJumpButton() {
     float maxscaledspeed = 1.1f * player->m_flMaxspeed;
     if (maxscaledspeed > 0) { float spd = mv->m_vecVelocity.Length(); if (spd > maxscaledspeed) mv->m_vecVelocity *= maxscaledspeed / spd; }
   }
+  if (sv_bhop_reset.GetBool() && player->m_flMaxspeed > 0) {
+    float spd = mv->m_vecVelocity.Length2D();
+    if (spd > player->m_flMaxspeed) { float k = player->m_flMaxspeed / spd; mv->m_vecVelocity.x *= k; mv->m_vecVelocity.y *= k; }
+  }
   player->m_fFlags &= ~FL_ONGROUND;
   player->m_hGroundEntity = nullptr;
   float startz = mv->m_vecVelocity.z;
@@ -360,9 +365,16 @@ void CGameMovement::CategorizePosition() {
         if (t2.fraction < 1.f && t2.plane.normal.z >= 0.7f) { pm = t2; found = true; }
       }
       if (found) { SetGroundEntity(&pm); return; }
-    }
+      // wedged on a steep face (velocity gets cleared every tick instead of sliding): after a few ticks
+      // let it count as ground so the player can walk / jump off instead of hanging in the air forever
+      bool wedged = mv->m_vecVelocity.z <= 0.f && mv->m_vecVelocity.z > -20.f && pm.plane.normal.z > 0.05f &&
+                    (player->m_nWedgedTicks > 6 || mv->m_vecVelocity.Length2D() < 2.f);   // once wedged, stay "grounded" until we leave the face
+      player->m_nWedgedTicks = wedged ? player->m_nWedgedTicks + 1 : 0;
+      if (player->m_nWedgedTicks > 6) { SetGroundEntity(&pm); return; }
+    } else player->m_nWedgedTicks = 0;
     SetGroundEntity(nullptr);
   } else {
+    player->m_nWedgedTicks = 0;
     SetGroundEntity(&pm);
   }
 }

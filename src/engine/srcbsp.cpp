@@ -12,7 +12,7 @@
 
 namespace {
 enum {
-  LUMP_ENTITIES = 0, LUMP_PLANES = 1, LUMP_TEXDATA = 2, LUMP_VERTEXES = 3, LUMP_NODES = 5, LUMP_TEXINFO = 6, LUMP_FACES = 7,
+  LUMP_ENTITIES = 0, LUMP_PLANES = 1, LUMP_TEXDATA = 2, LUMP_VERTEXES = 3, LUMP_VISIBILITY = 4, LUMP_NODES = 5, LUMP_TEXINFO = 6, LUMP_FACES = 7,
   LUMP_LIGHTING = 8, LUMP_LEAFS = 10, LUMP_EDGES = 12, LUMP_SURFEDGES = 13, LUMP_MODELS = 14, LUMP_LEAFFACES = 16,
   LUMP_LEAFBRUSHES = 17, LUMP_BRUSHES = 18, LUMP_BRUSHSIDES = 19, LUMP_DISPINFO = 26, LUMP_DISP_VERTS = 33, LUMP_GAME_LUMP = 35,
   LUMP_PAKFILE = 40, LUMP_TEXDATA_STRING_DATA = 43, LUMP_TEXDATA_STRING_TABLE = 44, LUMP_LIGHTING_HDR = 53,
@@ -173,6 +173,22 @@ bool CSrcBsp::Load(const std::string& mapName) {
   for (int i = 0, n = count(LUMP_NODES, 32); i < n; i++) {
     const uint8_t* p = lump(LUMP_NODES) + i * 32;
     m_nodes.push_back({ Rd<int>(p), { Rd<int>(p + 4), Rd<int>(p + 8) }, Rd<uint16_t>(p + 24), Rd<uint16_t>(p + 26) });
+  }
+  // leaf clusters + visibility (PVS)
+  {
+    const int leafBytes = L[LUMP_LEAFS].ver == 0 ? 56 : 32;
+    for (int i = 0, n = count(LUMP_LEAFS, leafBytes); i < n; i++) m_leafCluster.push_back(Rd<int16_t>(lump(LUMP_LEAFS) + i * leafBytes + 4));
+    const int visLen = L[LUMP_VISIBILITY].len;
+    if (visLen >= 4) {
+      const uint8_t* v = lump(LUMP_VISIBILITY);
+      int nc = Rd<int>(v);
+      if (nc > 0 && nc < 65536 && 4 + nc * 8 <= visLen) {
+        m_numClusters = nc;
+        for (int c = 0; c < nc; c++) m_pvsOfs.push_back(Rd<int>(v + 4 + c * 8));   // [0] = PVS, [1] = PAS
+        m_visData.assign(v, v + visLen);
+        m_pvsRows.assign(nc, {});
+      }
+    }
   }
   std::vector<uint16_t> edges; for (int i = 0, n = count(LUMP_EDGES, 4); i < n; i++) { edges.push_back(Rd<uint16_t>(lump(LUMP_EDGES) + i * 4)); edges.push_back(Rd<uint16_t>(lump(LUMP_EDGES) + i * 4 + 2)); }
   std::vector<int> surfedges; for (int i = 0, n = count(LUMP_SURFEDGES, 4); i < n; i++) surfedges.push_back(Rd<int>(lump(LUMP_SURFEDGES) + i * 4));
@@ -498,6 +514,39 @@ bool CSrcBsp::Load(const std::string& mapName) {
 }
 
 // light under a point: walk down the node tree (Quake style R_LightPoint)
+int CSrcBsp::PointCluster(const Vector& p) const {
+  if (m_nodes.empty() || !m_numClusters) return -1;
+  int n = 0;
+  for (int guard = 0; n >= 0 && guard < 4096; guard++) {
+    const Node& nd = m_nodes[n];
+    if (nd.plane < 0 || nd.plane >= (int)m_planes.size()) return -1;
+    const Plane& pl = m_planes[nd.plane];
+    n = nd.children[p.Dot(pl.n) - pl.d >= 0 ? 0 : 1];
+    if (n >= (int)m_nodes.size()) return -1;
+  }
+  if (n >= 0) return -1;
+  int leaf = -1 - n;
+  return leaf < (int)m_leafCluster.size() ? m_leafCluster[leaf] : -1;
+}
+
+bool CSrcBsp::ClusterVisible(int from, int to) const {
+  if (!m_numClusters || from < 0 || to < 0 || from >= m_numClusters || to >= m_numClusters) return true;
+  std::vector<uint8_t>& row = m_pvsRows[from];
+  if (row.empty()) {
+    // run-length compressed: a zero byte is followed by the count of zero bytes it stands for
+    const int rowBytes = (m_numClusters + 7) >> 3;
+    row.assign(rowBytes, 0);
+    size_t i = (size_t)m_pvsOfs[from];
+    for (int out = 0; out < rowBytes && i < m_visData.size();) {
+      uint8_t b = m_visData[i++];
+      if (b) { row[out++] = b; continue; }
+      if (i >= m_visData.size()) break;
+      out += m_visData[i++];
+    }
+  }
+  return (row[to >> 3] & (1 << (to & 7))) != 0;
+}
+
 bool CSrcBsp::RecursiveLight(int node, const Vector& a, const Vector& b, Vector& color) const {
   if (node < 0 || node >= (int)m_nodes.size()) return false;
   const Node& n = m_nodes[node]; const Plane& p = m_planes[n.plane];

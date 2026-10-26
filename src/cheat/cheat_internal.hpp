@@ -85,6 +85,7 @@ struct Vars {
     bool health = true; bool weapon = true; bool ammo = true; Col ammoCol = MkCol(80, 140, 250);
     bool flags = true; bool skeleton = false; Col skeletonCol = MkCol(255, 255, 255, 160);
     bool oof = true; Col oofCol = MkCol(255, 255, 255, 200); float oofRadius = 180;
+    bool dormant = true; Col dormantCol = MkCol(170, 170, 170, 200); float dormantTime = 4.f;   // last known spot / heard sounds
     bool hitboxOnShot = true; Col hitboxCol = MkCol(150, 200, 60, 140);
     bool glow = false; Col glowCol = MkCol(180, 60, 120, 150);
     bool radarReveal = true;

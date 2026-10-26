@@ -128,8 +128,10 @@
     <ClCompile Include="..\src\game\client\viewmodel.cpp" />
     <ClCompile Include="..\src\game\server\cs_bot.cpp" />
     <ClCompile Include="..\src\game\server\nav_mesh.cpp" />
+    <ClCompile Include="..\src\game\server\sv_transmit.cpp" />
     <ClCompile Include="..\src\game\shared\baseentity.cpp" />
     <ClCompile Include="..\src\game\shared\cs_gamerules.cpp" />
+    <ClCompile Include="..\src\game\shared\cs_loadout.cpp" />
     <ClCompile Include="..\src\game\shared\cs_player.cpp" />
     <ClCompile Include="..\src\game\shared\cs_player_shared.cpp" />
     <ClCompile Include="..\src\game\shared\cs_playeranimstate.cpp" />
@@ -176,8 +178,10 @@
     <ClInclude Include="..\src\game\client\touch.hpp" />
     <ClInclude Include="..\src\game\server\cs_bot.hpp" />
     <ClInclude Include="..\src\game\server\nav_mesh.hpp" />
+    <ClInclude Include="..\src\game\server\sv_transmit.hpp" />
     <ClInclude Include="..\src\game\shared\baseentity.hpp" />
     <ClInclude Include="..\src\game\shared\cs_gamerules.hpp" />
+    <ClInclude Include="..\src\game\shared\cs_loadout.hpp" />
     <ClInclude Include="..\src\game\shared\cs_player.hpp" />
     <ClInclude Include="..\src\game\shared\cs_playeranimstate.hpp" />
     <ClInclude Include="..\src\game\shared\cs_projectiles.hpp" />

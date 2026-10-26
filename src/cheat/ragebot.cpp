@@ -80,7 +80,7 @@ float Resolver_GetYaw(CCSPlayer* p, const CNetPlayerState& rec, int* sideOut) {
 }
 
 void Resolver_Update(CCSPlayer* p) {
-  if (!p->IsAlive() || p->m_LagRecords.empty() || !g_pLocalPlayer || !p->IsEnemy(g_pLocalPlayer)) { p->m_bResolverActive = false; return; }
+  if (!p->IsAlive() || p->IsDormant() || p->m_LagRecords.empty() || !g_pLocalPlayer || !p->IsEnemy(g_pLocalPlayer)) { p->m_bResolverActive = false; return; }
   if (v.rage.resolver == 0 || !v.rage.enabled) { p->m_bResolverActive = false; return; }
   int side = 0;
   p->m_flResolverFootYaw = Resolver_GetYaw(p, p->m_LagRecords.front(), &side);
@@ -357,7 +357,7 @@ static void Knifebot(CUserCmd& cmd, CCSPlayer* lp, C_WeaponCSBase* w) {
   if (ServerTime() < w->m_flNextPrimaryAttack || ServerTime() < lp->m_flNextAttack) return;
   Vector eye = lp->EyePosition();
   for (CCSPlayer* t : UTIL_GetPlayers(true)) {
-    if (!lp->IsEnemy(t) || t->m_LagRecords.empty() || g_PlayerList[t->entindex() & 63].whitelist) continue;
+    if (!lp->IsEnemy(t) || t->IsDormant() || t->m_LagRecords.empty() || g_PlayerList[t->entindex() & 63].whitelist) continue;
     const CNetPlayerState& r = t->m_LagRecords.front();
     Vector chest = (r.hitboxes[HITBOX_CHEST].a + r.hitboxes[HITBOX_CHEST].b) * 0.5f;
     float d = (chest - eye).Length();
@@ -396,7 +396,7 @@ void Rage_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles) {
   // gather targets
   std::vector<CCSPlayer*> targets;
   for (CCSPlayer* t : UTIL_GetPlayers(true)) {
-    if (t == lp || !lp->IsEnemy(t) || t->m_LagRecords.empty() || t->m_bGunGameImmunity || g_PlayerList[t->entindex() & 63].whitelist) continue;
+    if (t == lp || !lp->IsEnemy(t) || t->IsDormant() || t->m_LagRecords.empty() || t->m_bGunGameImmunity || g_PlayerList[t->entindex() & 63].whitelist) continue;
     QAngle a = CalcAngle(eye, t->m_LagRecords.front().origin + Vector(0, 0, 40));
     float fov = std::hypot(AngleDiff(a.x, viewAngles.x), AngleDiff(a.y, viewAngles.y));
     if (fov > v.rage.fov) continue;

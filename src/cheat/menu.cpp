@@ -102,7 +102,7 @@ static void RegisterVars() {
   R("aa.fakeduck_key", a.fakeDuckKey); R("aa.slowwalk_key", a.slowWalkKey); R("aa.slowwalk_speed", a.slowWalkSpeed); R("aa.legs", a.legMovement); R("aa.onshot", a.onShotAA);
   R("vis.team", s.teammates); R("vis.box", s.box); R("vis.box_col", s.boxCol); R("vis.name", s.name); R("vis.name_col", s.nameCol); R("vis.health", s.health); R("vis.weapon", s.weapon);
   R("vis.ammo", s.ammo); R("vis.ammo_col", s.ammoCol); R("vis.flags", s.flags); R("vis.skeleton", s.skeleton); R("vis.skeleton_col", s.skeletonCol); R("vis.oof", s.oof); R("vis.oof_col", s.oofCol);
-  R("vis.oof_radius", s.oofRadius); R("vis.shot_hitbox", s.hitboxOnShot); R("vis.shot_hitbox_col", s.hitboxCol); R("vis.glow", s.glow); R("vis.glow_col", s.glowCol); R("vis.radar", s.radarReveal);
+  R("vis.oof_radius", s.oofRadius); R("vis.dormant", s.dormant); R("vis.dormant_col", s.dormantCol); R("vis.dormant_time", s.dormantTime); R("vis.shot_hitbox", s.hitboxOnShot); R("vis.shot_hitbox_col", s.hitboxCol); R("vis.glow", s.glow); R("vis.glow_col", s.glowCol); R("vis.radar", s.radarReveal);
   R("vis.chams", s.chams); R("vis.chams_col", s.chamsCol); R("vis.xqz", s.chamsXqz); R("vis.xqz_col", s.chamsXqzCol); R("vis.chams_mat", s.chamsMaterial); R("vis.chams_team", s.chamsTeam);
   R("vis.chams_team_col", s.chamsTeamCol); R("vis.chams_bt", s.chamsBacktrack); R("vis.chams_bt_col", s.chamsBacktrackCol); R("vis.chams_local", s.chamsLocal); R("vis.chams_local_col", s.chamsLocalCol);
   R("vis.chams_fake", s.chamsFake); R("vis.chams_fake_col", s.chamsFakeCol); R("vis.scope_blend", s.scopeBlend); R("vis.noflash", s.removeFlash); R("vis.nosmoke", s.removeSmoke);
@@ -668,6 +668,8 @@ static void PaintVisuals(float x, float y, float w, float h) {
   Checkbox("Skeleton", s.skeleton); ColorPickerW("skel", s.skeletonCol);
   Checkbox("Out of FOV arrow", s.oof); ColorPickerW("oof", s.oofCol);
   if (s.oof) SliderF("Arrow distance", s.oofRadius, 60, 400, "%.0fpx", 1);
+  Checkbox("Dormant", s.dormant); ColorPickerW("dormant", s.dormantCol);
+  if (s.dormant) SliderF("Dormant time", s.dormantTime, 1, 10, "%.0fs", 1);
   Checkbox("Glow", s.glow); ColorPickerW("glow", s.glowCol);
   Checkbox("Visualize aimbot", s.hitboxOnShot); ColorPickerW("hbshot", s.hitboxCol);
   Checkbox("Radar", s.radarReveal);
@@ -758,6 +760,7 @@ static void PaintColors(float x, float y, float w, float h) {
   row("Ammo bar", s.ammoCol, "c.ammo");
   row("Skeleton", s.skeletonCol, "c.skel");
   row("Out of FOV arrow", s.oofCol, "c.oof");
+  row("Dormant", s.dormantCol, "c.dormant");
   row("Glow", s.glowCol, "c.glow");
   row("Aimbot hitboxes", s.hitboxCol, "c.hb");
   EndGroup();
