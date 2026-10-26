@@ -13,3 +13,6 @@ void Touch_GetMove(float& forward, float& side);   // analog stick, -1..1
 bool Touch_Active();                        // controls are on screen and own the touch input this frame
 void Touch_Draw();                          // overlay (after the HUD)
 void Touch_ReleaseAll();
+// on-screen bind circles (cheat binds set to "circle" in the menu): finger down / tapped this frame
+bool Touch_BindDown(int slot);
+bool Touch_BindPressed(int slot);

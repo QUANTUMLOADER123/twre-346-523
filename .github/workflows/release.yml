@@ -45,7 +45,7 @@ jobs:
           ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
         run: |
           set -o pipefail
-          VERSION_CODE=$((100 + ${{ github.run_number }})) VERSION_NAME=1.1.${{ github.run_number }} JOBS=4 android/build_apk.sh 2>&1 | tee build.log
+          VERSION_CODE=$((100 + ${{ github.run_number }})) VERSION_NAME=1.2.${{ github.run_number }} JOBS=4 android/build_apk.sh 2>&1 | tee build.log
       - name: Report failure
         if: failure()
         run: android/annotate.sh "build log" build.log
@@ -90,8 +90,8 @@ jobs:
       - run: find artifacts -type f | xargs ls -la
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.${{ github.run_number }}
-          name: Counter-Strike HvH 1.1.${{ github.run_number }}
+          tag_name: v1.2.${{ github.run_number }}
+          name: Counter-Strike HvH 1.2.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           body_path: .github/release_notes.md
           make_latest: true

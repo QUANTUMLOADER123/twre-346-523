@@ -24,6 +24,7 @@ extern ConVar mat_fullbright;
 ConVar r_src_lightscale("r_src_lightscale", "1.15", FCVAR_ARCHIVE, "CS:S lightmap brightness (applied on map load)", true, 0.25f, true, 4.f);
 ConVar r_drawprops("r_drawprops", "1", 0, "Draw static props on CS:S maps");
 ConVar r_propfade("r_propfade", "1", FCVAR_ARCHIVE, "Fade static props at the distance set by the mapper");
+ConVar r_propscreencull("r_propscreencull", "2", FCVAR_ARCHIVE, "Skip static props smaller than this many pixels on screen (0 = off)");
 
 #ifdef CS_HEADLESS
 extern "C" void swBlendFunc(int sfactor, int dfactor);
@@ -270,11 +271,15 @@ void CWorldRenderer::DrawSrc(const CViewSetup& v) {
   std::vector<Deferred> transProps;
   if (r_drawprops.GetBool()) {
     Material& mat = PropMaterial();
+    // projected size: radius / distance * (screen height / 2) / tan(vfov / 2)
+    const float pxCull = r_propscreencull.GetFloat();
+    const float pxScale = GetScreenHeight() * 0.5f / std::tan(DEG2RADF(v.VerticalFov(v.fov) * 0.5f)), pxScale2 = pxScale * pxScale;
     rlDisableBackfaceCulling();
     for (const SrcPropInst& p : m_srcProps) {
       if (fr.CullBox(p.mins, p.maxs)) continue;
       float d2 = (((p.mins + p.maxs) * 0.5f) - v.origin).LengthSqr();
       if (r_propfade.GetBool() && p.fadeMax > 0 && d2 > p.fadeMax * p.fadeMax) continue;
+      if (pxCull > 0) { float rad = (p.maxs - p.mins).Length() * 0.5f; if (rad * rad * pxScale2 < pxCull * pxCull * d2) continue; }   // too small to see
       for (const SrcMdlMesh& m : p.model->meshes) {
         if (!m.uploaded) continue;
         bool trans = false, at = false;

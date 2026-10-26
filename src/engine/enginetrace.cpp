@@ -1,6 +1,7 @@
 #include "enginetrace.hpp"
 #include "bsp.hpp"
 #include <cfloat>
+#include <algorithm>
 #include <cctype>
 
 static const surfacedata_t s_surfaces[SURFACE_COUNT] = {
@@ -77,6 +78,7 @@ void CEngineTrace::Finalize() {
   m_cells.assign(m_gw * m_gh, {});
   for (int i = 0; i < (int)brushes.size(); i++) {
     auto& b = brushes[i];
+    if (!(std::fabs(b.mins.x) < 1e6f && std::fabs(b.mins.y) < 1e6f && std::fabs(b.maxs.x) < 1e6f && std::fabs(b.maxs.y) < 1e6f)) continue;   // corrupt bounds (int overflow below)
     int x0 = Clamp((int)((b.mins.x - m_gx0) / GRID), 0, m_gw - 1), x1 = Clamp((int)((b.maxs.x - m_gx0) / GRID), 0, m_gw - 1);
     int y0 = Clamp((int)((b.mins.y - m_gy0) / GRID), 0, m_gh - 1), y1 = Clamp((int)((b.maxs.y - m_gy0) / GRID), 0, m_gh - 1);
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) m_cells[y * m_gw + x].push_back(i);
@@ -208,22 +210,37 @@ void CEngineTrace::TraceRayWorld(const Ray_t& ray, unsigned mask, trace_t* ptr) 
   thread_local std::vector<int> tl_mail; thread_local int tl_count = 0; thread_local const void* tl_owner = nullptr;
   if (tl_mail.size() != brushes.size() || tl_owner != (const void*)brushes.data()) { tl_mail.assign(brushes.size(), 0); tl_count = 0; tl_owner = brushes.data(); }
   if (++tl_count == 0x7fffffff) { std::fill(tl_mail.begin(), tl_mail.end(), 0); tl_count = 1; }
+  // slab test of the (expanded) brush box against the swept segment - rejects the many brushes that share a grid
+  // cell with the ray but are nowhere near the line (long diagonal bullet / visibility traces)
+  const Vector invD(ray.m_Delta.x != 0 ? 1.f / ray.m_Delta.x : 1e30f, ray.m_Delta.y != 0 ? 1.f / ray.m_Delta.y : 1e30f, ray.m_Delta.z != 0 ? 1.f / ray.m_Delta.z : 1e30f);
+  auto slabHit = [&](const cbrush_t& br, float t0, float t1) -> bool {
+    for (int ax = 0; ax < 3; ax++) {
+      float lo = br.mins[ax] + tw.mins[ax] - 1.f, hi = br.maxs[ax] + tw.maxs[ax] + 1.f;
+      if (ray.m_Delta[ax] == 0) { if (tw.start[ax] < lo || tw.start[ax] > hi) return false; continue; }
+      float ta = (lo - tw.start[ax]) * invD[ax], tb = (hi - tw.start[ax]) * invD[ax];
+      if (ta > tb) std::swap(ta, tb);
+      t0 = std::max(t0, ta); t1 = std::min(t1, tb);
+      if (t0 > t1) return false;
+    }
+    return true;
+  };
   for (int s = 0; s < segs; s++) {
     float f0 = (float)s / segs, f1 = (float)(s + 1) / segs;
     if (tr.fraction < f0) break;
     Vector a = tw.start + ray.m_Delta * f0, b = tw.start + ray.m_Delta * f1;
     Vector mn = VecMin(a, b) + tw.mins - Vector(1, 1, 1), mx = VecMax(a, b) + tw.maxs + Vector(1, 1, 1);
+    const float hitLimit = std::min(1.f, tr.fraction + 0.001f);
     int x0 = Clamp((int)((mn.x - m_gx0) / GRID), 0, m_gw - 1), x1 = Clamp((int)((mx.x - m_gx0) / GRID), 0, m_gw - 1);
     int y0 = Clamp((int)((mn.y - m_gy0) / GRID), 0, m_gh - 1), y1 = Clamp((int)((mx.y - m_gy0) / GRID), 0, m_gh - 1);
     for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
       for (int bi : m_cells[y * m_gw + x]) {
         cbrush_t& br = brushes[bi];
         if (tl_mail[bi] == tl_count) continue;
+        if (!(br.contents & mask)) { tl_mail[bi] = tl_count; continue; }
+        // not near this segment: leave it unmarked, a later segment may still reach it
+        if (br.mins.x > mx.x || br.maxs.x < mn.x || br.mins.y > mx.y || br.maxs.y < mn.y || br.mins.z > mx.z || br.maxs.z < mn.z) continue;
         tl_mail[bi] = tl_count;
-        if (!(br.contents & mask)) continue;
-        // quick aabb reject against the full swept box
-        Vector smn = VecMin(tw.start, tw.end) + tw.mins, smx = VecMax(tw.start, tw.end) + tw.maxs;
-        if (br.mins.x > smx.x + 1 || br.maxs.x < smn.x - 1 || br.mins.y > smx.y + 1 || br.maxs.y < smn.y - 1 || br.mins.z > smx.z + 1 || br.maxs.z < smn.z - 1) continue;
+        if (!slabHit(br, 0.f, hitLimit)) continue;
         TraceToBrush(tw, bi, tr);
         if (tr.allsolid) { tr.endpos = tw.start + ray.m_StartOffset; tr.startpos = tw.start + ray.m_StartOffset; return; }
       }
@@ -286,6 +303,26 @@ int CEngineTrace::GetPointContents(const Vector& p, unsigned mask) {
   for (int bi : m_cells[y * m_gw + x]) if ((brushes[bi].contents & mask) && IsPointInsideBrush(p, bi)) c |= brushes[bi].contents;
   return c;
 }
+bool CEngineTrace::GatherBrushes(const Vector& mn, const Vector& mx, unsigned mask, std::vector<int>& out) const {
+  out.clear();
+  if (g_Bsp.loaded) return false;
+  if (m_cells.empty()) return true;
+  int x0 = Clamp((int)((mn.x - m_gx0) / GRID), 0, m_gw - 1), x1 = Clamp((int)((mx.x - m_gx0) / GRID), 0, m_gw - 1);
+  int y0 = Clamp((int)((mn.y - m_gy0) / GRID), 0, m_gh - 1), y1 = Clamp((int)((mx.y - m_gy0) / GRID), 0, m_gh - 1);
+  for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++)
+    for (int bi : m_cells[y * m_gw + x]) {
+      const cbrush_t& b = brushes[bi];
+      if (!(b.contents & mask)) continue;
+      if (b.mins.x > mx.x + 1 || b.maxs.x < mn.x - 1 || b.mins.y > mx.y + 1 || b.maxs.y < mn.y - 1 || b.mins.z > mx.z + 1 || b.maxs.z < mn.z - 1) continue;
+      if (std::find(out.begin(), out.end(), bi) == out.end()) out.push_back(bi);
+    }
+  return true;
+}
+int CEngineTrace::PointContentsIn(const std::vector<int>& cand, const Vector& p) const {
+  int c = 0;
+  for (int bi : cand) if (IsPointInsideBrush(p, bi)) c |= brushes[bi].contents;
+  return c;
+}
 int CEngineTrace::GetBrushAtPoint(const Vector& p, unsigned mask) const {
   if (m_cells.empty() || g_Bsp.loaded) return -1;
   int x = Clamp((int)((p.x - m_gx0) / GRID), 0, m_gw - 1), y = Clamp((int)((p.y - m_gy0) / GRID), 0, m_gh - 1);
@@ -294,6 +331,9 @@ int CEngineTrace::GetBrushAtPoint(const Vector& p, unsigned mask) const {
 }
 bool CEngineTrace::IsPointInsideBrush(const Vector& p, int bi, float eps) const {
   const cbrush_t& b = brushes[bi];
+  // bounding box first: most candidates of a grid cell are rejected here (penetration code probes a lot of points)
+  const float e = std::max(0.f, -eps) + 0.01f;
+  if (p.x < b.mins.x - e || p.y < b.mins.y - e || p.z < b.mins.z - e || p.x > b.maxs.x + e || p.y > b.maxs.y + e || p.z > b.maxs.z + e) return false;
   for (int i = 0; i < b.numPlanes; i++) { const cplane_t& pl = planes[b.firstPlane + i]; if (p.Dot(pl.normal) - pl.dist > -eps) return false; }
   return true;
 }
@@ -307,3 +347,50 @@ void CEngineTrace::TraceHull(const Vector& a, const Vector& b, const Vector& min
 bool CEngineTrace::IsVisible(const Vector& a, const Vector& b) {
   Ray_t r; r.Init(a, b); trace_t tr; TraceRayWorld(r, MASK_VISIBLE, &tr); return tr.fraction >= 0.999f;
 }
+
+// ------------------------------------------------------------------------------------------------
+// dev: compares the accelerated world trace (grid + mailbox + slab rejection) with a brute force trace
+// against every brush. Prints the number of mismatches and the speed of both.
+#include "convar.hpp"
+#include <chrono>
+#include <random>
+static ConCommand cmd_trace_selftest("trace_selftest", [](const CCommand& a) {
+  CEngineTrace& T = g_EngineTrace;
+  if (T.brushes.empty() || g_Bsp.loaded) { Msg("trace_selftest: needs a loaded brush (CS:S) map\n"); return; }
+  int n = a.ArgC() > 1 ? std::max(1, atoi(a.Arg(1))) : 20000;
+  std::mt19937 rng(1234);
+  std::uniform_real_distribution<float> ux(T.worldMins.x, T.worldMaxs.x), uy(T.worldMins.y, T.worldMaxs.y), uz(T.worldMins.z, T.worldMaxs.z), u01(0.f, 1.f);
+  std::vector<Ray_t> rays(n);
+  for (int i = 0; i < n; i++) {
+    Vector s(ux(rng), uy(rng), uz(rng)), e = s + Vector(u01(rng) - 0.5f, u01(rng) - 0.5f, (u01(rng) - 0.5f) * 0.4f) * (u01(rng) < 0.5f ? 600.f : 4000.f);
+    if (i % 3 == 0) rays[i].Init(s, e, Vector(-16, -16, 0), Vector(16, 16, 72)); else rays[i].Init(s, e);
+  }
+  // the reference uses the same brush set as the grid (brush entities such as doors are traced separately)
+  std::vector<char> inGrid(T.brushes.size(), 0);
+  for (const auto& cell : T.m_cells) for (int bi : cell) inGrid[bi] = 1;
+  int bad = 0;
+  auto t0 = std::chrono::steady_clock::now();
+  std::vector<trace_t> fast(n);
+  for (int i = 0; i < n; i++) T.TraceRayWorld(rays[i], MASK_SOLID, &fast[i]);
+  auto t1 = std::chrono::steady_clock::now();
+  for (int i = 0; i < n; i++) {
+    const Ray_t& r = rays[i];
+    CEngineTrace::TraceWork tw; tw.mins = -r.m_Extents; tw.maxs = r.m_Extents; tw.start = r.m_Start; tw.end = r.m_Start + r.m_Delta; tw.isPoint = r.m_IsRay; tw.mask = MASK_SOLID;
+    trace_t ref;
+    Vector smn = VecMin(tw.start, tw.end) + tw.mins - Vector(1, 1, 1), smx = VecMax(tw.start, tw.end) + tw.maxs + Vector(1, 1, 1);
+    for (int bi = 0; bi < (int)T.brushes.size(); bi++) {
+      const cbrush_t& br = T.brushes[bi];
+      if (!inGrid[bi] || !(br.contents & MASK_SOLID)) continue;
+      if (br.mins.x > smx.x || br.maxs.x < smn.x || br.mins.y > smx.y || br.maxs.y < smn.y || br.mins.z > smx.z || br.maxs.z < smn.z) continue;   // (some brushes are not closed by their planes)
+      T.TraceToBrush(tw, bi, ref);
+      if (ref.allsolid) break;
+    }
+    if (std::fabs(ref.fraction - fast[i].fraction) > 1e-4f || ref.startsolid != fast[i].startsolid || ref.allsolid != fast[i].allsolid) {
+      if (bad < 5) Msg("  mismatch %d: ref %.5f (%d%d) fast %.5f (%d%d)\n", i, ref.fraction, ref.startsolid, ref.allsolid, fast[i].fraction, fast[i].startsolid, fast[i].allsolid);
+      bad++;
+    }
+  }
+  auto t2 = std::chrono::steady_clock::now();
+  double fastMs = std::chrono::duration<double, std::milli>(t1 - t0).count(), refMs = std::chrono::duration<double, std::milli>(t2 - t1).count();
+  Msg("trace_selftest: %d traces, %d mismatches; accelerated %.1f us/trace, brute force %.1f us/trace\n", n, bad, fastMs * 1000 / n, refMs * 1000 / n);
+}, "Dev: verify the accelerated world trace against brute force");

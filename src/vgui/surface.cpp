@@ -31,6 +31,7 @@ void ISurface::Init() {
     { FONT_UI, sans, 13, 0 }, { FONT_DEFAULT_BOLD, bold, 13, 0 }, { FONT_MENU_TITLE, sans, 20, 0 }, { FONT_LOGO, bold, 64, 2 },
     { FONT_HUD_NUMBERS, bold, 40, 1 }, { FONT_HUD_SMALL, bold, 15, 0 }, { FONT_MONO, mono, 13, 0 }, { FONT_CHEAT, sans, 12, 0 },
     { FONT_CHEAT_BOLD, bold, 12, 0 }, { FONT_ESP, sans, 11, 0 }, { FONT_ICONS_SMALL, bold, 10, 0 }, { FONT_CHEAT_INDICATOR, bold, 24, 0 },
+    { FONT_GO, sans, 15, 0 }, { FONT_GO_BOLD, bold, 15, 0 }, { FONT_GO_TITLE, bold, 22, 0.5f }, { FONT_GO_HUGE, bold, 40, 1 },
   };
   for (auto& d : defs) { m_fonts[d.id].font = LoadUIFont(d.path, d.size); m_fonts[d.id].size = (float)d.size; m_fonts[d.id].spacing = d.spacing; }
 }

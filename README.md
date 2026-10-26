@@ -1,15 +1,14 @@
 # Counter-Strike: HvH
 
-Фанатский ремейк Counter-Strike на **C++17 + [raylib 6.2](https://github.com/raysan5/raylib)**. В игре главное меню в стиле CS 1.6,
-движение как в Source, боты, бомба, закупка, три карты и встроенное «HvH-читерское» меню по клавише **Insert**.
+Фанатский ремейк Counter-Strike на **C++17 + [raylib 6.2](https://github.com/raysan5/raylib)**: главное меню в стиле CS:GO
+(агент, Play, Settings, браузер серверов), круговое меню закупки, движение как в Source, боты, бомба, экономика,
+карты/модели/звуки Counter-Strike: Source и встроенное HvH-меню **aimwhere** по клавише **Insert**.
 Код устроен как в Source SDK: `C_BaseEntity → C_BaseAnimating → C_BaseCombatCharacter → C_BasePlayer → CCSPlayer`,
 `C_WeaponCSBase`, `CCSGameRules`, `CGameMovement`, `CLagCompensationManager`, `CUserCmd`, ConVar/ConCommand, игровые события.
 
 > Проект не связан с Valve. В репозитории файлов Valve нет.
-> **Карты, текстуры, модели и звуки Counter-Strike: Source игра скачивает сама** одной командой: официальный SteamCMD
-> анонимно (без аккаунта и покупки) ставит бесплатный CS:S Dedicated Server. См. [«Контент Counter-Strike: Source»](#контент-counter-strike-source).
-> Без него работают встроенные карты, а при установленной CS 1.6 её карты и звуки ([«Оригинальный контент CS 1.6»](#оригинальный-контент-cs-16)).
-> Встроенные карты сделаны «по мотивам» классических раскладок. 3D-модели взяты из свободных CC0-паков, подробнее в [CREDITS.md](CREDITS.md).
+> **Карты, модели, текстуры и звуки CS:S игра скачивает сама при первом запуске** (экран загрузки, ~1.6 ГБ с GitHub),
+> см. [«Контент при первом запуске»](#контент-при-первом-запуске). Встроенных «самодельных» карт и моделей больше нет.
 
 ## Запуск
 
@@ -20,12 +19,12 @@
 Релизы собирает GitHub Actions (`.github/workflows/release.yml`) при каждом пуше.
 
 **Windows, без сборки:** скачайте репозиторий (Code → Download ZIP), распакуйте и запустите **`bin\cshvh.exe`**.
-Это готовая сборка x64 (OpenGL 3.3). Папка `assets/` должна лежать рядом с `bin/`: игра ищет её в текущей папке,
+Это готовая сборка x64 (OpenGL 3.3). Папка `assets/` (шрифты) должна лежать рядом с `bin/`: игра ищет её в текущей папке,
 рядом с exe и уровнем выше.
 
 **Linux или своя сборка:** см. раздел «Сборка» ниже.
 
-Параметры запуска: `-w 1920 -h 1080`, `-fullscreen`, `-windowed`, `+map de_mirage` (сразу загрузить карту),
+Параметры запуска: `-w 1920 -h 1080`, `-fullscreen`, `-windowed`, `+map de_dust2` (сразу загрузить карту),
 `+любая_консольная_команда`, `-game <папка>`.
 
 ## Управление (как в CS)
@@ -36,7 +35,7 @@
 | ЛКМ / ПКМ | огонь / прицел, второй режим |
 | R, G, E | перезарядка, выбросить, использовать (разминирование) |
 | 1–5, Q, колесо | оружие |
-| B, M | меню закупки, выбор команды |
+| B, M | круговое меню закупки (мышь или 1–9, ПКМ/0 — назад), выбор команды |
 | Tab | таблица счёта |
 | Y / U | чат / командный чат |
 | F1 / F2 | autobuy / rebuy |
@@ -45,7 +44,7 @@
 | **Insert** | меню чита |
 | Esc | главное меню |
 
-Полезные консольные команды: `map de_dust2|de_mirage|de_inferno`, `maps`, `bot_add`, `bot_kick`, `bot_quota 9`,
+Полезные консольные команды: `map de_dust2|de_inferno|cs_office…`, `maps`, `bot_add`, `bot_kick`, `bot_quota 9`,
 `bot_hvh 1`, `bot_difficulty 0-3`, `mp_gamemode 1` (deathmatch), `mp_freezetime`, `mp_roundtime`, `mp_startmoney`,
 `sv_cheats 1` → `noclip`, `god`, `give weapon_awp`, `impulse 101`, `setpos`, `endround`; `thirdperson`, `fov_desired`,
 `sensitivity`, `bind`, `cl_crosshair*`, `viewmodel_offset_x/y/z`, `fps_max`, `mat_vsync`, `host_writeconfig`, `quit`.
@@ -53,15 +52,27 @@
 
 ## Карты
 
-* **de_dust2:** Long A, Catwalk, Mid, Tunnels, B.
-* **de_mirage:** A ramp, Palace, Jungle/Connector, Mid, B Apartments, Catwalk.
-* **de_inferno:** Banana, B site с фонтаном, Arch, Library, Apartments, A site.
+Все стандартные карты CS:S: de_dust2, de_dust, de_inferno, de_nuke, de_train, de_aztec, de_cbble, de_chateau, de_piranesi,
+de_port, de_prodigy, de_tides, cs_office, cs_italy, cs_assault, cs_compound, cs_havana, cs_militia и любые другие `.bsp`
+из папки `maps/`. Если установлена CS 1.6 (`hl_content 1`), появляются и её карты (BSP v30).
 
-Если найдена CS 1.6, в списке карт появляются **все её карты** (`cstrike/maps/*.bsp`: de_dust2, de_inferno, de_nuke,
-cs_office, de_aztec и любые скачанные). Оригинал заменяет встроенную карту с тем же именем. `hl_content 0` возвращает встроенные.
+## Главное меню
 
-Встроенные карты описаны текстом (`assets/maps/*.map`) и генерируются скриптом `tools/mapgen.py`, его можно редактировать.
-`python3 tools/mapgen.py --png` дополнительно рисует превью-схему каждой карты.
+Как в CS:GO: сверху вкладки **PLAY / AGENTS / SERVERS / консоль**, слева — выход и **настройки**, справа профиль.
+* **Home** — агент (модель CS:S на фоне карты), кнопка **PLAY**, быстрые режимы.
+* **Play** — плитки карт с превью, режим (Competitive / Deathmatch / HvH), все параметры матча и ботов, кнопка **GO**.
+* **Agents** — выбор модели для CT (SEAL/GSG-9/SAS/GIGN) и T (Phoenix/Leet/Arctic/Guerilla) с портретами.
+* **Servers** — браузер серверов.
+* **Settings** — Game, Crosshair (с превью), HUD, Audio, Video, Mouse, Keyboard (переназначение всех клавиш), Touch, Content.
+  Любой параметр также доступен в консоли. Из консоли можно открыть панель: `gameui_panel play|agents|servers|settings [вкладка]`.
+
+## HUD и иконки
+
+* Килфид как в CS:GO: силуэт оружия (из картинок CS:S), значки headshot, wallbang, сквозь дым, noscope, ослеплён;
+  свои убийства/смерти обведены красным. `hud_testkillfeed` показывает пример.
+* Рядом с патронами силуэт текущего оружия, у exe и окна есть иконка.
+* Производительность: Settings → Video → «Skip tiny props» (`r_propscreencull`), «Fade distant props», decals, тени.
+  `trace_selftest` проверяет ускоренную трассировку против полного перебора (должно быть 0 mismatches).
 
 ## Меню чита (Insert)
 
@@ -89,18 +100,27 @@ Watermark, список биндов, индикаторы и спектатор
 
 Боты при `bot_hvh 1` тоже играют «HvH»: используют desync, jitter и fake lag.
 
+## Контент при первом запуске
+
+Если CS:S не найдена, при запуске открывается **экран загрузки**: игра скачивает zip-архивы с GitHub
+(`codeload.github.com`, зеркала [bouletmarc/css_maps_content](https://github.com/bouletmarc/css_maps_content) — карты,
+[bouletmarc/css_content](https://github.com/bouletmarc/css_content) — модели, материалы, звуки) и распаковывает их «на лету»
+в `content/css/cstrike/` (на Android — `Android/data/com.cshvh.game/files/content/css/`). Всего ~1.6 ГБ, ~18 000 файлов.
+* Видно прогресс по каждому архиву, скорость и текущий файл; загрузку можно отменить и продолжить позже
+  (уже скачанные архивы не качаются заново).
+* Повторить или докачать: консоль `content_download` или **Settings → Content**.
+* Адреса архивов меняются переменными `cl_content_url_maps` / `cl_content_url_main` (любые zip с той же структурой).
+* HTTP: на Windows — WinHTTP, на Android — `HttpURLConnection` через JNI, на Linux — `curl`.
+
 ## Контент Counter-Strike: Source
 
-Half-Life и CS:S покупать не нужно. Valve бесплатно раздаёт **Counter-Strike: Source Dedicated Server** (Steam app 232330,
-около 2 ГБ) через свой SteamCMD с анонимным входом. В нём есть все карты, материалы, модели и звуки CS:S.
-
-**Как скачать** (любой способ):
-* в игре открыть консоль (`~`) и ввести **`css_download`**: откроется окно загрузки, по окончании ввести `css_rescan` или перезапустить игру;
-* или запустить **`tools\get_css_content.bat`** (Windows) / `tools/get_css_content.sh` (Linux).
+Альтернатива загрузке: Valve бесплатно раздаёт **Counter-Strike: Source Dedicated Server** (Steam app 232330,
+около 2 ГБ) через SteamCMD с анонимным входом. В нём есть все карты, материалы, модели и звуки CS:S.
+* в игре: консоль → **`css_download`**, по окончании `css_rescan` или перезапуск;
+* или **`tools\get_css_content.bat`** (Windows) / `tools/get_css_content.sh` (Linux).
 
 Контент ставится в `content/css/` (папка в `.gitignore`). Если CS:S уже установлена через Steam, она находится сама,
-другую папку можно указать через `css_gamedir "D:/Games/Counter-Strike Source"`. Порядок выбора: CS:S → CS 1.6 → встроенные карты.
-`css_content 0` выключает CS:S.
+другую папку можно указать через `css_gamedir "D:/Games/Counter-Strike Source"`. `css_content 0` выключает CS:S.
 
 **Что берётся из CS:S:**
 * **карты** (VBSP v19–21: de_dust2, de_inferno, de_nuke, de_train, cs_office…): геометрия, дисплейсменты со смешиванием
@@ -118,7 +138,7 @@ Half-Life и CS:S покупать не нужно. Valve бесплатно р�
 
 Файлы читаются прямо из VPK-архивов (`cstrike_pak_dir.vpk`), распаковывать ничего не нужно. **Синтезированных «бипов» больше нет:**
 если нет ни CS:S, ни CS 1.6, звук просто не играет. Модели CS:S выключаются `cl_css_models 0` / `cl_css_viewmodels 0`
-(хитбоксы для попаданий остаются у встроенных моделей).
+(тогда игроки рисуются упрощённо). Хитбоксы — родные хитбоксы CS:S (`r_drawhitboxes 1` показывает их).
 
 ## Android
 
@@ -130,14 +150,16 @@ Half-Life и CS:S покупать не нужно. Valve бесплатно р�
 * **FIRE** (две кнопки: справа и слева; если вести пальцем по кнопке — одновременно прицеливаешься), **JUMP**, **DUCK**,
   **SCOPE** (прицел / второй режим), **R** (перезарядка), **USE**, **NEXT** (следующее оружие), **DROP**, **WALK**, слоты **1–5**;
 * сверху: **MENU** (= Esc, также системная кнопка «Назад»), **BUY**, **TEAM**, **SCORE**, **AW** (меню aimwhere);
-* в меню нажатия работают как мышь.
+* в меню нажатия работают как мышь; у меню aimwhere есть кнопка закрытия ✕;
+* **бинды на телефоне — кружки на экране:** в меню aimwhere тапните поле бинда (DT, hide shots, fake duck, manual AA…):
+  `+ circle` → `circle: toggle` → `circle: hold` → выкл. На экране появится круг с подписью: тап включает/выключает
+  (toggle) или работает, пока палец держит его (hold). Активный круг подсвечивается.
 
 Настройки (консоль или `cfg/config.cfg`): `touch_sensitivity 1.0`, `touch_opacity 0.55`, `touch_scale 1.0`, `touch_invert 0`,
 `touch_enable 0/1` (на ПК можно включить для проверки, `touch_mouse 1` — мышь вместо пальца).
 
-**Контент CS:S на телефоне:** SteamCMD на Android не работает. Скачайте контент на ПК (`tools\get_css_content.bat`),
-затем скопируйте папку `content/css` (внутри `cstrike/` и `hl2/`) по USB в
-`Android/data/com.cshvh.game/files/content/css/` и перезапустите игру. Без него играются встроенные карты.
+**Контент CS:S на телефоне** скачивается сам при первом запуске (лучше по Wi-Fi, ~1.6 ГБ). Можно и вручную скопировать папку
+`content/css` с ПК по USB в `Android/data/com.cshvh.game/files/content/css/`.
 При первом запуске игра распаковывает свои файлы в `Android/data/com.cshvh.game/files/`, там же лежит `cfg/`.
 
 ## Оригинальный контент CS 1.6
@@ -169,7 +191,6 @@ Counter-Strike 1.6 (Steam или любая копия), игра берёт и�
 **Модели оружия от первого лица.** Берутся оригинальные `models/v_*.mdl` (MDL v10) вместе с руками и анимациями:
 draw, idle, выстрелы, перезарядка, удары ножом, чека и бросок гранаты, надевание глушителя на M4A1 и USP.
 Для оружия из CS:GO берётся аналог из 1.6, как и для звуков. Выключаются командой `cl_original_viewmodels 0`.
-Модели игроков и оружия в мире пока свои (CC0).
 
 **Звуки.** Используются `weapons/*.wav` (выстрелы, перезарядка, нож, гранаты, C4), `player/pl_*.wav` (шаги), `radio/*.wav`,
 звуки попаданий и интерфейса. У оружия из CS:GO, которого нет в 1.6, берётся ближайший аналог: R8 → deagle, P250 → p228,
@@ -215,13 +236,13 @@ android/build_apk.sh     # -> bin/cshvh.apk (NativeActivity, без Java)
 ```
 
 `./build.sh headless` собирает версию с программным рендером и без окна. На ней проводятся автотесты, например:
-`bin/cshvh_headless -frames 300 -shot shot.png +map de_mirage +jointeam 3`.
+`bin/cshvh_headless -frames 300 -shot shot.png +map de_dust2 +jointeam 3`.
 
 ## Структура
 
 ```
 src/engine/       ConVar/консоль, математика (Vector/QAngle/matrix3x4_t), трассировка лучей и хуллов по брашам,
-                  процедурные материалы, рендер мира (запечённый свет), studio-модели (glTF, скелет, IK), host/тики,
+                  рендер мира, host/тики, download (загрузка контента с GitHub),
                   hlfs (файлы установленной CS 1.6), bsp/bsprender (карты GoldSrc: хуллы, лайтмапы, WAD, небо), mdl (модели MDL v10),
                   srcfs (CS:S: VPK, папки, pakfile), keyvalues, srcmaterial (VMT/VTF, DXT), srcbsp/srcbsprender (карты VBSP),
                   srcmdl (модели Source MDL v44–49 + VVD/VTX, кости, анимации)
@@ -229,9 +250,9 @@ src/game/shared/  C_BaseEntity, CCSPlayer, C_WeaponCSBase + все пушки, g
                   CCSGameRules (раунды, экономика, бомба), гранаты, lag compensation, анимстейт (desync/LBY), события
 src/game/server/  навигационная сетка и боты (CCSBot)
 src/game/client/  ввод/бинды, HUD (как в CS), VGUI-меню закупки и команд, viewmodel, эффекты, звук (WAV из CS:S или CS 1.6)
-src/vgui/         ISurface, контролы (Frame/Button/Slider/ComboBox/…), главное меню CS 1.6, консоль
+src/vgui/         ISurface, контролы (Frame/Button/Slider/ComboBox/…), главное меню в стиле CS:GO (mainmenu), экран загрузки контента, консоль
 src/cheat/        aimwhere: меню, ragebot, antiaim, visuals, misc
-tools/            mapgen.py, gen_vs.py (решение Visual Studio), simtest (симуляция матча без графики), worldtest, modeltest
+tools/            gen_vs.py (решение Visual Studio), simtest (симуляция матча без графики), get_css_content (SteamCMD)
 msvc/             проекты Visual Studio (cshvh.vcxproj, raylib.vcxproj)
 third_party/      raylib 6.2 (исходники, zlib-лицензия)
 ```

@@ -58,7 +58,7 @@
       <DisableSpecificWarnings>4244;4305;4267;4018;4996;4100;4101;4189;4456;4457;4458;4459;4146;4838;4309;4127;4702;4065;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>opengl32.lib;gdi32.lib;winmm.lib;shell32.lib;user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;gdi32.lib;winmm.lib;shell32.lib;user32.lib;winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <!-- 8 MB stack like on Linux (worker threads inherit it) -->
       <StackReserveSize>8388608</StackReserveSize>
@@ -100,6 +100,7 @@
     <ClCompile Include="..\src\engine\bsp.cpp" />
     <ClCompile Include="..\src\engine\bsprender.cpp" />
     <ClCompile Include="..\src\engine\convar.cpp" />
+    <ClCompile Include="..\src\engine\download.cpp" />
     <ClCompile Include="..\src\engine\enginetrace.cpp" />
     <ClCompile Include="..\src\engine\hlfs.cpp" />
     <ClCompile Include="..\src\engine\host.cpp" />
@@ -139,15 +140,19 @@
     <ClCompile Include="..\src\game\shared\weapon_csbase.cpp" />
     <ClCompile Include="..\src\game\shared\weapon_parse.cpp" />
     <ClCompile Include="..\src\main.cpp" />
+    <ClCompile Include="..\src\vgui\contentscreen.cpp" />
     <ClCompile Include="..\src\vgui\controls.cpp" />
     <ClCompile Include="..\src\vgui\gameui.cpp" />
+    <ClCompile Include="..\src\vgui\mainmenu.cpp" />
     <ClCompile Include="..\src\vgui\surface.cpp" />
+    <ClCompile Include="..\src\vgui\vgui_images.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\cheat\cheat.hpp" />
     <ClInclude Include="..\src\cheat\cheat_internal.hpp" />
     <ClInclude Include="..\src\engine\bsp.hpp" />
     <ClInclude Include="..\src\engine\convar.hpp" />
+    <ClInclude Include="..\src\engine\download.hpp" />
     <ClInclude Include="..\src\engine\enginetrace.hpp" />
     <ClInclude Include="..\src\engine\globals.hpp" />
     <ClInclude Include="..\src\engine\hlfs.hpp" />
@@ -183,14 +188,20 @@
     <ClInclude Include="..\src\game\shared\soundemitter.hpp" />
     <ClInclude Include="..\src\game\shared\weapon_csbase.hpp" />
     <ClInclude Include="..\src\game\shared\weapon_parse.hpp" />
+    <ClInclude Include="..\src\vgui\contentscreen.hpp" />
     <ClInclude Include="..\src\vgui\controls.hpp" />
+    <ClInclude Include="..\src\vgui\csgo_style.hpp" />
     <ClInclude Include="..\src\vgui\gameui.hpp" />
+    <ClInclude Include="..\src\vgui\mainmenu.hpp" />
     <ClInclude Include="..\src\vgui\surface.hpp" />
+    <ClInclude Include="..\src\vgui\vgui_images.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />
     <None Include="..\CREDITS.md" />
-    <None Include="..\tools\mapgen.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\res\cshvh.rc" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="raylib.vcxproj">

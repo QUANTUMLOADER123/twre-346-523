@@ -32,6 +32,10 @@ file(GLOB CSHVH_SOURCES CONFIGURE_DEPENDS
 
 add_executable(cshvh ${CSHVH_SOURCES})
 target_link_libraries(cshvh PRIVATE raylib)
+if(WIN32)
+  target_link_libraries(cshvh PRIVATE winhttp)
+  target_sources(cshvh PRIVATE res/cshvh.rc)   # exe icon
+endif()
 target_include_directories(cshvh PRIVATE ${raylib_SOURCE_DIR}/src)
 
 if(CSHVH_HEADLESS)

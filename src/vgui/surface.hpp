@@ -16,6 +16,10 @@ enum FontId {
   FONT_ESP,             // esp names
   FONT_ICONS_SMALL,
   FONT_CHEAT_INDICATOR, // big bold indicators (DT / DUCK / FS)
+  FONT_GO,              // CS:GO style UI text
+  FONT_GO_BOLD,
+  FONT_GO_TITLE,        // panel titles
+  FONT_GO_HUGE,         // logo / big buttons
   FONT_COUNT
 };
 

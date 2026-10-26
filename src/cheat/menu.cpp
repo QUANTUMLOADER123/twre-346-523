@@ -6,6 +6,8 @@
 #include "../game/client/cl_main.hpp"
 #include "../game/shared/cs_player.hpp"
 #include "../game/shared/soundemitter.hpp"
+#include "../game/client/touch.hpp"
+#include "../engine/convar.hpp"
 #include <functional>
 #include <map>
 #include <fstream>
@@ -26,14 +28,18 @@ using vgui::surface;
 
 // ------------------------------------------------------------------------------------------------
 // key binds
+constexpr int K_TOUCHBIND = 3000;   // virtual keys of the on-screen bind circles (3000 + index in g_NamedBinds)
+static bool TouchUI() { static ConVar* t = FindConVar("touch_enable"); return t && t->GetBool(); }
 static bool RawKeyDown(int key) {
   if (key <= 0) return false;
+  if (key >= K_TOUCHBIND && key < K_TOUCHBIND + 64) return Touch_BindDown(key - K_TOUCHBIND);
   if (key >= K_MOUSE1 && key <= K_MOUSE5) { static const int mb[5] = { MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_SIDE, MOUSE_BUTTON_EXTRA }; return IsMouseButtonDown(mb[key - K_MOUSE1]); }
   if (key >= 1000) return false;
   return IsKeyDown(key);
 }
 static bool RawKeyPressed(int key) {
   if (key <= 0) return false;
+  if (key >= K_TOUCHBIND && key < K_TOUCHBIND + 64) return Touch_BindPressed(key - K_TOUCHBIND);
   if (key >= K_MOUSE1 && key <= K_MOUSE5) { static const int mb[5] = { MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_SIDE, MOUSE_BUTTON_EXTRA }; return IsMouseButtonPressed(mb[key - K_MOUSE1]); }
   if (key >= 1000) return false;
   return IsKeyPressed(key);
@@ -70,6 +76,15 @@ static void R(const char* n, KeyBind& x) { s_registry.push_back({ n, VT_KEY, &x 
 // binds shown in the keybind list
 struct NamedBind { const char* name; KeyBind* bind; };
 std::vector<NamedBind> g_NamedBinds;
+static const char* s_touchLabels[] = { "RAGE", "DMG", "BAIM", "SAFE", "DT", "HS", "INV", "FS", "LEFT", "RIGHT", "BACK", "FD", "SLOW", "3RD", "EJ" };
+void GetTouchBinds(std::vector<TouchBind>& out) {
+  out.clear();
+  for (size_t i = 0; i < g_NamedBinds.size(); i++) {
+    const KeyBind& kb = *g_NamedBinds[i].bind;
+    if (kb.key != K_TOUCHBIND + (int)i) continue;
+    out.push_back({ (int)i, i < sizeof(s_touchLabels) / sizeof(*s_touchLabels) ? s_touchLabels[i] : "BIND", kb.Active() });
+  }
+}
 
 static void RegisterVars() {
   auto& r = v.rage; auto& a = v.aa; auto& s = v.vis; auto& m = v.misc;
@@ -408,7 +423,8 @@ static void KeyBindW(const char* idLabel, KeyBind& kb) {
   char buf[48];
   if (captureKeyId == id) snprintf(buf, sizeof(buf), "press a key...");
   else if (kb.mode == KEYMODE_ALWAYS) snprintf(buf, sizeof(buf), "always");
-  else if (!kb.key) snprintf(buf, sizeof(buf), "-");
+  else if (!kb.key) snprintf(buf, sizeof(buf), TouchUI() ? "+ circle" : "-");
+  else if (kb.key >= K_TOUCHBIND) snprintf(buf, sizeof(buf), kb.mode == KEYMODE_TOGGLE ? "circle: toggle" : kb.mode == KEYMODE_HOLD ? "circle: hold" : "circle");
   else { std::string k = Key_KeynumToString(kb.key); for (auto& ch : k) ch = (char)tolower(ch); snprintf(buf, sizeof(buf), "%s", k.c_str()); }
   float x, w, y = s_lastLineY - 2 * S, h = 17 * S;
   if (!s_lastLineHasControl) { x = CX(); w = CW(); }
@@ -416,6 +432,17 @@ static void KeyBindW(const char* idLabel, KeyBind& kb) {
   bool hv = HoverClipped(x, y, w, h);
   Field(x, y, w, h, hv, captureKeyId == id);
   Text(x + 5 * S, y + 2 * S, Fit(buf, w - 8 * S).c_str(), captureKeyId == id ? Accent() : TextC());
+  // phones: no keyboard -> tapping the field puts the bind on screen as a circle (off -> toggle circle -> hold circle -> off)
+  int touchSlot = -1;
+  for (size_t i = 0; i < g_NamedBinds.size(); i++) if (g_NamedBinds[i].bind == &kb) touchSlot = (int)i;
+  if (TouchUI() && touchSlot >= 0) {
+    if (hv && mPressed) {
+      if (kb.key != K_TOUCHBIND + touchSlot || kb.mode == KEYMODE_ALWAYS) { kb.key = K_TOUCHBIND + touchSlot; kb.mode = KEYMODE_TOGGLE; kb.toggled = false; }
+      else if (kb.mode == KEYMODE_TOGGLE) kb.mode = KEYMODE_HOLD;
+      else { kb.key = 0; kb.mode = KEYMODE_HOLD; kb.toggled = false; }
+    }
+    if (hv && mRPressed) openPopup = id + 1;
+  } else
   if (hv && mPressed && captureKeyId != id) { captureKeyId = id; return; }
   if (hv && mRPressed) openPopup = id + 1;
   if (captureKeyId == id) {
@@ -702,7 +729,6 @@ static void PaintMisc(float x, float y, float w, float h) {
   Checkbox("Log damage dealt", m.logHits);
   Checkbox("Log damage received", m.logHurt);
   Checkbox("Log weapon purchases", m.logPurchases);
-  if (ConVar* km = FindConVar("cl_knife_model")) { int k = km->GetInt(); Combo("Knife model", k, { "Default", "Karambit" }); if (k != km->GetInt()) km->SetValue(k); }
   EndGroup();
   BeginGroup("Buy bot", x + 20 * S + cw, y, cw, h * 0.5f);
   Combo("Primary", m.buyPrimary, { "Off", "Auto sniper", "Scout", "AWP", "Rifle" });
@@ -821,6 +847,10 @@ void Menu_Paint() {
   s_mx = Clamp(s_mx, 0.f, std::max(0.f, GetScreenWidth() - W)); s_my = Clamp(s_my, 0.f, std::max(0.f, GetScreenHeight() - H));
   float x = s_mx, y = s_my;
   const float titleH = 26 * S, tabH = 26 * S, border = 3 * S;
+  // close button (phones have no Insert key)
+  const float cbw = 30 * S, cbx = x + W - cbw - 2 * S;
+  const bool closeHv = Hover(cbx, y + 1, cbw, titleH - 2);
+  if (mPressed && closeHv && openPopup == 0) { g.menuOpen = false; mPressed = false; captureKeyId = 0; }
   // dragging by the red title bar / frame
   bool overFrame = Hover(x, y, W, H);
   if (mPressed && openPopup == 0 && overFrame && (mouse.y < y + titleH || mouse.x < x + border || mouse.x > x + W - border || mouse.y > y + H - border)) { s_drag = true; s_dragOff = { mouse.x - x, mouse.y - y }; }
@@ -842,7 +872,11 @@ void Menu_Paint() {
   Text(x + 8 * S + TextW("AIMWHERE.net   ", FONT_CHEAT_BOLD), y + 6 * S, "counter-strike: hvh", MkCol(150, 150, 150));
   {
     const char* r = TextFormat("%s | %s", g_pLocalPlayer ? g_pLocalPlayer->GetPlayerName() : "user", "v4");
-    Text(x + W - 10 * S - TextW(r), y + 6 * S, r, MkCol(255, 230, 230));
+    Text(cbx - 10 * S - TextW(r), y + 6 * S, r, MkCol(255, 230, 230));
+    if (closeHv) Rect(cbx, y + 2 * S, cbw, titleH - 5 * S, MkCol(255, 255, 255, 60));
+    float cx = cbx + cbw * 0.5f, cy = y + titleH * 0.5f - 1 * S, k = 5.5f * S;
+    surface()->DrawLine(cx - k, cy - k, cx + k, cy + k, MkCol(255, 255, 255), 2.f * S);
+    surface()->DrawLine(cx - k, cy + k, cx + k, cy - k, MkCol(255, 255, 255), 2.f * S);
   }
   // black tab bar
   float tbx = x + border, tby = y + titleH, tbw = W - border * 2;

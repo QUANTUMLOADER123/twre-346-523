@@ -4,6 +4,8 @@
 #include "engine/convar.hpp"
 #include "engine/host.hpp"
 #include "engine/platform.hpp"
+#include "engine/download.hpp"
+#include "vgui/contentscreen.hpp"
 #include "engine/materialsystem.hpp"
 #include "engine/worldrender.hpp"
 #include "game/client/cl_main.hpp"
@@ -44,6 +46,10 @@ static void SaveScreen(const std::string& path) {
   UnloadImage(img);
   Msg("Wrote %s\n", path.c_str());
 }
+
+#ifndef CSHVH_VERSION
+#define CSHVH_VERSION "1.2.0"
+#endif
 
 // background world for the main menu (rendered while no game is running)
 static void LoadMenuBackground() {
@@ -134,8 +140,11 @@ int main(int argc, char** argv) {
   SetExitKey(KEY_NULL);
   SetWindowMinSize(800, 600);
   Platform_PostInit();
+#if !defined(PLATFORM_ANDROID) && !defined(CS_HEADLESS)
+  if (FileExists("assets/icon.png")) { Image icon = LoadImage("assets/icon.png"); ImageFormat(&icon, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8); SetWindowIcon(icon); UnloadImage(icon); }
+#endif
   if (fullscreen) ToggleFullscreen();
-  ConColorMsg(Color32{ 196, 181, 80, 255 }, "Counter-Strike: HvH 1.0.0 (raylib %s)\n", RAYLIB_VERSION);
+  ConColorMsg(Color32{ 196, 181, 80, 255 }, "Counter-Strike: HvH %s (raylib %s)\n", CSHVH_VERSION, RAYLIB_VERSION);
 
   g_MaterialSystem.Init();
   vgui::surface()->Init();
@@ -145,6 +154,7 @@ int main(int argc, char** argv) {
   Cbuf_Execute();
   cheat::Init();
   gameui::Init();
+  if (plusCmds.empty()) ContentScreen_Run();   // first start: download the CS:S content (not for scripted runs)
   LoadMenuBackground();
   Host_ExecAutoexec();
   for (auto& c : plusCmds) Cbuf_AddText(c + "\n");

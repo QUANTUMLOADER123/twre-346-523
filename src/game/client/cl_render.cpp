@@ -193,8 +193,18 @@ static void DrawBlobShadow(const Vector& origin, float radius, float alpha) {
   rlEnd(); rlSetTexture(0);
 }
 
+ConVar r_drawhitboxes("r_drawhitboxes", "0", FCVAR_CHEAT, "Draw the players' hitbox capsules");
+static void DrawHitboxesDebug(const HitboxSet& hb) {
+    rlDrawRenderBatchActive(); rlDisableDepthTest();
+    for (int i = 0; i < 19; i++) {
+      const mstudiobbox_t& b = hb[i];
+      Color c = i == HITBOX_HEAD ? Color{ 255, 70, 70, 255 } : i <= HITBOX_UPPER_CHEST ? Color{ 255, 220, 60, 255 } : Color{ 80, 200, 255, 255 };
+      DrawCapsuleWires({ b.a.x, b.a.y, b.a.z }, { b.b.x, b.b.y, b.b.z }, b.radius, 8, 3, c);
+    }
+    rlDrawRenderBatchActive(); rlEnableDepthTest();
+}
+
 void CCSPlayer::BuildRenderPose(float alpha, bool useNet) {
-  CStudioModel* mdl = GetModel(); if (!mdl) return;
   PlayerPoseInput in;
   if (!IsAlive()) {
     in.origin = m_vecOrigin; in.footYaw = m_net.footYaw; in.eyeAngles = m_net.eyeAngles;
@@ -221,8 +231,7 @@ void CCSPlayer::BuildRenderPose(float alpha, bool useNet) {
     if (IsLocalPlayer() && m_net.valid && cheat::LocalBodyYawActive()) { in.eyeAngles = m_angLastSentAngles; in.footYaw = m_flFakeFootYaw; }
   }
   m_vecRenderOrigin = in.origin;
-  BuildPlayerPose(*mdl, GetWeaponWorldModel(in.weaponId), in, m_RenderPose, true);
-  CSS_AttachPose(this, in, m_RenderPose);
+  BuildPlayerPose(this, in, m_RenderPose, true);
   m_bRenderPoseValid = true;
   if (useNet) { m_ClientPose = m_RenderPose; m_bClientPoseValid = true; }
 }
@@ -237,22 +246,19 @@ void CCSPlayer::DrawModel(const CViewSetup& view) {
   bool useNet = IsAlive() && !IsLocalPlayer();
   BuildRenderPose(g_Host.frameAlpha, useNet);
   if (!m_bRenderPoseValid) return;
-  CStudioModel* mdl = GetModel(); if (!mdl) return;
   StudioLight light = LightAt(m_vecRenderOrigin + Vector(0, 0, 40));
-  const CStudioModel* wm = m_RenderPose.hasWeapon ? GetWeaponWorldModel(IsAlive() ? (useNet ? m_LagRecords.front().weaponId : (GetActiveCSWeapon() ? GetActiveCSWeapon()->GetCSWeaponID() : 0)) : 0) : nullptr;
   DrawBlobShadow(m_vecRenderOrigin, 22.f, IsAlive() ? 1.f : 0.6f);
-  if (IsAlive() && cheat::DrawPlayer(this, *mdl, m_RenderPose, wm, light, view)) return;
-  StudioDrawParams p; p.pose = &m_RenderPose.pose; p.modelToWorld = m_RenderPose.modelToWorld; p.light = light; p.eye = view.origin;
+  const bool hb = r_drawhitboxes.GetBool() && IsAlive();
+  if (IsAlive() && cheat::DrawPlayer(this, m_RenderPose, light, view)) { if (hb) DrawHitboxesDebug(m_RenderPose.hitboxes); return; }
+  StudioDrawParams p; p.modelToWorld = m_RenderPose.modelToWorld; p.light = light; p.eye = view.origin;
   if (r_drawothermodels.GetInt() == 2) p.flags |= STUDIO_WIREFRAME;
-  if (CSS_DrawPose(m_RenderPose, p, true)) return;
-  StudioRender_DrawModel(*mdl, p);
-  if (wm && m_RenderPose.hasWeapon) { StudioDrawParams g = p; g.pose = nullptr; g.modelToWorld = m_RenderPose.weaponToWorld; StudioRender_DrawModel(*wm, g); }
+  CSS_DrawPose(m_RenderPose, p, true);
+  if (hb) DrawHitboxesDebug(m_RenderPose.hitboxes);
 }
 void CCSPlayer::DrawTranslucent(const CViewSetup&) {}
 
 void C_WeaponCSBase::DrawModel(const CViewSetup&) {
   if (m_hOwner) return; // carried weapons are drawn by the player
-  CStudioModel* mdl = GetWeaponWorldModelById(m_iWeaponID); if (!mdl) return;
   Vector o = GetRenderOrigin(g_Host.frameAlpha);
   matrix3x4_t rot; AngleMatrix(QAngle(0, m_angRotation.y, 90), rot);
   if (m_iWeaponID == WEAPON_C4 || IsGrenade(m_iWeaponID)) AngleMatrix(QAngle(0, m_angRotation.y, 0), rot);
@@ -260,27 +266,23 @@ void C_WeaponCSBase::DrawModel(const CViewSetup&) {
   StudioDrawParams p; p.modelToWorld = rot; p.light = LightAt(o + Vector(0, 0, 8));
   // dropped C4 blinks
   if (m_iWeaponID == WEAPON_C4 && std::fmod(gpGlobals->realtime, 1.f) < 0.15f) { p.flags |= STUDIO_TINT; p.colorOverride = { 255, 120, 120, 255 }; }
-  if (CSS_DrawWorldWeapon(m_iWeaponID, rot, p, false)) return;
-  StudioRender_DrawModel(*mdl, p);
+  CSS_DrawWorldWeapon(m_iWeaponID, rot, p, false);
 }
 
 void CBaseCSGrenadeProjectile::DrawModel(const CViewSetup&) {
   if (m_bDetonated && m_iWeaponID != WEAPON_SMOKEGRENADE) return;
-  CStudioModel* mdl = GetWeaponWorldModelById(m_iWeaponID); if (!mdl) return;
   Vector o = GetRenderOrigin(g_Host.frameAlpha);
   matrix3x4_t rot; AngleMatrix(m_angRotation, rot); rot.SetOrigin(o);
   StudioDrawParams p; p.modelToWorld = rot; p.light = LightAt(o);
-  if (CSS_DrawWorldWeapon(m_iWeaponID, rot, p, true)) return;
-  StudioRender_DrawModel(*mdl, p);
+  CSS_DrawWorldWeapon(m_iWeaponID, rot, p, true);
 }
 void CBaseCSGrenadeProjectile::DrawTranslucent(const CViewSetup&) {}
 void CSmokeGrenadeProjectile::DrawTranslucent(const CViewSetup&) {}
 
 void CPlantedC4::DrawModel(const CViewSetup&) {
-  CStudioModel* mdl = GetWeaponWorldModelById(WEAPON_C4); if (!mdl) return;
   matrix3x4_t rot; AngleMatrix(QAngle(0, m_flYaw, 0), rot); rot.SetOrigin(m_vecOrigin + Vector(0, 0, 0.5f));
   StudioDrawParams p; p.modelToWorld = rot; p.light = LightAt(m_vecOrigin + Vector(0, 0, 8));
-  StudioRender_DrawModel(*mdl, p);
+  CSS_DrawModelFile("models/weapons/w_c4_planted.mdl", rot, p);
   // blinking LED
   if (!m_bExploded && !m_bBombDefused) {
     float rem = GetTimeRemaining(); float period = rem > 10 ? 1.f : rem > 5 ? 0.5f : 0.25f;
@@ -313,11 +315,7 @@ void CL_DrawEntities(const CViewSetup& view) {
 // level / events
 static int s_eventListener = 0;
 static Vector MuzzlePos(CCSPlayer* p) {
-  if (p->m_bRenderPoseValid && p->m_RenderPose.hasWeapon) {
-    const matrix3x4_t& w = p->m_RenderPose.weaponToWorld;
-    CStudioModel* wm = p->GetWeaponWorldModel(p->m_LagRecords.empty() ? 0 : p->m_LagRecords.front().weaponId);
-    if (wm) return VectorTransform(Vector(wm->maxs.x, 0, (wm->mins.z + wm->maxs.z) * 0.6f), w);
-  }
+  if (p->m_bRenderPoseValid && p->m_RenderPose.hasMuzzle) return p->m_RenderPose.muzzle;
   Vector f, r, u; AngleVectors(p->m_net.eyeAngles, &f, &r, &u);
   return p->m_net.origin + Vector(0, 0, 58) + f * 30 + r * 4;
 }
@@ -472,20 +470,75 @@ void CL_RenderFrame() {
   cheat::Paint();
 }
 
+// ------------------------------------------------------------------------------------------------
+// main menu scene (CS:GO style): your agent standing on the background map, holding a rifle
+ConVar cl_menu_team("cl_menu_team", "3", FCVAR_ARCHIVE, "Agent shown in the main menu: 2 = Terrorist, 3 = Counter-Terrorist", true, 2, true, 3);
+static struct MenuScene { std::string map; bool valid = false; Vector agent; float yaw = 0; Vector cam; QAngle camAng; } s_menuScene;
+
+static void SetupMenuScene() {
+  MenuScene& sc = s_menuScene; sc = MenuScene(); sc.map = g_MapInfo.name;
+  const int team = cl_menu_team.GetInt();
+  std::vector<const MapSpawn*> cand;
+  for (auto& sp : g_MapInfo.spawns) if (sp.team == team) cand.push_back(&sp);
+  if (cand.empty()) for (auto& sp : g_MapInfo.spawns) cand.push_back(&sp);
+  if (cand.empty()) return;
+  // pick the spawn / camera direction with the most open view (camera space in front, deep background behind)
+  float bestScore = -1;
+  for (size_t ci = 0; ci < cand.size() && ci < 6; ci++) {
+    Vector o = cand[ci]->origin;
+    for (int k = 0; k < 16; k++) {
+      float yaw = cand[ci]->yaw + 180.f + k * 22.5f;
+      Vector dir(std::cos(DEG2RADF(yaw)), std::sin(DEG2RADF(yaw)), 0);
+      trace_t f, bk;
+      UTIL_TraceLine(o + Vector(0, 0, 48), o + Vector(0, 0, 48) + dir * 170.f, MASK_SOLID, nullptr, &f);
+      UTIL_TraceLine(o + Vector(0, 0, 48), o + Vector(0, 0, 48) - dir * 1600.f, MASK_SOLID, nullptr, &bk);
+      float score = std::min(f.fraction * 170.f, 150.f) * 4.f + bk.fraction * 1600.f * 0.25f - (k == 0 ? 0.f : 6.f);
+      if (score > bestScore) { bestScore = score; sc.agent = o; sc.yaw = yaw; }
+    }
+  }
+  Vector dir(std::cos(DEG2RADF(sc.yaw)), std::sin(DEG2RADF(sc.yaw)), 0), right(dir.y, -dir.x, 0);
+  trace_t f; UTIL_TraceLine(sc.agent + Vector(0, 0, 48), sc.agent + Vector(0, 0, 48) + dir * 170.f, MASK_SOLID, nullptr, &f);
+  float dist = std::max(70.f, f.fraction * 170.f - 12.f);
+  sc.cam = sc.agent + dir * dist + Vector(0, 0, 50);
+  // look slightly to the agent's left so it stands right of the menu panels
+  Vector look = sc.agent + Vector(0, 0, 38) + right * (dist * 0.30f);
+  sc.camAng = VectorAngles(look - sc.cam);
+  sc.valid = true;
+}
+
 void CL_RenderMenuBackground(float time) {
-  // slow fly-by over the background map (like the CS:GO / Source animated menu backgrounds)
-  CViewSetup v; v.width = GetScreenWidth(); v.height = GetScreenHeight(); v.fov = 75;
-  float a = time * 0.035f;
-  Vector c = (g_MapInfo.mins + g_MapInfo.maxs) * 0.5f;
-  float r = std::max(600.f, (g_MapInfo.maxs - g_MapInfo.mins).Length2D() * 0.32f);
-  v.origin = c + Vector(std::cos(a) * r, std::sin(a) * r, 0); v.origin.z = g_MapInfo.maxs.z + 380.f;
-  Vector look = c + Vector(std::cos(a + 1.3f) * r * 0.3f, std::sin(a + 1.3f) * r * 0.3f, 0); look.z = g_MapInfo.mins.z + 60.f;
-  v.angles = VectorAngles(look - v.origin);
+  CViewSetup v; v.width = GetScreenWidth(); v.height = GetScreenHeight(); v.fov = 62;
+  if (s_menuScene.map != g_MapInfo.name || (s_menuScene.valid && !g_MapInfo.spawns.empty() && cl_menu_team.GetInt() != (int)s_menuScene.camAng.z)) { SetupMenuScene(); s_menuScene.camAng.z = (float)cl_menu_team.GetInt(); }
+  const MenuScene& sc = s_menuScene;
+  if (sc.valid) {
+    // subtle parallax with the mouse
+    Vector2 m = GetMousePosition(); float mx = m.x / std::max(1, v.width) - 0.5f, my = m.y / std::max(1, v.height) - 0.5f;
+    v.origin = sc.cam + Vector(0, 0, std::sin(time * 0.4f) * 0.6f);
+    v.angles = QAngle(sc.camAng.x + my * 1.5f, sc.camAng.y - mx * 2.f, 0);
+  } else {
+    float a = time * 0.035f;
+    Vector c = (g_MapInfo.mins + g_MapInfo.maxs) * 0.5f;
+    float r = std::max(600.f, (g_MapInfo.maxs - g_MapInfo.mins).Length2D() * 0.32f);
+    v.origin = c + Vector(std::cos(a) * r, std::sin(a) * r, 0); v.origin.z = g_MapInfo.maxs.z + 380.f;
+    Vector look = c + Vector(std::cos(a + 1.3f) * r * 0.3f, std::sin(a + 1.3f) * r * 0.3f, 0); look.z = g_MapInfo.mins.z + 60.f;
+    v.angles = VectorAngles(look - v.origin); v.fov = 75;
+  }
   v.Compute(); g_CurrentView = v;
   ClearBackground(BLACK);
   Render_Begin3D(v.view, v.proj);
   g_WorldRender.DrawSky(v, time);
   if (g_WorldRender.built) g_WorldRender.DrawWorld(v);
+  if (sc.valid) {
+    const int team = cl_menu_team.GetInt();
+    PlayerPoseInput in; in.origin = sc.agent; in.footYaw = sc.yaw; in.animTime = time;
+    Vector2 m = GetMousePosition();
+    float mx = m.x / std::max(1, v.width) - 0.62f, my = m.y / std::max(1, v.height) - 0.45f;
+    in.eyeAngles = QAngle(Clamp(my * 30.f, -12.f, 15.f), sc.yaw - Clamp(mx * 50.f, -25.f, 25.f), 0);
+    in.weaponId = team == TEAM_CT ? WEAPON_M4A1 : WEAPON_AK47;
+    StudioDrawParams p; p.light = LightAt(sc.agent + Vector(0, 0, 40)); p.eye = v.origin;
+    DrawBlobShadow(sc.agent, 20.f, 1.f);
+    CSS_DrawAgent(team, (team == TEAM_CT ? FindConVar("cl_agent_ct") : FindConVar("cl_agent_t"))->GetInt(), in, p);
+  }
   Render_End3D();
 }
 

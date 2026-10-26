@@ -150,6 +150,10 @@ public:
   void TraceRayWorld(const Ray_t& ray, unsigned mask, trace_t* tr);
   void ClipRayToEntity(const Ray_t& ray, unsigned mask, IHandleEntity* ent, trace_t* tr);
   int GetPointContents(const Vector& p, unsigned mask = MASK_ALL);
+  // many point queries along one short segment (bullet penetration): collect the candidate brushes once.
+  // Returns false when the fast path does not apply (GoldSrc map) - use GetPointContents then.
+  bool GatherBrushes(const Vector& mins, const Vector& maxs, unsigned mask, std::vector<int>& out) const;
+  int PointContentsIn(const std::vector<int>& candidates, const Vector& p) const;
   bool IsPointInsideBrush(const Vector& p, int brushIndex, float epsilon = 0.f) const;
   int GetBrushAtPoint(const Vector& p, unsigned mask) const;
 
@@ -164,7 +168,7 @@ public:
   Vector worldMins, worldMaxs;
   int traceCount = 0;
 
-private:
+public:   // internals (also used by the trace_selftest dev command)
   struct TraceWork { Vector start, end, mins, maxs, extents, offsetStart; bool isPoint; unsigned mask; };
   void TraceToBrush(const TraceWork& tw, int brushIndex, trace_t& tr);
   void TraceAgainstBox(const TraceWork& tw, const Vector& bmins, const Vector& bmaxs, trace_t& tr);

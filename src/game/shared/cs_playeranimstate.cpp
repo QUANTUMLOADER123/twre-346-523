@@ -5,7 +5,6 @@
 #include <unordered_map>
 #include <cmath>
 
-bool KnifeIsKarambit(); // weapon_csbase.cpp (cl_knife_model)
 
 // ------------------------------------------------------------------------------------------------
 // CCSGOPlayerAnimState
@@ -58,7 +57,8 @@ void CCSGOPlayerAnimState::Update(const QAngle& eye, const Vector& vel, bool onG
   if (moving) {
     float velYaw = RAD2DEGF(std::atan2(vel.y, vel.x));
     m_flMoveYaw = AngleDiff(velYaw, m_flFootYaw);
-    m_flMoveCycle += dt * m_flVelocityLengthXY / 76.f;
+    float stride = duck > 0.5f ? 68.f : m_flVelocityLengthXY <= 130.f ? 139.f : 139.f + std::min(1.f, (m_flVelocityLengthXY - 130.f) / 120.f) * 28.f;
+    m_flMoveCycle += dt * m_flVelocityLengthXY / stride;
     m_flMoveCycle -= std::floor(m_flMoveCycle);
   }
   // --- air / landing ---
@@ -75,232 +75,6 @@ void CCSGOPlayerAnimState::Update(const QAngle& eye, const Vector& vel, bool onG
   m_bFirstUpdate = false;
 }
 
-// ------------------------------------------------------------------------------------------------
-void StudioBoneMap::Init(const CStudioModel& m) {
-  hips = m.FindNode("Hips"); abdomen = m.FindNode("Abdomen"); torso = m.FindNode("Torso"); chest = m.FindNode("Chest");
-  neck = m.FindNode("Neck"); head = m.FindNode("Head"); headEnd = m.FindNode("Head_end");
-  const char* side[2] = { "L", "R" };
-  for (int s = 0; s < 2; s++) {
-    std::string S = std::string(".") + side[s];
-    shoulder[s] = m.FindNode("Shoulder" + S); upperArm[s] = m.FindNode("UpperArm" + S); lowerArm[s] = m.FindNode("LowerArm" + S);
-    hand[s] = m.FindNode("Hand" + S); middle2[s] = m.FindNode("Middle2" + S); thumb2[s] = m.FindNode("Thumb2" + S);
-    upperLeg[s] = m.FindNode("UpperLeg" + S); lowerLeg[s] = m.FindNode("LowerLeg" + S); foot[s] = m.FindNode("Foot" + S); footEnd[s] = m.FindNode("Foot" + S + "_end");
-    for (const char* f : { "Index", "Middle", "Ring", "Pinky" }) for (int k = 2; k <= 4; k++) { int n = m.FindNode(std::string(f) + std::to_string(k) + S); if (n >= 0) fingers[s].push_back(n); }
-  }
-  ok = hips >= 0 && chest >= 0 && head >= 0 && upperArm[0] >= 0 && upperArm[1] >= 0 && upperLeg[0] >= 0 && upperLeg[1] >= 0;
-}
-const StudioBoneMap& GetBoneMap(const CStudioModel& m) {
-  static std::unordered_map<const CStudioModel*, StudioBoneMap> cache;
-  auto it = cache.find(&m); if (it != cache.end()) return it->second;
-  StudioBoneMap b; b.Init(m); return cache[&m] = b;
-}
-
-static void SetDelta(std::vector<BoneDelta>& d, int i, const matrix3x4_t& r, const Vector& t = Vector()) {
-  if (i < 0) return;
-  if (d[i].active) { d[i].rot = MatrixMul(r, d[i].rot); d[i].translate += t; }
-  else { d[i].active = true; d[i].rot = r; d[i].translate = t; }
-}
-static matrix3x4_t RotOnly(const matrix3x4_t& m) { matrix3x4_t r = m; r.SetOrigin(Vector()); return r; }
-static matrix3x4_t Transpose3(const matrix3x4_t& m) { matrix3x4_t r; for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) r[i][j] = m[j][i]; r.SetOrigin(Vector()); return r; }
-
-void BuildPlayerPose(const CStudioModel& mdl, const CStudioModel* wmdl, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes) {
-  const StudioBoneMap& B = GetBoneMap(mdl);
-  // model -> world
-  matrix3x4_t m2w; AngleMatrix(QAngle(0, in.footYaw, 0), in.origin, m2w);
-  float death = in.deathCycle >= 0 ? SimpleSpline(Clamp(in.deathCycle, 0.f, 1.f)) : -1.f;
-  if (death >= 0) {
-    float rel = DEG2RADF(in.deathYaw - in.footYaw);
-    Vector fallDir(std::cos(rel), std::sin(rel), 0);
-    matrix3x4_t fall = AxisAngleMatrix(Vector(0, 0, 1).Cross(fallDir), 84.f * death);
-    fall.SetOrigin(Vector(0, 0, 5.f * death));
-    m2w = MatrixMul(m2w, fall);
-  }
-  out.modelToWorld = m2w;
-  if (!B.ok) { mdl.BindPose(out.pose); out.hasWeapon = false; if (computeHitboxes) ComputeHitboxes(mdl, out.pose, m2w, out.hitboxes); return; }
-
-  std::vector<BoneDelta> d(mdl.nodes.size());
-  // the low-poly characters have short arms: stretch them to human proportions
-  for (int s = 0; s < 2; s++) { if (B.lowerArm[s] >= 0) d[B.lowerArm[s]].stretch = 1.5f; if (B.hand[s] >= 0) d[B.hand[s]].stretch = 1.5f; }
-  const float duck = Clamp(in.duckAmount, 0.f, 1.f);
-  const float speed = Clamp(in.moveSpeed, 0.f, 1.f);
-  const float phase = in.moveCycle * 2.f * M_PI_F;
-  const bool alive = death < 0;
-  // hips: crouch drop + bob + landing compression
-  float hipDrop = duck * 19.f + std::fabs(std::sin(phase)) * 1.3f * speed * (in.onGround ? 1.f : 0.f) + in.landAmount * 6.f;
-  if (!in.onGround) hipDrop -= 2.f;
-  if (alive) SetDelta(d, B.hips, AxisAngleMatrix(Vector(1, 0, 0), in.leanRoll), Vector(0, 0, -hipDrop));
-  // spine twist toward eye yaw and pitch
-  float relYaw = alive ? Clamp(AngleDiff(in.eyeAngles.y, in.footYaw), -100.f, 100.f) : 0.f;
-  float pitch = alive ? Clamp(AngleNormalize(in.eyeAngles.x), -89.f, 89.f) : 0.f;
-  float crouchLean = duck * 12.f;
-  const float twistFrac[4] = { 0.2f, 0.25f, 0.35f, 0.2f };
-  int spine[4] = { B.abdomen, B.torso, B.chest, B.neck };
-  float yawAcc = 0;
-  for (int i = 0; i < 4; i++) {
-    yawAcc += relYaw * twistFrac[i];
-    Vector lateral(-std::sin(DEG2RADF(yawAcc)), std::cos(DEG2RADF(yawAcc)), 0);
-    float p = (i == 0 ? crouchLean : 0.f) + pitch * (i == 0 ? 0.1f : i == 1 ? 0.2f : i == 2 ? 0.25f : 0.15f);
-    if (i == 1) p -= crouchLean * 0.5f;
-    if (!alive) continue;
-    SetDelta(d, spine[i], MatrixMul(AxisAngleMatrix(lateral, p), AxisAngleMatrix(Vector(0, 0, 1), relYaw * twistFrac[i])));
-  }
-  if (alive) { Vector lateral(-std::sin(DEG2RADF(relYaw)), std::cos(DEG2RADF(relYaw)), 0); SetDelta(d, B.head, AxisAngleMatrix(lateral, pitch * 0.3f)); }
-
-  CStudioPose pose;
-  mdl.BuildPose(d, pose);
-  // --- legs: two-bone IK to foot targets ---
-  for (int s = 0; s < 2; s++) {
-    if (B.foot[s] < 0 || B.lowerLeg[s] < 0) continue;
-    Vector bindFoot = mdl.nodes[B.foot[s]].bindPos();
-    float ph = phase + (s == 1 ? M_PI_F : 0.f);
-    Vector mdir(std::cos(DEG2RADF(in.moveYaw)), std::sin(DEG2RADF(in.moveYaw)), 0);
-    Vector t = bindFoot;
-    t.y *= 1.0f + duck * 0.35f;
-    if (in.onGround && alive) {
-      float stride = 15.f * speed * (1.f - duck * 0.45f);
-      t += mdir * (std::sin(ph) * stride);
-      t.z += std::max(0.f, std::cos(ph)) * 6.f * std::min(1.f, speed * 2.5f);
-    } else if (alive) { t.z += 12.f + (s ? 4.f : 0.f); t.x -= 3.f; }
-    if (!alive) { t.z += 3.f; t.x += 4.f; }
-    mdl.SolveTwoBoneIK(d, B.upperLeg[s], B.lowerLeg[s], B.foot[s], t, Vector(1, 0, 0.1f));
-  }
-  mdl.BuildPose(d, pose);
-  // keep feet flat
-  for (int s = 0; s < 2; s++) if (B.foot[s] >= 0) {
-    matrix3x4_t want = RotOnly(mdl.nodes[B.foot[s]].bindToModel), cur = RotOnly(pose.nodes[B.foot[s]]);
-    SetDelta(d, B.foot[s], MatrixMul(want, Transpose3(cur)));
-  }
-  // --- weapon placement + arm IK ---
-  out.hasWeapon = false;
-  const CCSWeaponInfo* wi = GetWeaponInfo(in.weaponId);
-  Vector shoulderR = pose.nodes[B.upperArm[1]].GetOrigin(), shoulderL = pose.nodes[B.upperArm[0]].GetOrigin();
-  Vector chestP = pose.nodes[B.chest].GetOrigin();
-  Vector aimDir; AngleVectors(QAngle(pitch, relYaw, 0), &aimDir);
-  Vector aimRight, aimUp; { Vector f; AngleVectors(QAngle(pitch, relYaw, 0), &f, &aimRight, &aimUp); }
-  if (alive && in.weaponId != 0 && !in.planting && !in.defusing) {
-    matrix3x4_t wrot; AngleMatrix(QAngle(pitch, relYaw, 0), wrot);
-    float kick = in.fireAmount;
-    Vector gripLocal, foreLocal; bool twoHands = true;
-    Vector mn = wmdl ? wmdl->mins : Vector(-5, -1, -2), mx = wmdl ? wmdl->maxs : Vector(5, 1, 2);
-    float L = mx.x - mn.x, H = mx.z - mn.z, cz = (mn.z + mx.z) * 0.5f;
-    Vector gripTarget;
-    switch (wi->type) {
-      case WEAPONTYPE_PISTOL:
-        gripLocal = Vector(mn.x + 0.22f * L, 0, mn.z + 0.32f * H); foreLocal = gripLocal + Vector(-0.5f, 1.2f, -0.6f);
-        gripTarget = chestP + Vector(0, 0, -2.5f) + aimDir * 17.f - aimRight * 1.5f;
-        break;
-      case WEAPONTYPE_KNIFE: case WEAPONTYPE_GRENADE: case WEAPONTYPE_C4:
-        gripLocal = Vector(mn.x + 0.25f * L, 0, cz); twoHands = wi->type == WEAPONTYPE_C4;
-        if (wi->type == WEAPONTYPE_KNIFE && KnifeIsKarambit()) gripLocal = Vector(-2.1f, 0, -0.1f);
-        foreLocal = gripLocal + Vector(0, 3, 0);
-        gripTarget = chestP + Vector(0, 0, -9.f) + aimDir * 12.f + aimRight * 5.f;
-        break;
-      default: {
-        gripLocal = Vector(mn.x + 0.34f * L, 0, cz - 0.18f * H);
-        foreLocal = Vector(mn.x + 0.63f * L, 0, cz - 0.08f * H);
-        Vector stockLocal(mn.x, 0, cz + 0.05f * H);
-        Vector stockTarget = shoulderR - aimRight * 2.0f + aimDir * 2.0f - aimUp * 1.0f;
-        gripTarget = stockTarget + VectorRotate(gripLocal - stockLocal, wrot);
-        break;
-      }
-    }
-    if (in.viewmodel && wi->type != WEAPONTYPE_C4) {
-      // first person: place the grip relative to the eyes (CS v_ models sit lower-right of the view)
-      Vector eyeM = pose.nodes[B.head].GetOrigin() + Vector(1.5f, 0, 3.5f);
-      if (wi->type == WEAPONTYPE_PISTOL) gripTarget = eyeM + aimDir * 21.f - aimUp * 8.f + aimRight * 4.6f;
-      else if (wi->type == WEAPONTYPE_KNIFE) gripTarget = KnifeIsKarambit() ? eyeM + aimDir * 21.f - aimUp * 3.5f + aimRight * 7.5f : eyeM + aimDir * 18.f - aimUp * 8.5f + aimRight * 6.5f;
-      else if (wi->type == WEAPONTYPE_GRENADE) gripTarget = eyeM + aimDir * 18.f - aimUp * 8.f + aimRight * 6.f;
-    }
-    bool karambit = wi->type == WEAPONTYPE_KNIFE && KnifeIsKarambit();
-    if (wi->type == WEAPONTYPE_KNIFE && in.viewmodel && !karambit) // blade tilted up/inwards like v_knife
-      wrot = MatrixMul(AxisAngleMatrix(aimUp, 12.f), MatrixMul(AxisAngleMatrix(aimRight, 18.f), wrot));
-    if (in.reloadCycle >= 0) { // tilt the gun while reloading
-      float r = std::sin(Clamp(in.reloadCycle, 0.f, 1.f) * M_PI_F);
-      wrot = MatrixMul(AxisAngleMatrix(aimDir, -35.f * r), MatrixMul(AxisAngleMatrix(aimRight, -20.f * r), wrot));
-      gripTarget -= aimUp * (3.f * r);
-    }
-    gripTarget -= aimDir * (2.5f * kick);
-    if (kick > 0) wrot = MatrixMul(AxisAngleMatrix(aimRight, -6.f * kick), wrot);
-    matrix3x4_t handRot = wrot; // hand frames follow the aim, not the knife's reverse-grip rotation
-    if (karambit) { // reverse grip: blade points down out of the fist, the claw curves forward, ring on the index finger
-      wrot = MatrixMul(wrot, AxisAngleMatrix(Vector(0, 1, 0), 82.f));
-      if (in.viewmodel) wrot = MatrixMul(AxisAngleMatrix(aimUp, -14.f), wrot);
-    }
-    matrix3x4_t w2m = wrot; w2m.SetOrigin(gripTarget - VectorRotate(gripLocal, wrot));
-    out.weaponToWorld = MatrixMul(m2w, w2m);
-    out.hasWeapon = true;
-    Vector rHand = VectorTransform(gripLocal, w2m), lHand = VectorTransform(foreLocal, w2m);
-    Vector gunFwd = VectorRotate(Vector(1, 0, 0), handRot), gunUp = VectorRotate(Vector(0, 0, 1), handRot), gunLat = VectorRotate(Vector(0, 1, 0), handRot);
-    Vector wantF[2], wantN[2];
-    bool pistol = wi->type == WEAPONTYPE_PISTOL, melee = wi->type == WEAPONTYPE_KNIFE || wi->type == WEAPONTYPE_GRENADE;
-    if (pistol)     { wantF[1] = gunFwd * 0.70f - gunUp * 0.72f; wantN[1] = gunLat; wantF[0] = gunFwd * 0.55f - gunUp * 0.70f - gunLat * 0.45f; wantN[0] = gunUp * 0.35f - gunLat * 0.95f; }
-    else if (karambit) { wantF[1] = gunFwd; wantN[1] = gunLat; wantF[0] = gunFwd; wantN[0] = gunUp; }
-    else if (melee) { wantF[1] = gunFwd * 0.35f - gunUp * 0.94f; wantN[1] = gunLat; wantF[0] = gunFwd; wantN[0] = gunUp; }
-    else if (wi->type == WEAPONTYPE_C4) { wantF[1] = gunFwd * 0.6f - gunLat * 0.8f; wantN[1] = -gunUp; wantF[0] = gunFwd * 0.6f + gunLat * 0.8f; wantN[0] = -gunUp; }
-    else            { wantF[1] = gunFwd * 0.80f - gunUp * 0.60f; wantN[1] = gunLat; wantF[0] = gunFwd * 0.45f - gunLat * 0.90f; wantN[0] = gunUp; }
-    auto frame = [](Vector F, Vector N, bool right, Vector& T) { // orthonormalise, returns T
-      F.NormalizeInPlace(); N = (N - F * N.Dot(F)).Normalized(); T = right ? F.Cross(N) : N.Cross(F); return F; };
-    // the Hand bone is the wrist: pull it back so the palm (not the wrist) sits on the grip, and off the surface
-    for (int s = 0; s < 2; s++) {
-      if (B.hand[s] < 0 || B.middle2[s] < 0) continue;
-      float palm = mdl.nodes[B.middle2[s]].bindPos().DistTo(mdl.nodes[B.hand[s]].bindPos());
-      Vector wT; Vector wF = frame(wantF[s], wantN[s], s == 1, wT); Vector wN = (wantN[s] - wF * wantN[s].Dot(wF)).Normalized();
-      Vector off = wF * ((karambit && s == 1 ? -0.85f : -0.55f) * palm) - wN * ((s == 0 && !pistol && !melee) ? 0.4f : 1.1f);
-      if (pistol) off += gunUp * 1.8f;   // palm around the grip, not under it
-      if (s == 1) rHand += off; else lHand += off;
-    }
-    if (in.reloadCycle >= 0) { float r = std::sin(Clamp(in.reloadCycle, 0.f, 1.f) * M_PI_F); lHand = VectorLerp(lHand, VectorTransform(Vector((mn.x + mx.x) * 0.5f, 0, mn.z - 4.f), w2m), r); }
-    mdl.SolveTwoBoneIK(d, B.upperArm[1], B.lowerArm[1], B.hand[1], rHand, Vector(-0.2f, -0.8f, -1.f));
-    if (twoHands) mdl.SolveTwoBoneIK(d, B.upperArm[0], B.lowerArm[0], B.hand[0], lHand, Vector(-0.2f, 0.8f, -1.f));
-    else { // free left arm hangs a bit forward
-      mdl.SolveTwoBoneIK(d, B.upperArm[0], B.lowerArm[0], B.hand[0], shoulderL + (in.viewmodel ? Vector(-3, 4, -26) : Vector(4, 3, -22)), Vector(-0.3f, 0.6f, 0));
-    }
-    mdl.BuildPose(d, pose);
-    // orient hands: full frame (fingers F, thumb side T, palm normal N). Bind pose = palms down, thumbs forward,
-    // so per side the palm normal is N = T x F (right) / F x T (left). Right palm faces the grip from the right side,
-    // the left hand cups the foregrip from below (palm up) or wraps the shooting hand on pistols.
-    for (int s = 0; s < 2; s++) {
-      if (B.hand[s] < 0 || B.middle2[s] < 0) continue;
-      if (s == 0 && !twoHands) continue;
-      Vector h = pose.nodes[B.hand[s]].GetOrigin();
-      Vector cF = (pose.nodes[B.middle2[s]].GetOrigin() - h).Normalized();
-      if (B.thumb2[s] < 0) { SetDelta(d, B.hand[s], RotationBetween(cF, wantF[s])); continue; }
-      Vector cT = pose.nodes[B.thumb2[s]].GetOrigin() - h; cT = (cT - cF * cT.Dot(cF)).Normalized();
-      Vector cN = s == 1 ? cT.Cross(cF) : cF.Cross(cT);
-      Vector wT; Vector wF = frame(wantF[s], wantN[s], s == 1, wT); Vector wN = wantN[s]; wN = (wN - wF * wN.Dot(wF)).Normalized();
-      // R = [wF wT wN] * [cF cT cN]^T
-      matrix3x4_t A, Bm; A.SetColumn(0, wF); A.SetColumn(1, wT); A.SetColumn(2, wN); A.SetOrigin(Vector());
-      Bm.SetColumn(0, cF); Bm.SetColumn(1, cT); Bm.SetColumn(2, cN); Bm.SetOrigin(Vector());
-      SetDelta(d, B.hand[s], MatrixMul(A, RigidInvert(Bm)));
-    }
-    mdl.BuildPose(d, pose);
-    // curl fingers towards the palm (rotation about F x N moves the finger tips into N)
-    for (int s = 0; s < 2; s++) {
-      if (s == 0 && !twoHands) continue;
-      Vector wT; Vector wF = frame(wantF[s], wantN[s], s == 1, wT);
-      Vector wN = (wantN[s] - wF * wantN[s].Dot(wF)).Normalized();
-      Vector axis = wF.Cross(wN).Normalized();
-      float curl = karambit && s == 1 ? 72.f : (s == 0 && !pistol && !melee) ? 34.f : 46.f;
-      for (int f : B.fingers[s]) SetDelta(d, f, AxisAngleMatrix(axis, curl));
-    }
-  } else {
-    // relaxed arms (no weapon / dead / planting)
-    float down = alive ? 72.f : 40.f;
-    if (in.planting || in.defusing) {
-      mdl.SolveTwoBoneIK(d, B.upperArm[1], B.lowerArm[1], B.hand[1], chestP + aimDir * 16.f + Vector(0, -4, -26), Vector(0, -0.6f, -1));
-      mdl.SolveTwoBoneIK(d, B.upperArm[0], B.lowerArm[0], B.hand[0], chestP + aimDir * 16.f + Vector(0, 4, -26), Vector(0, 0.6f, -1));
-    } else {
-      SetDelta(d, B.upperArm[0], AxisAngleMatrix(Vector(1, 0, 0), -down));
-      SetDelta(d, B.upperArm[1], AxisAngleMatrix(Vector(1, 0, 0), down));
-      if (!alive) { SetDelta(d, B.lowerArm[0], AxisAngleMatrix(Vector(0, 1, 0), -30.f)); SetDelta(d, B.lowerArm[1], AxisAngleMatrix(Vector(0, 1, 0), -30.f)); }
-    }
-  }
-  mdl.BuildPose(d, out.pose);
-  // eye position: between head joint and head top
-  Vector headP = out.pose.nodes[B.head].GetOrigin();
-  out.eyePos = VectorTransform(headP + Vector(1.5f, 0, 3.5f), m2w);
-  if (computeHitboxes) ComputeHitboxes(mdl, out.pose, m2w, out.hitboxes);
-}
 
 // ------------------------------------------------------------------------------------------------
 static const int s_hitgroup[19] = { HITGROUP_HEAD, HITGROUP_HEAD, HITGROUP_STOMACH, HITGROUP_STOMACH, HITGROUP_CHEST, HITGROUP_CHEST, HITGROUP_CHEST,
@@ -311,32 +85,6 @@ static const char* s_hbname[19] = { "head", "neck", "pelvis", "stomach", "lower 
 int HitboxToHitgroup(int hb) { return (hb >= 0 && hb < 19) ? s_hitgroup[hb] : HITGROUP_GENERIC; }
 const char* HitboxName(int hb) { return (hb >= 0 && hb < 19) ? s_hbname[hb] : "generic"; }
 
-void ComputeHitboxes(const CStudioModel& mdl, const CStudioPose& pose, const matrix3x4_t& m2w, HitboxSet& out) {
-  const StudioBoneMap& B = GetBoneMap(mdl);
-  auto P = [&](int n) { return n >= 0 ? VectorTransform(pose.nodes[n].GetOrigin(), m2w) : m2w.GetOrigin(); };
-  auto set = [&](int i, const Vector& a, const Vector& b, float r) { out[i].a = a; out[i].b = b; out[i].radius = r; out[i].group = s_hitgroup[i]; };
-  if (!B.ok) { Vector o = m2w.GetOrigin(); for (int i = 0; i < 19; i++) set(i, o + Vector(0, 0, 10), o + Vector(0, 0, 60), 10); return; }
-  Vector head = P(B.head), headEnd = B.headEnd >= 0 ? P(B.headEnd) : head + Vector(0, 0, 8);
-  Vector hu = (headEnd - head);
-  set(HITBOX_HEAD, head + hu * 0.35f, head + hu * 0.62f, 4.1f);
-  set(HITBOX_NECK, P(B.neck), head + hu * 0.1f, 3.0f);
-  Vector hipL = P(B.upperLeg[0]), hipR = P(B.upperLeg[1]);
-  set(HITBOX_PELVIS, hipL + (P(B.hips) - hipL) * 0.3f, hipR + (P(B.hips) - hipR) * 0.3f, 5.6f);
-  set(HITBOX_STOMACH, P(B.abdomen), P(B.torso), 6.0f);
-  Vector chest = P(B.chest), neck = P(B.neck);
-  set(HITBOX_LOWER_CHEST, P(B.torso), chest, 6.2f);
-  set(HITBOX_CHEST, chest, chest + (neck - chest) * 0.45f, 6.6f);
-  set(HITBOX_UPPER_CHEST, chest + (neck - chest) * 0.45f, neck - (neck - chest) * 0.15f, 6.0f);
-  for (int s = 0; s < 2; s++) {
-    int R = s == 1;
-    set(R ? HITBOX_RIGHT_THIGH : HITBOX_LEFT_THIGH, P(B.upperLeg[s]), P(B.lowerLeg[s]), 4.4f);
-    set(R ? HITBOX_RIGHT_CALF : HITBOX_LEFT_CALF, P(B.lowerLeg[s]), P(B.foot[s]), 3.6f);
-    set(R ? HITBOX_RIGHT_FOOT : HITBOX_LEFT_FOOT, P(B.foot[s]), B.footEnd[s] >= 0 ? P(B.footEnd[s]) : P(B.foot[s]) + Vector(4, 0, 0), 2.4f);
-    set(R ? HITBOX_RIGHT_HAND : HITBOX_LEFT_HAND, P(B.hand[s]), B.middle2[s] >= 0 ? P(B.middle2[s]) : P(B.hand[s]), 2.1f);
-    set(R ? HITBOX_RIGHT_UPPER_ARM : HITBOX_LEFT_UPPER_ARM, P(B.upperArm[s]), P(B.lowerArm[s]), 3.0f);
-    set(R ? HITBOX_RIGHT_FOREARM : HITBOX_LEFT_FOREARM, P(B.lowerArm[s]), P(B.hand[s]), 2.6f);
-  }
-}
 
 int IntersectHitboxes(const HitboxSet& hb, const Vector& start, const Vector& delta, float& tOut) {
   int best = -1; float bt = 2.f;

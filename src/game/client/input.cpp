@@ -1,5 +1,6 @@
 // input.cpp - keyboard/mouse input, key bindings (keys.cpp) and CInput::CreateMove (in_main.cpp)
 #include "cl_main.hpp"
+#include "hud_menus.hpp"
 #include "touch.hpp"
 #include "../../engine/host.hpp"
 #include "../shared/cs_player.hpp"
@@ -83,11 +84,11 @@ static ConCommand cmd_invprev("invprev", [](const CCommand&) { if (g_pLocalPlaye
 static ConCommand cmd_use("use", [](const CCommand& a) { if (a.ArgC() > 1) { int id = AliasToWeaponID(a.Arg(1)); if (id) s_pendingWeaponSelect = 100 + id; } }, "Use a weapon: use weapon_knife");
 static ConCommand cmd_thirdperson("thirdperson", [](const CCommand&) { cl.thirdperson = true; }, "Switch to thirdperson camera.");
 static ConCommand cmd_firstperson("firstperson", [](const CCommand&) { cl.thirdperson = false; }, "Switch to firstperson camera.");
-static ConCommand cmd_buymenu("buymenu", [](const CCommand&) {
+static ConCommand cmd_buymenu("buymenu", [](const CCommand& a) {
   CCSPlayer* p = g_pLocalPlayer; if (!p) return;
-  if (cl.buyMenuOpen) { cl.buyMenuOpen = false; return; }
-  if (p->CanPlayerBuy(true)) { cl.buyMenuOpen = true; cl.teamMenuOpen = false; }
-}, "Show the buy menu");
+  if (cl.buyMenuOpen && a.ArgC() < 2) { cl.buyMenuOpen = false; return; }
+  if (p->CanPlayerBuy(true)) { cl.buyMenuOpen = true; cl.teamMenuOpen = false; HUD_BuyMenuSetCategory(a.ArgC() >= 2 ? atoi(a.Arg(1)) - 1 : -1); }
+}, "Show the buy menu (optional: category 1-6 = pistols, heavy, SMGs, rifles, gear, grenades)");
 static ConCommand cmd_chooseteam("chooseteam", [](const CCommand&) { if (CL_IsInGame()) { cl.teamMenuOpen = !cl.teamMenuOpen; cl.buyMenuOpen = false; } }, "Choose a new team");
 static ConCommand cmd_messagemode("messagemode", [](const CCommand&) { if (CL_IsInGame()) { cl.chatOpen = true; cl.chatTeam = false; cl.chatBuffer.clear(); } }, "");
 static ConCommand cmd_messagemode2("messagemode2", [](const CCommand&) { if (CL_IsInGame()) { cl.chatOpen = true; cl.chatTeam = true; cl.chatBuffer.clear(); } }, "");

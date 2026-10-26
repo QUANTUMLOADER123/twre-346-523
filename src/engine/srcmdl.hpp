@@ -4,6 +4,7 @@
 // hierarchy and the sequence / animation data (RLE compressed Source animations) so the same loader serves static
 // props, viewmodels and player models.
 #pragma once
+#include <unordered_map>
 #include "mathlib.hpp"
 #include "raylib.h"
 #include <string>
@@ -101,6 +102,12 @@ public:
   void BuildBones(const std::vector<Vector>& pos, const std::vector<Quat>& q, std::vector<matrix3x4_t>& out) const;
   void UploadStatic();                   // GPU meshes in the reference pose
 private:
+  // per-frame lookups are cached: material of each texture slot (by value, invalidated by SrcMat_Clear),
+  // lower-case sequence / bone name -> index
+  struct MatCache { Texture2D tex{}; bool translucent = false, alphatest = false, valid = false; };
+  mutable std::vector<MatCache> m_matCache; mutable int m_matGen = -1;
+  mutable std::unordered_map<std::string, int> m_seqIndex, m_boneIndex;   // query string (as passed) -> index
+  int FindNamed(const std::string& q, bool bone) const;
   void ExtractAnimBone(const uint8_t* animBase, int bone, int frame, float t, Vector& pos, Quat& q, int animFlags) const;
 };
 

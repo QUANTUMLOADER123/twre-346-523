@@ -33,10 +33,14 @@ static float ScaleDamage(int hitgroup, float damage, const CCSWeaponInfo& wi) {
 static bool TraceToExit(const Vector& start, const Vector& dir, Vector& end, const trace_t& enterTrace, trace_t& exitTrace, float stepSize = 4.f, float maxDistance = 90.f) {
   float dist = 0;
   int firstContents = 0;
+  // every probe lies on this segment: fetch the candidate brushes once instead of per probe
+  thread_local std::vector<int> cand;
+  const Vector segEnd = start + dir * (maxDistance + stepSize);
+  const bool fast = g_EngineTrace.GatherBrushes(VecMin(start, segEnd), VecMax(start, segEnd), MASK_SHOT_HULL, cand);
   while (dist <= maxDistance) {
     dist += stepSize;
     end = start + dir * dist;
-    int contents = g_EngineTrace.GetPointContents(end, MASK_SHOT_HULL);
+    int contents = (fast ? g_EngineTrace.PointContentsIn(cand, end) : g_EngineTrace.GetPointContents(end, MASK_SHOT_HULL)) & MASK_SHOT_HULL;
     if (firstContents == 0) firstContents = contents;
     if (!(contents & MASK_SHOT_HULL)) {
       Vector back = end - dir * stepSize;

@@ -58,6 +58,11 @@ std::vector<Finger> s_fingers;
 int s_stickFinger = -1; Vector2 s_stickBase{}, s_stickPos{};
 float s_moveF = 0, s_moveS = 0;
 bool s_active = false;
+// bind circles
+struct BindCircle { int slot; const char* label; bool active; float x, y, r; };
+std::vector<BindCircle> s_bindCircles;
+bool s_bindDown[64] = {}, s_bindPressed[64] = {};
+int BindRole(int slot) { return -10 - slot; }
 
 float Scale() { return GetScreenHeight() / 1080.f * touch_scale.GetFloat(); }
 
@@ -80,6 +85,17 @@ void Layout() {
   float x0 = W * 0.5f - (5 * bw + 4 * gap) * s * 0.5f;
   for (int i = 0; i < 5; i++) rect(B_MENU + i, x0 + i * (bw + gap) * s, 12 * s, bw, bh);
   for (int i = 0; i < 5; i++) rect(B_SLOT1 + i, W - (5 - i) * 86 * s - 14 * s, 64 * s, 76, 76);
+  // cheat bind circles: centered rows under the top bar (clear of the radar and of the action buttons)
+  std::vector<cheat::TouchBind> tb; cheat::GetTouchBinds(tb);
+  s_bindCircles.clear();
+  const float r = 44 * s, step = 102 * s, barW = (5 * bw + 4 * gap) * s;
+  int perRow = std::max(1, (int)(std::max(barW, W * 0.36f) / step));
+  for (size_t i = 0; i < tb.size(); i++) {
+    int row = (int)i / perRow, colIdx = (int)i % perRow;
+    int inRow = std::min(perRow, (int)tb.size() - row * perRow);
+    float rx0 = W * 0.5f - (inRow - 1) * step * 0.5f;
+    s_bindCircles.push_back({ tb[i].slot, tb[i].label, tb[i].active, rx0 + colIdx * step, (12 + bh + 22) * s + r + row * step, r });
+  }
 }
 
 bool Hit(const Button& b, Vector2 p, float slack = 1.15f) {
@@ -117,8 +133,12 @@ bool WantControls() {
 }
 } // namespace
 
+bool Touch_BindDown(int slot) { return slot >= 0 && slot < 64 && s_bindDown[slot]; }
+bool Touch_BindPressed(int slot) { return slot >= 0 && slot < 64 && s_bindPressed[slot]; }
+
 void Touch_ReleaseAll() {
   for (int i = 0; i < (int)s_buttons.size(); i++) Release(i);
+  for (bool& b : s_bindDown) b = false;
   s_fingers.clear(); s_stickFinger = -1; s_moveF = s_moveS = 0;
 }
 
@@ -126,6 +146,7 @@ bool Touch_Active() { return s_active; }
 void Touch_GetMove(float& f, float& s) { f = s_active ? s_moveF : 0; s = s_active ? s_moveS : 0; }
 
 void Touch_Frame(float) {
+  for (bool& b : s_bindPressed) b = false;
   bool want = WantControls();
   if (!want) { if (s_active) Touch_ReleaseAll(); s_active = false; return; }
   s_active = true;
@@ -142,6 +163,7 @@ void Touch_Frame(float) {
     bool alive = std::any_of(touches.begin(), touches.end(), [&](const T& t) { return t.id == f.id; });
     if (alive) { k++; continue; }
     if (f.role >= 0) Release(f.role);
+    if (f.role <= -10) s_bindDown[-10 - f.role] = false;
     if (f.role == -1) { s_stickFinger = -1; s_moveF = s_moveS = 0; }
     s_fingers.erase(s_fingers.begin() + k);
   }
@@ -152,7 +174,10 @@ void Touch_Frame(float) {
       Finger f{ t.id, t.p, t.p, -2 };
       int hit = -1;
       for (int i = 0; i < (int)s_buttons.size() && hit < 0; i++) if (!s_buttons[i].down && Hit(s_buttons[i], t.p)) hit = i;
-      if (hit >= 0) { f.role = hit; s_buttons[hit].finger = t.id; Press(hit); }
+      int bhit = -1;
+      for (const BindCircle& c : s_bindCircles) { float dx = t.p.x - c.x, dy = t.p.y - c.y; if (dx * dx + dy * dy <= c.r * c.r * 1.3f) { bhit = c.slot; break; } }
+      if (bhit >= 0 && hit < 0) { f.role = BindRole(bhit); s_bindDown[bhit] = true; s_bindPressed[bhit] = true; }
+      else if (hit >= 0) { f.role = hit; s_buttons[hit].finger = t.id; Press(hit); }
       else if (t.p.x < W * 0.42f && t.p.y > H * 0.2f && s_stickFinger < 0) { f.role = -1; s_stickFinger = t.id; s_stickBase = s_stickPos = t.p; }
       else f.role = -2;
       s_fingers.push_back(f);
@@ -194,6 +219,14 @@ void Touch_Draw() {
       DrawRectangleRoundedLinesEx({ b.x, b.y, b.w, b.h }, 0.25f, 6, 2.f * s, edge);
       sf.DrawTextCentered(font, b.label, b.x + b.w * 0.5f, b.y + b.h * 0.5f - tall * 0.5f, col(255, 255, 255, std::min(1.f, a + 0.3f)), true);
     }
+  }
+  // bind circles (blue when the bind is active)
+  for (const BindCircle& c : s_bindCircles) {
+    bool on = c.active || s_bindDown[c.slot];
+    DrawCircleV({ c.x, c.y }, c.r, on ? col(94, 152, 217, std::max(0.55f, a)) : col(0, 0, 0, a * 0.45f));
+    DrawRing({ c.x, c.y }, c.r - 3 * s, c.r, 0, 360, 40, on ? col(190, 220, 255, 1.f) : col(255, 255, 255, a * 0.7f));
+    float tall = (float)sf.GetFontTall(FONT_DEFAULT_BOLD);
+    sf.DrawTextCentered(FONT_DEFAULT_BOLD, c.label, c.x, c.y - tall * 0.5f, col(255, 255, 255, std::min(1.f, a + 0.35f)), true);
   }
   // movement stick: resting position hint, or the live stick
   const float R = 120.f * s;

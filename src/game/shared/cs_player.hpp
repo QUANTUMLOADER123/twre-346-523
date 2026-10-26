@@ -249,8 +249,6 @@ public:
   bool IsSolidForTrace(unsigned mask) const override;
   const HitboxSet& GetActiveHitboxes() const { return m_pActiveHitboxes ? *m_pActiveHitboxes : m_net.hitboxes; }
   void BuildRenderPose(float alpha, bool useNet);
-  CStudioModel* GetModel() const;
-  CStudioModel* GetWeaponWorldModel(int weaponId) const;
 
   // rendering (client)
   void DrawModel(const CViewSetup& view) override;

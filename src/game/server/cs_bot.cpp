@@ -435,11 +435,9 @@ void CCSBot::HvHAim(CUserCmd& cmd, QAngle& view) {
   // resolver: brute force the desync side by missed shots (we don't know the server's real feet yaw)
   static const float sides[4] = { 1.f, -1.f, 0.5f, 0.f };
   float guess = AngleNormalize(rec.eyeAngles.y + sides[t->m_iMissedShots % 4] * rec.maxDesync);
-  CStudioModel* mdl = t->GetModel();
-  if (!mdl) return;
   PlayerPoseInput in; in.origin = rec.origin; in.footYaw = guess; in.eyeAngles = rec.eyeAngles; in.duckAmount = rec.duckAmount;
   in.moveCycle = rec.moveCycle; in.moveSpeed = rec.moveSpeed; in.moveYaw = rec.moveYaw; in.onGround = rec.onGround; in.weaponId = rec.weaponId;
-  PlayerPoseOutput out; BuildPlayerPose(*mdl, t->GetWeaponWorldModel(rec.weaponId), in, out, true);
+  PlayerPoseOutput out; BuildPlayerPose(t, in, out, true);
   Vector eye = me->EyePosition();
   int hitboxes[] = { HITBOX_HEAD, HITBOX_CHEST, HITBOX_STOMACH, HITBOX_PELVIS };
   Vector best; bool found = false;

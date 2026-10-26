@@ -28,6 +28,7 @@ const SrcMaterial& SrcMat_Find(const std::string& name, bool model = false);
 // model materials: tries every $cdmaterials directory
 const SrcMaterial& SrcMat_FindInDirs(const std::string& name, const std::vector<std::string>& dirs);
 void SrcMat_Clear();
+int SrcMat_Generation();                 // changes on every SrcMat_Clear (for caches of material lookups)
 int SrcMat_TextureLimit();
 // surfaceprop name -> engine surface (SURFACE_*)
 int SrcMat_SurfaceFromProp(const std::string& prop, const std::string& matName);

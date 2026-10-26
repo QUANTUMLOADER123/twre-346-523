@@ -18,6 +18,14 @@ ConVar cl_css_viewmodels("cl_css_viewmodels", "1", FCVAR_ARCHIVE, "Use the Count
 ConVar cl_css_anim_layers("cl_css_anim_layers", "255", FCVAR_CHEAT, "debug: 1 jump 2 upper 4 reload 8 aim 16 shoot");
 ConVar cl_css_viewmodel_fov("cl_css_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
 
+ConVar cl_agent_ct("cl_agent_ct", "0", FCVAR_ARCHIVE, "Your CT agent: 0 SEAL Team 6, 1 GSG-9, 2 SAS, 3 GIGN", true, 0, true, 3);
+ConVar cl_agent_t("cl_agent_t", "0", FCVAR_ARCHIVE, "Your T agent: 0 Phoenix, 1 Elite Crew, 2 Arctic Avengers, 3 Guerilla Warfare", true, 0, true, 3);
+const char* CSS_AgentName(int team, int idx) {
+  static const char* ct[4] = { "SEAL Team 6", "GSG-9", "SAS", "GIGN" };
+  static const char* t[4] = { "Phoenix Connexion", "Elite Crew", "Arctic Avengers", "Guerilla Warfare" };
+  return team == TEAM_CT ? ct[idx & 3] : t[idx & 3];
+}
+
 bool CSS_ModelsActive() { return cl_css_models.GetBool() && srcfs::Available(); }
 
 namespace {
@@ -54,12 +62,16 @@ WeaponModel WeaponInfo(int wid) {
 }
 bool SilencerModel(int wid) { return wid == WEAPON_USP_SILENCER || wid == WEAPON_M4A1_SILENCER; }
 
+const char* const s_agentCT[4] = { "ct_urban", "ct_gsg9", "ct_sas", "ct_gign" };
+const char* const s_agentT[4] = { "t_phoenix", "t_leet", "t_arctic", "t_guerilla" };
+const CSrcModel* AgentModel(int team, int idx) {
+  idx &= 3;
+  return SrcMdl_Get(std::string("models/player/") + (team == TEAM_CT ? s_agentCT[idx] : s_agentT[idx]) + ".mdl");
+}
 const CSrcModel* PlayerModel(CCSPlayer* p) {
-  static const char* ct[4] = { "ct_urban", "ct_gsg9", "ct_sas", "ct_gign" };
-  static const char* t[4] = { "t_phoenix", "t_leet", "t_arctic", "t_guerilla" };
   int idx = (p->entindex() + p->m_iPlayerModel) & 3;
-  const char* n = p->m_iTeamNum == TEAM_CT ? ct[idx] : t[idx];
-  return SrcMdl_Get(std::string("models/player/") + n + ".mdl");
+  if (p->IsLocalPlayer()) idx = (p->m_iTeamNum == TEAM_CT ? cl_agent_ct : cl_agent_t).GetInt();
+  return AgentModel(p->m_iTeamNum, idx);
 }
 const CSrcModel* WorldWeapon(int wid, bool silencer = false, bool thrown = false) {
   WeaponModel wi = WeaponInfo(wid); if (!wi.model) return nullptr;
@@ -71,10 +83,8 @@ const CSrcModel* WorldWeapon(int wid, bool silencer = false, bool thrown = false
 }
 
 // ------------------------------------------------------------------------------------------------
-// third person animation
-struct AnimTrack { float cycle = 0, air = 0, last = -1; };
-std::unordered_map<int, AnimTrack> s_tracks;
-
+// third person animation - a pure function of PlayerPoseInput, so the server hitboxes, lag records and the
+// rendered model are the same pose
 void LayerFull(std::vector<Vector>& pos, std::vector<Quat>& q, const std::vector<Vector>& lp, const std::vector<Quat>& lq, const std::vector<float>& w, float amount) {
   for (size_t b = 0; b < pos.size(); b++) {
     float k = (b < w.size() ? w[b] : 1.f) * amount; if (k <= 0.001f) continue;
@@ -89,16 +99,22 @@ void LayerDelta(std::vector<Vector>& pos, std::vector<Quat>& q, const std::vecto
   }
 }
 
-void BuildPlayerBones(CCSPlayer* pl, const CSrcModel& m, const PlayerPoseInput& in, std::vector<matrix3x4_t>& bones) {
-  AnimTrack& tr = s_tracks[pl ? pl->entindex() : 0];
-  const float now = (float)gpGlobals->realtime;
-  float dt = tr.last < 0 ? 0.f : Clamp(now - tr.last, 0.f, 0.1f);
-  tr.last = now;
+// sequence lookups are string based - cache them per model
+struct SeqCache { std::unordered_map<std::string, SrcSeqRef> map; };
+SrcSeqRef Seq(const CSrcModel& m, const std::string& name) {
+  thread_local std::unordered_map<const CSrcModel*, SeqCache> cache;
+  auto& c = cache[&m].map;
+  auto it = c.find(name); if (it != c.end()) return it->second;
+  SrcSeqRef r = m.FindSeq(name); c[name] = r; return r;
+}
+
+void BuildPlayerBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector<matrix3x4_t>& bones) {
+  const float now = in.animTime >= 0 ? in.animTime : (float)gpGlobals->curtime;
   thread_local std::vector<Vector> pos, lp; thread_local std::vector<Quat> q, lq; thread_local std::vector<float> w;
   SrcPoseValues pv;
   // death
   if (in.deathCycle >= 0) {
-    SrcSeqRef d = m.FindSeq("Death1");
+    SrcSeqRef d = Seq(m, "Death1");
     float dur = std::max(0.1f, m.SeqDuration(d));
     m.SampleSeq(d, Clamp(in.deathTime / dur, 0.f, 1.f), pv, pos, q);
     m.BuildBones(pos, q, bones);
@@ -117,42 +133,115 @@ void BuildPlayerBones(CCSPlayer* pl, const CSrcModel& m, const PlayerPoseInput& 
   pv.body_yaw = Clamp(AngleDiff(in.eyeAngles.y, in.footYaw), -90.f, 90.f);
   float pitch = in.eyeAngles.x; if (pitch > 180.f) pitch -= 360.f;
   pv.body_pitch = Clamp(pitch, -90.f, 90.f);
-  // lower body
+  // lower body: the move cycle advances with the distance walked (CCSGOPlayerAnimState, CS:S strides)
   const char* lower = crouch ? (moving ? "Crouch_walk_lower" : "Crouch_Idle_Lower") : (run ? "Run_lower" : moving ? "walk_lower" : "Idle_lower");
-  SrcSeqRef base = m.FindSeq(lower);
-  float seqDur = std::max(0.1f, m.SeqDuration(base));
-  float distPerCycle = moving ? seqDur * (crouch ? 85.f : run ? 250.f : 130.f) : 0.f;
-  tr.cycle += moving ? dt * speed / std::max(1.f, distPerCycle) : dt / seqDur;
-  tr.cycle -= std::floor(tr.cycle);
-  tr.air = in.onGround ? 0.f : tr.air + dt;
-  m.SampleSeq(base, tr.cycle, pv, pos, q);
+  SrcSeqRef base = Seq(m, lower);
+  float cycle = moving ? in.moveCycle : std::fmod(now / std::max(0.1f, m.SeqDuration(base)), 1.f);
+  m.SampleSeq(base, cycle, pv, pos, q);
   const int lm = cl_css_anim_layers.GetInt();
   if (!in.onGround && (lm & 1)) {
-    SrcSeqRef j = m.FindSeq("Jump");
-    if (j) { m.SampleSeq(j, Clamp(0.25f + tr.air / std::max(0.1f, m.SeqDuration(j)), 0.f, 0.8f), pv, lp, lq, &w); LayerFull(pos, q, lp, lq, std::vector<float>(), 1.f); }
+    SrcSeqRef j = Seq(m, "Jump");
+    if (j) { m.SampleSeq(j, 0.45f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, std::vector<float>(), 1.f); }
   }
   // upper body (weapon hold), aim matrix, shoot, reload
   const std::string wpn = WeaponInfo(in.weaponId).anim;
   const std::string st = crouch ? (moving ? "Crouch_Walk_" : "Crouch_Idle_") : (run ? "Run_" : moving ? "Walk_" : "Idle_");
   const std::string aimSt = crouch ? "Crouch_" : (run ? "Run_" : moving ? "Walk_" : "Idle_");
-  SrcSeqRef up = m.FindSeq(st + "Upper_" + wpn);
-  if (up && (lm & 2)) { m.SampleSeq(up, tr.cycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  SrcSeqRef up = Seq(m, st + "Upper_" + wpn);
+  if (up && (lm & 2)) { m.SampleSeq(up, cycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   if (in.reloadCycle >= 0 && (lm & 4)) {
-    SrcSeqRef r = m.FindSeq(st + "Reload_" + wpn);
+    SrcSeqRef r = Seq(m, st + "Reload_" + wpn);
     if (r) { m.SampleSeq(r, in.reloadCycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   }
   if (in.planting && in.weaponId == WEAPON_C4) {
-    SrcSeqRef r = m.FindSeq(st + "Shoot_C4");
+    SrcSeqRef r = Seq(m, st + "Shoot_C4");
     if (r) { m.SampleSeq(r, std::fmod(now / std::max(0.1f, m.SeqDuration(r)), 1.f), pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   }
-  SrcSeqRef aim = m.FindSeq(aimSt + "Aim_" + wpn);
+  SrcSeqRef aim = Seq(m, aimSt + "Aim_" + wpn);
   if (aim && (lm & 8)) { m.SampleSeq(aim, 0, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
   if (in.fireAmount > 0 && in.weaponId != WEAPON_C4 && (lm & 16)) {
-    SrcSeqRef s = m.FindSeq(st + "Shoot_" + wpn);
-    if (!s) s = m.FindSeq(st + "Shoot_" + wpn + "_R");
+    SrcSeqRef s = Seq(m, st + "Shoot_" + wpn);
+    if (!s) s = Seq(m, st + "Shoot_" + wpn + "_R");
     if (s) { m.SampleSeq(s, 1.f - in.fireAmount, pv, lp, lq, &w); LayerDelta(pos, q, lp, lq, w, 1.f); }
   }
   m.BuildBones(pos, q, bones);
+}
+
+// ------------------------------------------------------------------------------------------------
+// hitboxes: the model's own hitbox set (19 oriented boxes) as the capsules of the CS:GO hitbox layout
+struct HitboxMap { std::vector<std::pair<int, int>> slots; int spine2 = -1; };   // (slot, model hitbox)
+const HitboxMap& GetHitboxMap(const CSrcModel& m) {
+  thread_local std::unordered_map<const CSrcModel*, HitboxMap> cache;
+  auto it = cache.find(&m); if (it != cache.end()) return it->second;
+  HitboxMap hm;
+  static const std::pair<const char*, int> names[] = {
+    { "Head1", HITBOX_HEAD }, { "Neck1", HITBOX_NECK }, { "Pelvis", HITBOX_PELVIS }, { "Spine1", HITBOX_STOMACH },
+    { "R_Thigh", HITBOX_RIGHT_THIGH }, { "L_Thigh", HITBOX_LEFT_THIGH }, { "R_Calf", HITBOX_RIGHT_CALF }, { "L_Calf", HITBOX_LEFT_CALF },
+    { "R_Foot", HITBOX_RIGHT_FOOT }, { "L_Foot", HITBOX_LEFT_FOOT }, { "R_Hand", HITBOX_RIGHT_HAND }, { "L_Hand", HITBOX_LEFT_HAND },
+    { "R_UpperArm", HITBOX_RIGHT_UPPER_ARM }, { "R_Forearm", HITBOX_RIGHT_FOREARM }, { "L_UpperArm", HITBOX_LEFT_UPPER_ARM }, { "L_Forearm", HITBOX_LEFT_FOREARM },
+  };
+  for (size_t i = 0; i < m.hitboxes.size(); i++) {
+    int b = m.hitboxes[i].bone; if (b < 0 || b >= (int)m.bones.size()) continue;
+    const std::string& bn = m.bones[b].name;
+    if (bn.size() >= 6 && bn.compare(bn.size() - 6, 6, "Spine2") == 0) { hm.spine2 = (int)i; continue; }
+    for (auto& n : names) {
+      size_t L = strlen(n.first);
+      if (bn.size() >= L && bn.compare(bn.size() - L, L, n.first) == 0 && bn[bn.size() - L - 1] == '_') { hm.slots.push_back({ n.second, (int)i }); break; }
+    }
+  }
+  return cache[&m] = hm;
+}
+void BoxToCapsule(Vector mn, Vector mx, const matrix3x4_t& boneToWorld, mstudiobbox_t& out) {
+  Vector c = (mn + mx) * 0.5f, h = (mx - mn) * 0.5f;
+  int k = (h.x >= h.y && h.x >= h.z) ? 0 : (h.y >= h.z ? 1 : 2);
+  float r = std::min(h[k], (h[(k + 1) % 3] + h[(k + 2) % 3]) * 0.5f);
+  Vector a = c, b = c; a[k] -= h[k] - r; b[k] += h[k] - r;
+  out.a = VectorTransform(a, boneToWorld); out.b = VectorTransform(b, boneToWorld); out.radius = r;
+}
+void ModelHitboxes(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& toWorld, HitboxSet& out) {
+  const HitboxMap& hm = GetHitboxMap(m);
+  auto boneWorld = [&](int b) { matrix3x4_t w; ConcatTransforms(toWorld, bones[b], w); return w; };
+  for (auto& sl : hm.slots) {
+    const SrcMdlHitbox& h = m.hitboxes[sl.second];
+    if (h.bone >= (int)bones.size()) continue;
+    BoxToCapsule(h.mins, h.maxs, boneWorld(h.bone), out[sl.first]);
+    out[sl.first].group = HitboxToHitgroup(sl.first);
+  }
+  if (hm.spine2 >= 0 && m.hitboxes[hm.spine2].bone < (int)bones.size()) {   // chest box -> lower / middle / upper chest
+    const SrcMdlHitbox& h = m.hitboxes[hm.spine2];
+    matrix3x4_t w = boneWorld(h.bone);
+    const int slots[3] = { HITBOX_LOWER_CHEST, HITBOX_CHEST, HITBOX_UPPER_CHEST };
+    for (int i = 0; i < 3; i++) {
+      Vector mn = h.mins, mx = h.maxs;
+      float x0 = h.mins.x + (h.maxs.x - h.mins.x) * i / 3.f, x1 = h.mins.x + (h.maxs.x - h.mins.x) * (i + 1) / 3.f;
+      mn.x = x0; mx.x = x1;
+      BoxToCapsule(mn, mx, w, out[slots[i]]); out[slots[i]].group = HitboxToHitgroup(slots[i]);
+    }
+  }
+}
+// no model loaded: a simple standing / crouching body so the game logic still works
+void FallbackHitboxes(const PlayerPoseInput& in, HitboxSet& out) {
+  float h = 1.f - 0.25f * Clamp(in.duckAmount, 0.f, 1.f);
+  Vector f, r, u; AngleVectors(QAngle(0, in.footYaw, 0), &f, &r, &u);
+  Vector o = in.origin; Vector up(0, 0, 1);
+  auto cap = [&](int i, Vector a, Vector b, float rad) { out[i].a = a; out[i].b = b; out[i].radius = rad; out[i].group = HitboxToHitgroup(i); };
+  cap(HITBOX_HEAD, o + up * (64 * h), o + up * (66 * h) + f * 1.5f, 4.2f);
+  cap(HITBOX_NECK, o + up * (58 * h), o + up * (61 * h), 3.4f);
+  cap(HITBOX_UPPER_CHEST, o + up * (53 * h) - r * 5, o + up * (53 * h) + r * 5, 6.f);
+  cap(HITBOX_CHEST, o + up * (48 * h) - r * 5, o + up * (48 * h) + r * 5, 6.f);
+  cap(HITBOX_LOWER_CHEST, o + up * (43 * h) - r * 5, o + up * (43 * h) + r * 5, 6.f);
+  cap(HITBOX_STOMACH, o + up * (38 * h) - r * 4, o + up * (38 * h) + r * 4, 6.f);
+  cap(HITBOX_PELVIS, o + up * (33 * h) - r * 4, o + up * (33 * h) + r * 4, 6.f);
+  for (int s = 0; s < 2; s++) {
+    float sd = s == 0 ? 1.f : -1.f; Vector side = r * (4.f * sd);
+    cap(s == 0 ? HITBOX_RIGHT_THIGH : HITBOX_LEFT_THIGH, o + up * (31 * h) + side, o + up * (18 * h) + side, 4.f);
+    cap(s == 0 ? HITBOX_RIGHT_CALF : HITBOX_LEFT_CALF, o + up * (17 * h) + side, o + up * 4 + side, 3.4f);
+    cap(s == 0 ? HITBOX_RIGHT_FOOT : HITBOX_LEFT_FOOT, o + up * 2 + side, o + up * 2 + side + f * 6, 2.6f);
+    Vector sh = o + up * (54 * h) + r * (8.f * sd);
+    cap(s == 0 ? HITBOX_RIGHT_UPPER_ARM : HITBOX_LEFT_UPPER_ARM, sh, sh + f * 6 - up * 8, 2.6f);
+    cap(s == 0 ? HITBOX_RIGHT_FOREARM : HITBOX_LEFT_FOREARM, sh + f * 6 - up * 8, sh + f * 16 - up * 6 - r * (3.f * sd), 2.3f);
+    cap(s == 0 ? HITBOX_RIGHT_HAND : HITBOX_LEFT_HAND, sh + f * 16 - up * 6 - r * (3.f * sd), sh + f * 20 - up * 5 - r * (4.f * sd), 2.f);
+  }
 }
 
 // weapon bone merge: bones with the same name as a player bone follow the player
@@ -168,19 +257,39 @@ void BoneMerge(const CSrcModel& w, const CSrcModel& parent, const std::vector<ma
 }
 } // namespace
 
-void CSS_AttachPose(CCSPlayer* p, const PlayerPoseInput& in, PlayerPoseOutput& out) {
-  out.css = nullptr; out.cssWeapon = nullptr;
-  if (!p || !CSS_ModelsActive()) return;
-  const CSrcModel* m = PlayerModel(p);
-  if (!m || m->meshes.empty() || m->includes.empty()) return;
-  BuildPlayerBones(p, *m, in, out.cssBones);
+static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes);
+void BuildPlayerPose(CCSPlayer* p, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes) {
+  BuildPoseForModel(p && srcfs::Available() ? PlayerModel(p) : nullptr, p, in, out, computeHitboxes);
+}
+
+bool CSS_DrawAgent(int team, int agent, const PlayerPoseInput& in, const StudioDrawParams& p) {
+  if (!srcfs::Available()) return false;
+  thread_local PlayerPoseOutput out;
+  BuildPoseForModel(AgentModel(team, agent), nullptr, in, out, false);
+  if (!out.css) return false;
+  StudioDrawParams q = p; q.modelToWorld = out.cssToWorld;
+  return CSS_DrawPose(out, q, true);
+}
+
+static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes) {
+  out.css = nullptr; out.cssWeapon = nullptr; out.hasWeapon = false; out.hasMuzzle = false;
   AngleMatrix(QAngle(0, in.footYaw, 0), in.origin, out.cssToWorld);
+  out.modelToWorld = out.cssToWorld; out.weaponToWorld = out.cssToWorld;
+  out.eyePos = in.origin + Vector(0, 0, 64.f - 18.f * Clamp(in.duckAmount, 0.f, 1.f));
+  if (!m || m->bones.empty() || m->includes.empty()) { if (computeHitboxes) FallbackHitboxes(in, out.hitboxes); return; }
+  BuildPlayerBones(*m, in, out.cssBones);
   out.css = m;
+  if (computeHitboxes) { FallbackHitboxes(in, out.hitboxes); ModelHitboxes(*m, out.cssBones, out.cssToWorld, out.hitboxes); }
   if (in.deathCycle < 0 && in.weaponId) {
     bool sil = false;
-    if (SilencerModel(in.weaponId)) { C_WeaponCSBase* w = p->GetActiveCSWeapon(); sil = w && w->GetCSWeaponID() == in.weaponId && w->m_bSilencerOn; }
+    if (p && SilencerModel(in.weaponId)) { C_WeaponCSBase* w = p->GetActiveCSWeapon(); sil = w && w->GetCSWeaponID() == in.weaponId && w->m_bSilencerOn; }
     const CSrcModel* wm = WorldWeapon(in.weaponId, sil);
-    if (wm && !wm->meshes.empty()) { BoneMerge(*wm, *m, out.cssBones, out.cssWeaponBones); out.cssWeapon = wm; }
+    if (wm && !wm->meshes.empty()) {
+      BoneMerge(*wm, *m, out.cssBones, out.cssWeaponBones);
+      out.cssWeapon = wm; out.hasWeapon = true;
+      for (size_t i = 0; i < wm->attachments.size(); i++)
+        if (wm->attachments[i].name == "muzzle_flash" || wm->attachments[i].name == "1") { out.muzzle = wm->AttachmentPos((int)i, out.cssWeaponBones, out.cssToWorld); out.hasMuzzle = true; break; }
+    }
   }
 }
 
@@ -188,6 +297,16 @@ bool CSS_DrawPose(const PlayerPoseOutput& pose, const StudioDrawParams& p, bool 
   if (!pose.css) return false;
   SrcMdl_Draw(*pose.css, pose.cssBones, pose.cssToWorld, p);
   if (drawWeapon && pose.cssWeapon) SrcMdl_Draw(*pose.cssWeapon, pose.cssWeaponBones, pose.cssToWorld, p);
+  return true;
+}
+
+bool CSS_DrawModelFile(const char* path, const matrix3x4_t& xf, const StudioDrawParams& p) {
+  if (!srcfs::Available()) return false;
+  const CSrcModel* m = SrcMdl_Get(path);
+  if (!m || m->meshes.empty()) return false;
+  thread_local std::vector<matrix3x4_t> bones; thread_local std::vector<Vector> pos; thread_local std::vector<Quat> q;
+  m->SampleAnim(-1, 0, pos, q); m->BuildBones(pos, q, bones);
+  SrcMdl_Draw(*m, bones, xf, p);
   return true;
 }
 

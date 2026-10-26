@@ -6,6 +6,7 @@
 #include "../../vgui/surface.hpp"
 #include "../shared/cs_player.hpp"
 #include "../shared/weapon_csbase.hpp"
+#include "../../vgui/vgui_images.hpp"
 #include "../shared/cs_gamerules.hpp"
 #include "../shared/cs_projectiles.hpp"
 #include "../shared/gameevents.hpp"
@@ -66,6 +67,16 @@ void HUD_AddChat(const std::string& who, const std::string& text, int team, bool
 }
 void HUD_CenterPrint(const std::string& text, float time) { s_center = text; s_centerEnd = gpGlobals->realtime + time; }
 void HUD_HintText(const std::string& text) { s_hint = text; s_hintEnd = gpGlobals->realtime + 4.f; EmitSound2D("Hud.Hint"); }
+
+// dev: fills the kill feed with examples of every icon (UI testing / screenshots)
+static ConCommand cmd_hud_testkillfeed("hud_testkillfeed", [](const CCommand&) {
+  struct T { const char* k; const char* v; const char* w; int kt, vt; bool hs, wb, smk, ns, bl, local; };
+  static const T t[] = { { "Player", "Neil", "ak47", 3, 2, true, false, false, false, false, true }, { "Graham", "Clarence", "awp", 2, 3, false, true, false, true, false, false },
+                         { "Ernie", "Player", "knife", 2, 3, false, false, false, false, false, true }, { "Kevin", "Arnold", "m4a1", 3, 2, true, true, true, false, false, false },
+                         { "Brett", "Dan", "hegrenade", 3, 2, false, false, false, false, true, false }, { "", "Steve", "world", 0, 2, false, false, false, false, false, false } };
+  s_deaths.clear();
+  for (const T& x : t) { DeathNotice d; d.killer = x.k; d.victim = x.v; d.weapon = x.w; d.kteam = x.kt; d.vteam = x.vt; d.hs = x.hs; d.wallbang = x.wb; d.smoke = x.smk; d.noscope = x.ns; d.blind = x.bl; d.localInvolved = x.local; d.time = gpGlobals->realtime; s_deaths.push_back(d); }
+}, "Fill the kill feed with sample entries");
 
 static void OnEvent(const IGameEvent& e) {
   CCSPlayer* lp = g_pLocalPlayer;
@@ -311,6 +322,12 @@ static void DrawAmmoMoney(CCSPlayer* p, float sc) {
     Color cc = c; if (w->IsGun() && w->m_iClip1 == 0) cc = scheme::HudRed;
     HudNumber(FONT_HUD_NUMBERS, txt.c_str(), x, y, cc);
     BeginBlendMode(BLEND_ADDITIVE); IconBullet(W - 40 * sc, y + 6 * sc, 26 * sc, cc); EndBlendMode();
+    // silhouette of the weapon left of the counter
+    if (const Texture2D* ic = VGUI_WeaponIcon(w->m_iWeaponID)) {
+      float ih = 26 * sc, iw = std::min(ih * ic->width / (float)std::max(1, ic->height), 110 * sc);
+      Color tc = c; tc.a = 170;
+      DrawTexturePro(*ic, { 0, 0, (float)ic->width, (float)ic->height }, { x - iw - 16 * sc, y + 8 * sc, iw, ih }, { 0, 0 }, 0, tc);
+    }
   }
   // money
   if (s_lastMoney >= 0 && p->m_iAccount != s_lastMoney) { s_moneyDelta = p->m_iAccount - s_lastMoney; s_moneyDeltaTime = gpGlobals->realtime; }
@@ -469,29 +486,91 @@ static void DrawRadar(CCSPlayer* lp, float sc) {
   if (place && *place) surface()->DrawTextCentered(FONT_HUD_SMALL, place, x0 + size / 2, y0 + size + 4, { 120, 220, 120, 230 }, true);
 }
 
+// CS:GO-style kill feed icons: weapon silhouettes from the CS:S buy menu pictures, small vector glyphs for the flags
+enum { KF_HS, KF_WB, KF_SMOKE, KF_NOSCOPE, KF_BLIND };
+static float KillIconWide(int kind, float h) { (void)kind; return h * 1.05f; }
+static void DrawKillIcon(int kind, float x, float y, float h, Color c) {
+  float cx = x + h * 0.52f, cy = y + h * 0.5f, r = h * 0.36f;
+  switch (kind) {
+    case KF_HS:       // head with a crosshair
+      DrawCircleV({ cx, cy - r * 0.1f }, r, c);
+      DrawCircleV({ cx, cy - r * 0.1f }, r * 0.55f, { 20, 20, 20, c.a });
+      DrawCircleV({ cx, cy - r * 0.1f }, r * 0.22f, c);
+      DrawLineEx({ cx - r * 1.35f, cy - r * 0.1f }, { cx - r * 0.7f, cy - r * 0.1f }, 1.5f, c);
+      DrawLineEx({ cx + r * 0.7f, cy - r * 0.1f }, { cx + r * 1.35f, cy - r * 0.1f }, 1.5f, c);
+      DrawLineEx({ cx, cy - r * 1.4f }, { cx, cy - r * 0.8f }, 1.5f, c);
+      DrawLineEx({ cx, cy + r * 0.6f }, { cx, cy + r * 1.25f }, 1.5f, c);
+      break;
+    case KF_WB:       // bullet through a wall
+      for (int k = 0; k < 3; k++)   // brick wall
+        DrawRectangleRec({ cx - r * 0.45f, cy - r * 1.3f + k * r * 0.9f, r * 0.9f, r * 0.75f }, { c.r, c.g, c.b, (unsigned char)(c.a * 0.55f) });
+      DrawLineEx({ cx - r * 1.5f, cy }, { cx + r * 0.9f, cy }, 2.5f, c);
+      DrawTriangle({ cx + r * 1.5f, cy }, { cx + r * 0.8f, cy - r * 0.6f }, { cx + r * 0.8f, cy + r * 0.6f }, c);
+      break;
+    case KF_SMOKE:    // cloud
+      DrawCircleV({ cx - r * 0.6f, cy + r * 0.25f }, r * 0.62f, c);
+      DrawCircleV({ cx + r * 0.6f, cy + r * 0.25f }, r * 0.62f, c);
+      DrawCircleV({ cx, cy - r * 0.3f }, r * 0.75f, c);
+      break;
+    case KF_NOSCOPE:  // crossed-out scope
+      DrawRing({ cx, cy }, r * 0.85f, r * 1.1f, 0, 360, 24, c);
+      DrawLineEx({ cx - r, cy }, { cx + r, cy }, 1.f, c);
+      DrawLineEx({ cx, cy - r }, { cx, cy + r }, 1.f, c);
+      DrawLineEx({ cx - r * 1.2f, cy + r * 1.2f }, { cx + r * 1.2f, cy - r * 1.2f }, 2.f, { 255, 80, 60, c.a });
+      break;
+    case KF_BLIND:    // eye
+      DrawEllipse((int)cx, (int)cy, r * 1.3f, r * 0.7f, c);
+      DrawCircleV({ cx, cy }, r * 0.45f, { 20, 20, 20, c.a });
+      break;
+  }
+}
+static void DrawKnifeGlyph(float x, float y, float w, float h, Color c) {
+  // handle + guard + blade, pointing right (towards the victim) like the gun pictures
+  float m = y + h * 0.5f;
+  DrawRectangleRounded({ x, m - h * 0.22f, w * 0.33f, h * 0.3f }, 0.5f, 4, c);
+  DrawRectangleRec({ x + w * 0.33f, m - h * 0.4f, w * 0.05f, h * 0.62f }, c);
+  DrawTriangle({ x + w * 0.38f, m - h * 0.32f }, { x + w * 0.38f, m + h * 0.12f }, { x + w, m - h * 0.05f }, c);
+}
+
 static void DrawDeathNotices(float sc) {
   int W = surface()->ScreenWide();
   float y = 60 * sc;
+  const float rowH = std::max(22.f, 24 * sc), iconH = rowH - 6;
   float lifetime = hud_deathnotice_time.GetFloat();
   while (!s_deaths.empty() && gpGlobals->realtime - s_deaths.front().time > lifetime + (s_deaths.front().localInvolved ? 4 : 0)) s_deaths.pop_front();
   for (auto& d : s_deaths) {
-    std::string wpn = d.weapon;
-    std::string flags; if (d.wallbang) flags += " [WB]"; if (d.hs) flags += " [HS]"; if (d.smoke) flags += " [SMK]"; if (d.noscope) flags += " [NS]";
+    const int wid = AliasToWeaponID(d.weapon);
+    const Texture2D* icon = wid > 0 ? VGUI_WeaponIcon(wid) : nullptr;
+    const bool knife = d.weapon == "knife";
+    std::string wpnText = d.weapon == "world" ? "fell" : d.weapon;
+    float iconW = icon ? iconH * icon->width / (float)std::max(1, icon->height) : knife ? iconH * 2.2f : surface()->GetTextSize(FONT_DEFAULT_BOLD, wpnText.c_str()).x;
+    iconW = std::min(iconW, iconH * 4.2f);
+    std::vector<int> flags;
+    if (d.blind) flags.push_back(KF_BLIND);
+    if (d.noscope) flags.push_back(KF_NOSCOPE);
+    if (d.smoke) flags.push_back(KF_SMOKE);
+    if (d.wallbang) flags.push_back(KF_WB);
+    if (d.hs) flags.push_back(KF_HS);
+    float flagsW = 0; for (int f : flags) flagsW += KillIconWide(f, iconH) + 3;
     std::string killer = d.killer; if (!d.assister.empty() && !killer.empty()) killer += " + " + d.assister;
     float kw = killer.empty() ? 0 : surface()->GetTextSize(FONT_UI, killer.c_str()).x;
-    float ww = surface()->GetTextSize(FONT_DEFAULT_BOLD, wpn.c_str()).x + surface()->GetTextSize(FONT_DEFAULT_BOLD, flags.c_str()).x;
     float vw = surface()->GetTextSize(FONT_UI, d.victim.c_str()).x;
-    float total = kw + ww + vw + 30;
-    float x = W - 12 * sc - total;
-    Color bg = d.localInvolved ? Color{ 120, 10, 10, 150 } : Color{ 0, 0, 0, 120 };
-    surface()->DrawFilledRect(x - 6, y - 2, total + 12, 19, bg);
-    if (d.localInvolved) surface()->DrawOutlinedRect(x - 6, y - 2, total + 12, 19, { 220, 40, 40, 220 });
-    if (!killer.empty()) { surface()->DrawText(FONT_UI, killer.c_str(), x, y, TeamColor(d.kteam)); x += kw + 10; }
-    surface()->DrawText(FONT_DEFAULT_BOLD, wpn.c_str(), x, y, HUD); x += surface()->GetTextSize(FONT_DEFAULT_BOLD, wpn.c_str()).x;
-    if (!flags.empty()) { surface()->DrawText(FONT_DEFAULT_BOLD, flags.c_str(), x, y, { 255, 90, 60, 255 }); x += surface()->GetTextSize(FONT_DEFAULT_BOLD, flags.c_str()).x; }
-    x += 10;
-    surface()->DrawText(FONT_UI, d.victim.c_str(), x, y, TeamColor(d.vteam));
-    y += 22;
+    float total = (kw > 0 ? kw + 8 : 0) + iconW + (flagsW > 0 ? 6 + flagsW : 0) + 8 + vw;
+    float x = W - 12 * sc - total - 8;
+    Color bg = d.localInvolved ? Color{ 40, 10, 10, 190 } : Color{ 0, 0, 0, 140 };
+    DrawRectangleRounded({ x - 8, y, total + 16, rowH }, 0.25f, 4, bg);
+    if (d.localInvolved) DrawRectangleRoundedLinesEx({ x - 8, y, total + 16, rowH }, 0.25f, 4, 1.5f, { 220, 40, 40, 230 });
+    float ty = y + (rowH - 15) * 0.5f;
+    if (!killer.empty()) { surface()->DrawText(FONT_UI, killer.c_str(), x, ty, TeamColor(d.kteam)); x += kw + 8; }
+    Color ic = { 235, 235, 235, 255 };
+    if (icon) DrawTexturePro(*icon, { 0, 0, (float)icon->width, (float)icon->height }, { x, y + 3, iconW, iconH }, { 0, 0 }, 0, ic);
+    else if (knife) DrawKnifeGlyph(x, y + 3, iconW, iconH, ic);
+    else surface()->DrawText(FONT_DEFAULT_BOLD, wpnText.c_str(), x, ty, HUD);
+    x += iconW;
+    if (!flags.empty()) { x += 6; for (int f : flags) { DrawKillIcon(f, x, y + 3, iconH, ic); x += KillIconWide(f, iconH) + 3; } }
+    x += 8;
+    surface()->DrawText(FONT_UI, d.victim.c_str(), x, ty, TeamColor(d.vteam));
+    y += rowH + 4;
   }
 }
 

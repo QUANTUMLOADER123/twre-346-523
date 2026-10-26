@@ -64,6 +64,7 @@ struct PlayerPoseInput {
   float deathYaw = 0;
   float deathTime = 0;    // seconds since death
   float leanRoll = 0;
+  float animTime = -1;    // clock for idle animations (-1 = gpGlobals->curtime); the main menu agent uses real time
   bool planting = false, defusing = false;
   bool viewmodel = false; // first-person arms: hold knife/pistol/grenade in front of the eyes
 };
@@ -78,22 +79,15 @@ struct PlayerPoseOutput {
   // Counter-Strike: Source model (client only, see css_models.hpp)
   const CSrcModel* css = nullptr; std::vector<matrix3x4_t> cssBones; matrix3x4_t cssToWorld;
   const CSrcModel* cssWeapon = nullptr; std::vector<matrix3x4_t> cssWeaponBones;
+  Vector muzzle; bool hasMuzzle = false;   // carried weapon muzzle (world)
 };
 
-void BuildPlayerPose(const CStudioModel& mdl, const CStudioModel* weaponMdl, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes = true);
-void ComputeHitboxes(const CStudioModel& mdl, const CStudioPose& pose, const matrix3x4_t& modelToWorld, HitboxSet& out);
+// poses the player's Counter-Strike: Source model (bones, bone-merged weapon, hitboxes from the model's hitbox set);
+// a pure function of the input, used by the server (hitboxes / lag records), the cheat and the renderer
+// (implemented in client/css_models.cpp)
+void BuildPlayerPose(CCSPlayer* p, const PlayerPoseInput& in, PlayerPoseOutput& out, bool computeHitboxes = true);
 int HitboxToHitgroup(int hitbox);
 const char* HitboxName(int hitbox);
 // ray vs hitbox set; returns hitbox index or -1, t in [0,1]
 int IntersectHitboxes(const HitboxSet& hb, const Vector& start, const Vector& delta, float& tOut);
 
-// bone indices cache per model
-struct StudioBoneMap {
-  int hips = -1, abdomen = -1, torso = -1, chest = -1, neck = -1, head = -1, headEnd = -1;
-  int shoulder[2] = { -1, -1 }, upperArm[2] = { -1, -1 }, lowerArm[2] = { -1, -1 }, hand[2] = { -1, -1 }, middle2[2] = { -1, -1 }, thumb2[2] = { -1, -1 };
-  int upperLeg[2] = { -1, -1 }, lowerLeg[2] = { -1, -1 }, foot[2] = { -1, -1 }, footEnd[2] = { -1, -1 };
-  std::vector<int> fingers[2];
-  void Init(const CStudioModel& m);
-  bool ok = false;
-};
-const StudioBoneMap& GetBoneMap(const CStudioModel& m);

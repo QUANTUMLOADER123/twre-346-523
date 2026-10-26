@@ -59,6 +59,8 @@ bool CSrcBsp::AddConvexHull(const std::vector<Vector>& pts, int surf) {
   for (auto& p : pts) { mn = VecMin(mn, p); mx = VecMax(mx, p); ctr += p; }
   ctr /= (float)pts.size();
   if (mx.x - mn.x < 0.5f || mx.y - mn.y < 0.5f || mx.z - mn.z < 0.5f) return false;
+  // garbage from a misparsed .phy ledge (huge / non-finite coordinates): such a "hull" would get an absurd bounding box
+  for (int a = 0; a < 3; a++) if (!std::isfinite(mn[a]) || !std::isfinite(mx[a]) || std::fabs(mn[a]) > 32768.f || std::fabs(mx[a]) > 32768.f || mx[a] - mn[a] > 8192.f) return false;
   std::vector<cplane_t> pl;
   auto addPlane = [&](Vector n, float d) {
     for (auto& q : pl) if (q.normal.Dot(n) > 0.999f && std::fabs(q.dist - d) < 0.5f) return;

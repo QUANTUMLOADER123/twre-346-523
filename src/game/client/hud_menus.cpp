@@ -1,4 +1,4 @@
-// hud_menus.cpp - CS 1.6 style VGUI in-game menus (CCSTeamMenu, CCSBuyMenu, CClientScoreBoardDialog)
+// hud_menus.cpp - in-game menus: team menu, CS:GO radial buy menu, scoreboard, chat
 #include "cl_main.hpp"
 #include "hud_menus.hpp"
 #include "../../engine/host.hpp"
@@ -8,6 +8,8 @@
 #include "../shared/cs_gamerules.hpp"
 #include "../shared/soundemitter.hpp"
 #include "../shared/mapinfo.hpp"
+#include "../../vgui/csgo_style.hpp"
+#include "../../vgui/vgui_images.hpp"
 #include "raylib.h"
 #include <algorithm>
 #include <cmath>
@@ -22,162 +24,204 @@ static constexpr Color PANEL = { 0, 0, 0, 175 };
 
 static int s_buyCategory = -1;      // -1 = main menu
 static int s_hoverItem = -1;
-static bool s_mouseWasDown = false;
 
 bool HUD_MenusWantInput() { return cl.teamMenuOpen || cl.buyMenuOpen || cl.chatOpen; }
-
-// ------------------------------------------------------------------------------------------------
-// shared widgets
-static bool MenuButton(float x, float y, float w, float h, const char* hotkey, const char* text, bool enabled, const char* right = nullptr) {
-  Vector2 m = GetMousePosition();
-  bool hover = enabled && m.x >= x && m.x < x + w && m.y >= y && m.y < y + h;
-  bool clicked = hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
-  if (hover) { surface()->DrawFilledRect(x, y, w, h, { 255, 176, 0, 40 }); }
-  surface()->DrawOutlinedRect(x, y, w, h, hover ? MENU_ORANGE : Color{ 255, 176, 0, 90 });
-  Color tc = enabled ? (hover ? Color{ 255, 230, 150, 255 } : MENU_ORANGE) : Color{ 110, 90, 50, 255 };
-  float ty = y + (h - surface()->GetFontTall(FONT_DEFAULT_BOLD)) / 2;
-  surface()->DrawText(FONT_DEFAULT_BOLD, hotkey, x + 8, ty, tc);
-  surface()->DrawText(FONT_DEFAULT_BOLD, text, x + 30, ty, tc);
-  if (right) surface()->DrawTextRight(FONT_DEFAULT_BOLD, right, x + w - 8, ty, tc);
-  if (clicked) EmitSound2D("UI.Click");
-  return clicked;
-}
-static void MenuFrame(float x, float y, float w, float h, const char* title) {
-  surface()->DrawFilledRect(x, y, w, h, PANEL);
-  surface()->DrawOutlinedRect(x, y, w, h, { 255, 176, 0, 140 });
-  surface()->DrawText(FONT_MENU_TITLE, title, x + 18, y + 14, MENU_ORANGE);
-  surface()->DrawFilledRect(x + 16, y + 44, w - 32, 1, { 255, 176, 0, 110 });
-}
 
 // ------------------------------------------------------------------------------------------------
 // team menu
 static void JoinTeam(int team) { Cbuf_AddText(TextFormat("jointeam %d\n", team)); cl.teamMenuOpen = false; }
 
 void HUD_DrawTeamMenu() {
-  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  float w = 640, h = 400, x = (W - w) / 2, y = (H - h) / 2;
-  MenuFrame(x, y, w, h, "SELECT TEAM");
-  surface()->DrawText(FONT_UI, TextFormat("Map: %s  -  %s", g_MapInfo.name.c_str(), g_MapInfo.title.c_str()), x + 18, y + 54, { 220, 200, 150, 255 });
-  float by = y + 84, bw = 250, bh = 32;
+  const float W = (float)surface()->ScreenWide(), H = (float)surface()->ScreenTall();
+  DrawRectangle(0, 0, (int)W, (int)H, { 0, 0, 0, 150 });
   int t = 0, ct = 0; for (CCSPlayer* p : UTIL_GetPlayers()) { if (p->m_iTeamNum == TEAM_TERRORIST) t++; else if (p->m_iTeamNum == TEAM_CT) ct++; }
-  static int hover = 0;
+  surface()->DrawTextCentered(FONT_GO_TITLE, "CHOOSE YOUR SIDE", W * 0.5f, H * 0.08f, csgo::Text, true);
+  surface()->DrawTextCentered(FONT_GO, TextFormat("%s", g_MapInfo.name.c_str()), W * 0.5f, H * 0.08f + 30, csgo::TextDim, true);
+  const float cw = std::min(330.f, W * 0.36f), chh = std::min(H * 0.56f, 400.f), gap = 26;
+  const float y = H * 0.08f + 64;
   Vector2 m = GetMousePosition();
-  struct Item { const char* key; const char* name; int team; std::string count; };
-  Item items[4] = { { "1", "TERRORIST FORCES", TEAM_TERRORIST, std::to_string(t) }, { "2", "CT FORCES", TEAM_CT, std::to_string(ct) }, { "5", "AUTO-SELECT", 0, "" }, { "6", "SPECTATE", TEAM_SPECTATOR, "" } };
-  for (int i = 0; i < 4; i++) {
-    float yy = by + i * (bh + 10) + (i >= 2 ? 24 : 0);
-    if (m.x >= x + 18 && m.x < x + 18 + bw && m.y >= yy && m.y < yy + bh) hover = i;
-    if (MenuButton(x + 18, yy, bw, bh, items[i].key, items[i].name, true, items[i].count.c_str())) JoinTeam(items[i].team);
+  struct Card { int team; const char* title; const char* sub; const char* img; Color col; int count; const char* key; };
+  Card cards[2] = { { TEAM_TERRORIST, "TERRORISTS", "Plant the bomb or eliminate the CTs", "terror", csgo::Gold, t, "1" },
+                    { TEAM_CT, "COUNTER-TERRORISTS", "Defend the sites, defuse the bomb", "urban", csgo::Accent, ct, "2" } };
+  for (int i = 0; i < 2; i++) {
+    const Card& c = cards[i];
+    float x = W * 0.5f + (i == 0 ? -cw - gap * 0.5f : gap * 0.5f);
+    bool hv = m.x >= x && m.x < x + cw && m.y >= y && m.y < y + chh;
+    DrawRectangleRec({ x, y, cw, chh }, hv ? Color{ 44, 50, 60, 240 } : Color{ 22, 25, 31, 235 });
+    DrawRectangleRec({ x, y, cw, 4 }, c.col);
+    float ih = chh - 110;
+    if (const Texture2D* img = VGUI_ItemImage(c.img)) VGUI_DrawImageFit(*img, x + 14, y + 18, cw - 28, ih - 10, hv ? WHITE : Color{ 200, 200, 200, 255 });
+    else DrawRectangleGradientV((int)x + 14, (int)y + 18, (int)cw - 28, (int)ih - 10, csgo::Alpha(c.col, 0.35f), { 0, 0, 0, 0 });
+    surface()->DrawTextCentered(FONT_GO_TITLE, c.title, x + cw * 0.5f, y + ih + 14, c.col, true);
+    surface()->DrawTextCentered(FONT_GO, c.sub, x + cw * 0.5f, y + ih + 46, csgo::TextDim, true);
+    surface()->DrawTextCentered(FONT_GO_BOLD, TextFormat("[%s]   %d PLAYERS", c.key, c.count), x + cw * 0.5f, y + ih + 72, csgo::Text, true);
+    if (hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) { EmitSound2D("UI.Click"); JoinTeam(c.team); }
   }
-  // description panel (1.6 shows the team picture + text)
-  float px = x + 290, py = y + 84, pw = w - 308, ph = 290;
-  surface()->DrawOutlinedRect(px, py, pw, ph, { 255, 176, 0, 90 });
-  const char* desc[4] = {
-    "TERRORIST FORCES\n\nPlant the bomb at bomb site A or B\nor eliminate the Counter-Terrorists.\n\nStarting weapons: Glock-18, knife.\nOne terrorist carries the C4.",
-    "COUNTER-TERRORIST FORCES\n\nPrevent the bomb from being planted,\ndefuse it, or eliminate all Terrorists.\n\nStarting weapons: USP-S, knife.\nBuy a defuse kit to defuse in 5s.",
-    "AUTO-SELECT\n\nJoin the team with fewer players.",
-    "SPECTATE\n\nWatch the game in free look\nor follow players.",
-  };
-  std::string d = desc[hover]; float ty = py + 14; size_t st = 0; int ln = 0;
-  while (st <= d.size()) { size_t e = d.find('\n', st); std::string l = d.substr(st, e == std::string::npos ? std::string::npos : e - st);
-    surface()->DrawText(ln == 0 ? FONT_DEFAULT_BOLD : FONT_UI, l.c_str(), px + 14, ty, ln == 0 ? TeamColor(hover == 0 ? TEAM_TERRORIST : hover == 1 ? TEAM_CT : 0) : Color{ 230, 220, 190, 255 }); ty += 18; ln++;
-    if (e == std::string::npos) break; st = e + 1; }
-  // team silhouettes: little stripe color
-  if (hover < 2) surface()->DrawFilledRect(px + 14, py + ph - 26, pw - 28, 10, hover == 0 ? Color{ 160, 40, 30, 200 } : Color{ 40, 80, 160, 200 });
+  // auto / spectate
+  float by = y + chh + 18, bw = 200, bh = 40;
+  const char* labels[2] = { "[5] AUTO-SELECT", "[6] SPECTATE" }; int teams[2] = { 0, TEAM_SPECTATOR };
+  for (int i = 0; i < 2; i++) {
+    float x = W * 0.5f + (i == 0 ? -bw - 6 : 6);
+    bool hv = m.x >= x && m.x < x + bw && m.y >= by && m.y < by + bh;
+    DrawRectangleRec({ x, by, bw, bh }, hv ? csgo::PanelHover : csgo::PanelLight);
+    surface()->DrawTextCentered(FONT_GO_BOLD, labels[i], x + bw * 0.5f, by + (bh - surface()->GetFontTall(FONT_GO_BOLD)) * 0.5f, csgo::Text);
+    if (hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) { EmitSound2D("UI.Click"); JoinTeam(teams[i]); }
+  }
   CCSPlayer* lp = g_pLocalPlayer;
-  if (lp && lp->m_iTeamNum != TEAM_UNASSIGNED) surface()->DrawText(FONT_UI, "ESC - cancel", x + 18, y + h - 26, ORANGE_DIM);
+  if (lp && lp->m_iTeamNum != TEAM_UNASSIGNED) surface()->DrawTextCentered(FONT_GO, "ESC - cancel", W * 0.5f, by + bh + 12, csgo::TextFaint, true);
 }
 
 // ------------------------------------------------------------------------------------------------
 // buy menu
-struct BuyItem { const char* alias; int weaponId; const char* label; int price; int team; };
-static const char* s_categories[] = { "PISTOLS", "SHOTGUNS", "SUB-MACHINE GUNS", "RIFLES", "MACHINE GUNS", "PRIMARY AMMO", "SECONDARY AMMO", "EQUIPMENT" };
-static std::vector<BuyItem> GetCategory(int cat) {
+struct BuyItem { const char* alias; int weaponId; const char* label; int price; int team; const char* image; };
+// CS:GO buy wheel: 6 categories around the money, then the items of the category around a BACK button
+static const char* s_categories[] = { "PISTOLS", "HEAVY", "SMGs", "RIFLES", "GEAR", "GRENADES" };
+static std::vector<BuyItem> GetCategory(int cat, int team) {
   std::vector<BuyItem> out;
   auto addType = [&](int type) {
-    for (int id = 1; id < WEAPON_MAX; id++) { const CCSWeaponInfo* wi = GetWeaponInfo(id); if (!wi || wi->type != type || wi->price <= 0) continue; out.push_back({ WeaponIdToAlias(id), id, wi->printName, wi->price, wi->team }); }
+    for (int id = 1; id < WEAPON_MAX; id++) {
+      const CCSWeaponInfo* wi = GetWeaponInfo(id); if (!wi || wi->type != type || wi->price <= 0) continue;
+      if (wi->team && team && wi->team != team) continue;
+      out.push_back({ WeaponIdToAlias(id), id, wi->printName, wi->price, wi->team, nullptr });
+    }
   };
+  auto add = [&](const char* alias, int id, const char* label, int price, int t, const char* img) { if (t && team && t != team) return; out.push_back({ alias, id, label, price, t, img }); };
   switch (cat) {
     case 0: addType(WEAPONTYPE_PISTOL); break;
-    case 1: addType(WEAPONTYPE_SHOTGUN); break;
+    case 1: addType(WEAPONTYPE_SHOTGUN); addType(WEAPONTYPE_MACHINEGUN); break;
     case 2: addType(WEAPONTYPE_SUBMACHINEGUN); break;
     case 3: addType(WEAPONTYPE_RIFLE); addType(WEAPONTYPE_SNIPER_RIFLE); break;
-    case 4: addType(WEAPONTYPE_MACHINEGUN); break;
-    case 7:
-      out.push_back({ "vest", 0, "Kevlar Vest", 650, 0 }); out.push_back({ "vesthelm", 0, "Kevlar + Helmet", 1000, 0 });
-      out.push_back({ "flashbang", WEAPON_FLASHBANG, "Flashbang", GetWeaponInfo(WEAPON_FLASHBANG)->price, 0 });
-      out.push_back({ "hegrenade", WEAPON_HEGRENADE, "HE Grenade", GetWeaponInfo(WEAPON_HEGRENADE)->price, 0 });
-      out.push_back({ "smokegrenade", WEAPON_SMOKEGRENADE, "Smoke Grenade", GetWeaponInfo(WEAPON_SMOKEGRENADE)->price, 0 });
-      out.push_back({ "defuser", 0, "Defusal Kit", 400, TEAM_CT });
+    case 4:
+      add("vest", 0, "Kevlar Vest", 650, 0, "kevlar"); add("vesthelm", 0, "Kevlar + Helmet", 1000, 0, "kevlar_helmet");
+      add("defuser", 0, "Defuse Kit", 400, TEAM_CT, "defuser");
+      add("primammo", 0, "Primary Ammo", 0, 0, "bullet"); add("secammo", 0, "Secondary Ammo", 0, 0, "cartridge");
+      break;
+    case 5:
+      add("flashbang", WEAPON_FLASHBANG, "Flashbang", GetWeaponInfo(WEAPON_FLASHBANG)->price, 0, nullptr);
+      add("hegrenade", WEAPON_HEGRENADE, "HE Grenade", GetWeaponInfo(WEAPON_HEGRENADE)->price, 0, nullptr);
+      add("smokegrenade", WEAPON_SMOKEGRENADE, "Smoke Grenade", GetWeaponInfo(WEAPON_SMOKEGRENADE)->price, 0, nullptr);
       break;
   }
   return out;
 }
 
+void HUD_BuyMenuSetCategory(int cat) { s_buyCategory = cat >= 0 && cat < 6 ? cat : -1; s_hoverItem = -1; }
 static void Buy(const char* alias) { Cbuf_AddText(std::string("buy ") + alias + "\n"); }
+static void CloseBuyMenu() { cl.buyMenuOpen = false; s_buyCategory = -1; }
+
+static const Texture2D* ItemImage(const BuyItem& it) { return it.image ? VGUI_ItemImage(it.image) : VGUI_WeaponImage(it.weaponId); }
+static const Texture2D* CategoryImage(int cat, int team) {
+  switch (cat) {
+    case 0: return VGUI_WeaponImage(WEAPON_DEAGLE);
+    case 1: return VGUI_WeaponImage(WEAPON_XM1014);
+    case 2: return VGUI_WeaponImage(WEAPON_P90);
+    case 3: return VGUI_WeaponImage(team == TEAM_CT ? WEAPON_M4A1 : WEAPON_AK47);
+    case 4: return VGUI_ItemImage("kevlar_helmet");
+    default: return VGUI_WeaponImage(WEAPON_HEGRENADE);
+  }
+}
+
+// select by number (1..n) at the current level; returns true when handled
+static bool BuySelect(int n) {
+  CCSPlayer* lp = g_pLocalPlayer; if (!lp) return false;
+  if (s_buyCategory < 0) { if (n >= 1 && n <= 6) { s_buyCategory = n - 1; s_hoverItem = -1; return true; } return false; }
+  auto items = GetCategory(s_buyCategory, lp->m_iTeamNum);
+  if (n >= 1 && n <= (int)items.size()) { Buy(items[n - 1].alias); CloseBuyMenu(); return true; }
+  return false;
+}
 
 void HUD_DrawBuyMenu() {
   CCSPlayer* lp = g_pLocalPlayer; if (!lp) return;
-  if (!lp->IsAlive() || !lp->m_bInBuyZone || CSGameRules()->IsBuyTimeElapsed()) { cl.buyMenuOpen = false; s_buyCategory = -1; return; }
-  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  float w = 700, h = 460, x = (W - w) / 2, y = (H - h) / 2;
-  float bw = 300, bh = 30;
+  if (!lp->IsAlive() || !lp->m_bInBuyZone || CSGameRules()->IsBuyTimeElapsed()) { CloseBuyMenu(); return; }
+  const float W = (float)surface()->ScreenWide(), H = (float)surface()->ScreenTall();
+  const float cx = W * 0.5f, cy = H * 0.5f;
+  const float R = std::min(H * 0.44f, 330.f), r0 = R * 0.34f;
+  const int team = lp->m_iTeamNum;
+  DrawRectangle(0, 0, (int)W, (int)H, { 0, 0, 0, 110 });
+  // entries of the current ring
+  struct Entry { std::string label, price; const Texture2D* img; bool enabled; int hotkey; };
+  std::vector<Entry> entries;
+  std::vector<BuyItem> items;
   if (s_buyCategory < 0) {
-    MenuFrame(x, y, w, h, "BUY MENU");
-    for (int i = 0; i < 8; i++) {
-      float yy = y + 64 + i * (bh + 6);
-      if (MenuButton(x + 18, yy, bw, bh, TextFormat("%d", i + 1), s_categories[i], true)) {
-        if (i == 5) Buy("primammo"); else if (i == 6) Buy("secammo"); else s_buyCategory = i;
-      }
+    for (int i = 0; i < 6; i++) entries.push_back({ s_categories[i], "", CategoryImage(i, team), true, i + 1 });
+  } else {
+    items = GetCategory(s_buyCategory, team);
+    for (size_t i = 0; i < items.size(); i++) {
+      const BuyItem& it = items[i];
+      entries.push_back({ it.label, it.price > 0 ? TextFormat("$%d", it.price) : "", ItemImage(it), lp->m_iAccount >= it.price, (int)i + 1 });
     }
-    if (MenuButton(x + 18, y + 64 + 8 * (bh + 6) + 10, bw, bh, "0", "CANCEL", true)) cl.buyMenuOpen = false;
-    float px = x + 340, py = y + 64;
-    surface()->DrawText(FONT_DEFAULT_BOLD, TextFormat("$%d", lp->m_iAccount), px, py, MENU_ORANGE);
-    surface()->DrawText(FONT_UI, "Select a category with the number keys\nor the mouse. F1 = autobuy, F2 = rebuy.", px, py + 24, { 220, 200, 150, 255 });
+  }
+  const int n = std::max(1, (int)entries.size());
+  const float span = 360.f / n;
+  // hover by direction (outside the center button)
+  Vector2 m = GetMousePosition();
+  float dx = m.x - cx, dy = m.y - cy, dist = std::sqrt(dx * dx + dy * dy);
+  int hover = -1;
+  if (dist > r0 && dist < R * 1.25f) {
+    float ang = std::atan2(dy, dx) * RAD2DEG;          // screen space: 0 = right, clockwise
+    float rel = ang + 90.f + span * 0.5f; while (rel < 0) rel += 360.f; while (rel >= 360.f) rel -= 360.f;
+    hover = std::min(n - 1, (int)(rel / span));
+  }
+  if (hover != s_hoverItem && hover >= 0) EmitSound2D("UI.Rollover");
+  s_hoverItem = hover;
+  // ring
+  for (int i = 0; i < (int)entries.size(); i++) {
+    float a0 = -90.f + i * span - span * 0.5f + 0.8f, a1 = a0 + span - 1.6f;
+    bool hv = i == hover;
+    const Entry& e = entries[i];
+    Color fill = hv ? Color{ 64, 72, 86, 235 } : Color{ 24, 27, 33, 225 };
+    DrawRing({ cx, cy }, r0 + 4, R, a0, a1, 40, fill);
+    DrawRing({ cx, cy }, R - 4, R, a0, a1, 40, hv ? csgo::Accent : Color{ 70, 76, 88, 255 });
+    float mid = (-90.f + i * span) * DEG2RAD, rc = (r0 + R) * 0.5f + 4;
+    float ex = cx + std::cos(mid) * rc, ey = cy + std::sin(mid) * rc;
+    float iw = std::min((R - r0) * 0.86f, 2.f * rc * std::sin(span * 0.5f * DEG2RAD) * 0.8f), ih = iw * 0.45f;
+    Color tint = e.enabled ? (hv ? WHITE : Color{ 215, 215, 215, 255 }) : Color{ 110, 110, 110, 200 };
+    if (e.img) VGUI_DrawImageFit(*e.img, ex - iw * 0.5f, ey - ih * 0.5f - 8, iw, ih, tint);
+    surface()->DrawTextCentered(FONT_GO_BOLD, e.label.c_str(), ex, ey + ih * 0.5f - 4, e.enabled ? csgo::Text : csgo::TextFaint, true);
+    if (!e.price.empty()) surface()->DrawTextCentered(FONT_GO, e.price.c_str(), ex, ey + ih * 0.5f + 14, e.enabled ? csgo::Green : csgo::Red, true);
+    // hotkey number near the outer edge
+    float hx = cx + std::cos(mid) * (R - 16), hy = cy + std::sin(mid) * (R - 16);
+    surface()->DrawTextCentered(FONT_GO, TextFormat("%d", e.hotkey), hx, hy - 8, csgo::TextFaint);
+  }
+  // center button: money + (category: close / items: back)
+  bool centerHv = dist <= r0;
+  DrawCircleV({ cx, cy }, r0, centerHv ? Color{ 52, 58, 70, 240 } : Color{ 16, 18, 22, 240 });
+  DrawRing({ cx, cy }, r0 - 3, r0, 0, 360, 48, Color{ 70, 76, 88, 255 });
+  surface()->DrawTextCentered(FONT_GO_TITLE, TextFormat("$%d", lp->m_iAccount), cx, cy - 30, csgo::Green, true);
+  const char* title = s_buyCategory < 0 ? "BUY MENU" : s_categories[s_buyCategory];
+  surface()->DrawTextCentered(FONT_GO_BOLD, title, cx, cy - 2, csgo::Text, true);
+  surface()->DrawTextCentered(FONT_GO, s_buyCategory < 0 ? "[0] CLOSE" : "[0] BACK", cx, cy + 20, centerHv ? WHITE : csgo::TextDim, true);
+  if (!CSGameRules()->IsFreezePeriod() && !CSGameRules()->IsDeathmatch()) {
     float bt = CSGameRules()->m_fRoundStartTime + FindConVar("mp_buytime")->GetFloat() - ServerTime();
-    if (!CSGameRules()->IsFreezePeriod() && !CSGameRules()->IsDeathmatch()) surface()->DrawText(FONT_UI, TextFormat("Buy time left: %ds", (int)std::max(0.f, bt)), px, py + 70, { 220, 200, 150, 255 });
-    return;
+    surface()->DrawTextCentered(FONT_GO, TextFormat("%ds", (int)std::max(0.f, bt)), cx, cy + 40, csgo::Gold, true);
   }
-  auto items = GetCategory(s_buyCategory);
-  MenuFrame(x, y, w, h, s_categories[s_buyCategory]);
-  int hover = -1; Vector2 m = GetMousePosition();
-  for (size_t i = 0; i < items.size(); i++) {
-    const BuyItem& it = items[i];
-    float yy = y + 64 + i * (bh + 6);
-    bool teamOk = it.team == 0 || it.team == lp->m_iTeamNum;
-    bool afford = lp->m_iAccount >= it.price;
-    if (m.x >= x + 18 && m.x < x + 18 + bw && m.y >= yy && m.y < yy + bh) hover = (int)i;
-    std::string label = it.label; if (!teamOk) label += it.team == TEAM_CT ? " (CT)" : " (T)";
-    if (MenuButton(x + 18, yy, bw, bh, TextFormat("%d", (int)i + 1), label.c_str(), teamOk && afford, TextFormat("$%d", it.price))) { Buy(it.alias); cl.buyMenuOpen = false; s_buyCategory = -1; }
-  }
-  if (MenuButton(x + 18, y + h - 46, bw, bh, "0", "BACK", true)) s_buyCategory = -1;
-  // info panel
-  if (hover < 0) hover = s_hoverItem; else s_hoverItem = hover;
-  if (hover >= 0 && hover < (int)items.size()) {
+  // item info (stats) on the right for weapons
+  if (s_buyCategory >= 0 && hover >= 0 && hover < (int)items.size()) {
     const BuyItem& it = items[hover];
-    float px = x + 340, py = y + 64, pw = w - 358;
-    surface()->DrawOutlinedRect(px, py, pw, 330, { 255, 176, 0, 90 });
-    surface()->DrawText(FONT_MENU_TITLE, it.label, px + 12, py + 10, MENU_ORANGE);
-    surface()->DrawText(FONT_DEFAULT_BOLD, TextFormat("PRICE: $%d", it.price), px + 12, py + 42, { 230, 220, 190, 255 });
-    if (const CCSWeaponInfo* wi = it.weaponId ? GetWeaponInfo(it.weaponId) : nullptr) {
-      float ly = py + 70;
+    if (const CCSWeaponInfo* wi = it.weaponId ? GetWeaponInfo(it.weaponId) : nullptr) if (wi->type != WEAPONTYPE_GRENADE && cx + R + 260 < W) {
+      float px = cx + R + 30, py = cy - 110, pw = 230;
+      DrawRectangleRec({ px, py, pw, 220 }, { 16, 18, 22, 225 });
+      DrawRectangleRec({ px, py, pw, 3 }, csgo::Accent);
+      surface()->DrawText(FONT_GO_BOLD, it.label, px + 12, py + 12, csgo::Text);
+      float ly = py + 42;
       auto stat = [&](const char* name, const char* val, float frac) {
-        surface()->DrawText(FONT_UI, name, px + 12, ly, { 220, 200, 150, 255 }); surface()->DrawTextRight(FONT_UI, val, px + pw - 12, ly, { 230, 220, 190, 255 });
-        surface()->DrawFilledRect(px + 12, ly + 16, pw - 24, 4, { 255, 176, 0, 40 }); surface()->DrawFilledRect(px + 12, ly + 16, (pw - 24) * Clamp(frac, 0.f, 1.f), 4, { 255, 176, 0, 200 });
-        ly += 30;
+        surface()->DrawText(FONT_GO, name, px + 12, ly, csgo::TextDim); surface()->DrawTextRight(FONT_GO, val, px + pw - 12, ly, csgo::Text);
+        DrawRectangleRec({ px + 12, ly + 19, pw - 24, 4 }, csgo::Line); DrawRectangleRec({ px + 12, ly + 19, (pw - 24) * Clamp(frac, 0.f, 1.f), 4 }, csgo::Accent);
+        ly += 34;
       };
-      if (wi->type != WEAPONTYPE_GRENADE) {
-        stat("Damage", TextFormat("%d", wi->damage * std::max(1, wi->bullets)), wi->damage * std::max(1, wi->bullets) / 120.f);
-        stat("Fire rate", TextFormat("%d RPM", (int)(60.f / std::max(0.01f, wi->cycleTime))), (60.f / wi->cycleTime) / 1000.f);
-        stat("Armor penetration", TextFormat("%d%%", (int)(wi->armorRatio * 200)), wi->armorRatio * 2.f);
-        stat("Magazine", TextFormat("%d / %d", wi->clipSize, wi->reserveAmmo), wi->clipSize / 100.f);
-        stat("Mobility", TextFormat("%d", (int)wi->maxSpeed), wi->maxSpeed / 260.f);
-        stat("Kill award", TextFormat("$%d", wi->killAward), wi->killAward / 1500.f);
-      }
-      surface()->DrawText(FONT_UI, wi->team == TEAM_TERRORIST ? "Terrorists only" : wi->team == TEAM_CT ? "Counter-Terrorists only" : "Both teams", px + 12, py + 300, ORANGE_DIM);
+      stat("Damage", TextFormat("%d", wi->damage * std::max(1, wi->bullets)), wi->damage * std::max(1, wi->bullets) / 120.f);
+      stat("Fire rate", TextFormat("%d RPM", (int)(60.f / std::max(0.01f, wi->cycleTime))), (60.f / wi->cycleTime) / 1000.f);
+      stat("Armor penetration", TextFormat("%d%%", (int)(wi->armorRatio * 50)), wi->armorRatio * 0.5f);
+      stat("Magazine", TextFormat("%d / %d", wi->clipSize, wi->reserveAmmo), wi->clipSize / 100.f);
+      stat("Mobility", TextFormat("%d", (int)wi->maxSpeed), wi->maxSpeed / 260.f);
     }
   }
-  surface()->DrawTextRight(FONT_DEFAULT_BOLD, TextFormat("$%d", lp->m_iAccount), x + w - 18, y + 16, MENU_ORANGE);
+  // clicks / taps (released on the entry it was pressed on is not required: the wheel selects by direction)
+  if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    if (centerHv) { if (s_buyCategory >= 0) s_buyCategory = -1; else CloseBuyMenu(); EmitSound2D("UI.Click"); }
+    else if (hover >= 0 && hover < (int)entries.size() && entries[hover].enabled) { EmitSound2D("UI.Click"); BuySelect(hover + 1); }
+  }
+  if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) { if (s_buyCategory >= 0) s_buyCategory = -1; else CloseBuyMenu(); }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -248,14 +292,9 @@ bool HUD_MenuKeyPressed(int key) {
   if (cl.buyMenuOpen) {
     int n = -1;
     if (key >= KEY_ZERO && key <= KEY_NINE) n = key - KEY_ZERO; else if (key >= KEY_KP_0 && key <= KEY_KP_9) n = key - KEY_KP_0;
-    if (key == KEY_ESCAPE || key == KEY_B) { if (s_buyCategory >= 0 && key == KEY_ESCAPE) s_buyCategory = -1; else { cl.buyMenuOpen = false; s_buyCategory = -1; } return true; }
-    if (n == 0) { if (s_buyCategory >= 0) s_buyCategory = -1; else cl.buyMenuOpen = false; return true; }
-    if (n > 0) {
-      if (s_buyCategory < 0) { if (n == 6) Buy("primammo"); else if (n == 7) Buy("secammo"); else if (n <= 8) s_buyCategory = n - 1; }
-      else { auto items = GetCategory(s_buyCategory); if (n <= (int)items.size()) { Buy(items[n - 1].alias); cl.buyMenuOpen = false; s_buyCategory = -1; } }
-      EmitSound2D("UI.Click");
-      return true;
-    }
+    if (key == KEY_ESCAPE || key == KEY_B) { if (s_buyCategory >= 0 && key == KEY_ESCAPE) s_buyCategory = -1; else CloseBuyMenu(); return true; }
+    if (n == 0) { if (s_buyCategory >= 0) s_buyCategory = -1; else CloseBuyMenu(); return true; }
+    if (n > 0) { if (BuySelect(n)) EmitSound2D("UI.Click"); return true; }
     if (key == KEY_F1 || key == KEY_F2) return false;
     return true;
   }

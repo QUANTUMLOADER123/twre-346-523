@@ -58,13 +58,14 @@ case "$TARGET" in
     OUT=bin/cshvh ;;
   windows)
     ZIG="$(find_zig)"
-    if [ -n "$ZIG" ]; then CC="$ZIG cc -target x86_64-windows-gnu"; CXX="$ZIG c++ -target x86_64-windows-gnu";
+    if [ -n "$ZIG" ]; then CC="$ZIG cc -target x86_64-windows-gnu"; CXX="$ZIG c++ -target x86_64-windows-gnu"; RES="res/cshvh.rc";   # zig compiles .rc itself
     elif command -v x86_64-w64-mingw32-g++ >/dev/null 2>&1; then CC=x86_64-w64-mingw32-gcc; CXX=x86_64-w64-mingw32-g++;
+      mkdir -p "$OBJ"; x86_64-w64-mingw32-windres res/cshvh.rc -O coff -o "$OBJ/../cshvh_res.o" && RES="$OBJ/../cshvh_res.o";
     else echo "need zig (pip install ziglang) or mingw-w64"; exit 1; fi
     RL_SRC="$RL_SRC rglfw"
     CFLAGS="$CFLAGS -DPLATFORM_DESKTOP_GLFW -DGRAPHICS_API_OPENGL_33"
     CXXFLAGS="$CXXFLAGS -DPLATFORM_DESKTOP_GLFW"
-    LIBS="-lopengl32 -lgdi32 -lwinmm -lshell32 -luser32 -static -Wl,--subsystem,windows"
+    LIBS="-lopengl32 -lgdi32 -lwinmm -lshell32 -luser32 -lwinhttp -static -Wl,--subsystem,windows"
     OUT=bin/cshvh.exe ;;
   headless)
     CC="${CC:-gcc}"; CXX="${CXX:-g++}"
@@ -96,5 +97,5 @@ fi
 rm -f "$jobs_file"
 
 echo ">> linking $OUT"
-$CXX $OBJ/*.o $OBJ/raylib/*.o $LIBS -o "$OUT"
+$CXX $OBJ/*.o $OBJ/raylib/*.o ${RES:-} $LIBS -o "$OUT"
 echo ">> done: $OUT   (run it from the repository folder or next to assets/)"

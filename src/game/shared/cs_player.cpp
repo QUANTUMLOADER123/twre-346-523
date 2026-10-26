@@ -27,7 +27,6 @@ ConVar weapon_recoil_scale("weapon_recoil_scale", "2.0", FCVAR_REPLICATED | FCVA
 ConVar sv_infinite_ammo("sv_infinite_ammo", "0", FCVAR_REPLICATED | FCVAR_CHEAT, "Player's active weapon will never run out of ammo");
 ConVar god("god_mode_all", "0", FCVAR_CHEAT, "Nobody takes damage");
 
-static const char* s_playerModels[3] = { "assets/models/player/ct_swat.glb", "assets/models/player/t_guerilla.glb", "assets/models/player/t_punk.glb" };
 
 CCSPlayer* ToCSPlayer(C_BaseEntity* e) { return (e && e->IsPlayer()) ? static_cast<CCSPlayer*>(e) : nullptr; }
 CCSPlayer* GetLocalPlayer() { return g_pLocalPlayer; }
@@ -40,12 +39,6 @@ CCSPlayer::CCSPlayer() {
 }
 CCSPlayer::~CCSPlayer() = default;
 
-CStudioModel* CCSPlayer::GetModel() const {
-  int idx = m_iTeamNum == TEAM_CT ? 0 : (1 + (m_iPlayerModel & 1));
-  return g_ModelCache.Get(s_playerModels[idx], STUDIO_ORIENT_CHARACTER, 72.f);
-}
-extern CStudioModel* GetWeaponWorldModelById(int id);
-CStudioModel* CCSPlayer::GetWeaponWorldModel(int weaponId) const { return GetWeaponWorldModelById(weaponId); }
 
 bool CCSPlayer::IsEnemy(const CCSPlayer* o) const {
   if (!o || o == this) return false;
@@ -266,14 +259,14 @@ void CCSPlayer::BuildNetSnapshot(CNetPlayerState& s, const CUserCmd* cmd) {
   s.chokedTicks = m_nChokedCommands;
   s.valid = IsAlive();
   if (IsAlive()) {
-    if (CStudioModel* mdl = GetModel()) {
+    {
       PlayerPoseInput in;
       in.origin = s.origin; in.footYaw = s.footYaw; in.eyeAngles = s.eyeAngles; in.duckAmount = s.duckAmount;
       in.moveCycle = s.moveCycle; in.moveSpeed = s.moveSpeed; in.moveYaw = s.moveYaw; in.onGround = s.onGround; in.landAmount = s.landAmount;
       in.weaponId = s.weaponId; in.fireAmount = s.fireAmount; in.reloadCycle = s.reloadCycle;
       in.planting = m_bIsPlanting; in.defusing = m_bIsDefusing;
       PlayerPoseOutput out;
-      BuildPlayerPose(*mdl, GetWeaponWorldModel(s.weaponId), in, out, true);
+      BuildPlayerPose(this, in, out, true);
       s.hitboxes = out.hitboxes;
       s.headPos = (out.hitboxes[HITBOX_HEAD].a + out.hitboxes[HITBOX_HEAD].b) * 0.5f;
     }

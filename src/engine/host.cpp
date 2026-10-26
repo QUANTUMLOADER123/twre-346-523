@@ -1,3 +1,4 @@
+#include <filesystem>
 // host.cpp - CHost
 #include "host.hpp"
 #include "convar.hpp"
@@ -41,8 +42,11 @@ CCSPlayer* Host_CreateLocalPlayer() {
 }
 
 bool Host_NewGame(const std::string& map) {
-  Host_Disconnect();
   std::string path = ResolveMapFile(map);
+  // refuse unknown maps before tearing the current game down
+  bool exists = path.rfind("css:", 0) == 0 || std::filesystem::exists(path);
+  if (!exists) { Warning("map not found: %s\n", map.c_str()); return false; }
+  Host_Disconnect();
   if (!g_MapInfo.Load(path)) { Warning("map load failed: %s\n", path.c_str()); return false; }
   g_EngineTrace.entities = &g_EntityList.traceList;
   gpGlobals->tickcount = 0; gpGlobals->curtime = 0;

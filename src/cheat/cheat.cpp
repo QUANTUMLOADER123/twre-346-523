@@ -51,14 +51,13 @@ void CreateMove(CUserCmd& cmd) {
   Rage_CreateMove(cmd, lp, view);
   if (g.shots.size() != shotsBefore && g.targetValid && g.target && v.vis.hitboxOnShot) {
     // remember the hitboxes we aimed at
-    CStudioModel* mdl = g.target->GetModel();
-    if (mdl && !g.target->m_LagRecords.empty()) {
+    if (!g.target->m_LagRecords.empty()) {
       const ShotRecord& s = g.shots.back();
       const CNetPlayerState* rec = &g.target->m_LagRecords.front();
       for (const CNetPlayerState& r : g.target->m_LagRecords) if (r.tick == cmd.tick_count) { rec = &r; break; }
       PlayerPoseInput in; in.origin = rec->origin; in.footYaw = s.resolvedYaw; in.eyeAngles = rec->eyeAngles; in.duckAmount = rec->duckAmount;
       in.moveCycle = rec->moveCycle; in.moveSpeed = rec->moveSpeed; in.moveYaw = rec->moveYaw; in.onGround = rec->onGround; in.weaponId = rec->weaponId;
-      PlayerPoseOutput po; BuildPlayerPose(*mdl, nullptr, in, po, true);
+      PlayerPoseOutput po; BuildPlayerPose(g.target, in, po, true);
       Visuals_AddShotHitboxes(po.hitboxes, s.hitbox);
     }
   }

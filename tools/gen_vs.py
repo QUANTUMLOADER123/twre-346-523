@@ -140,7 +140,7 @@ def game_files():
 def game_project(cpp, hpp):
     items = ''.join(f'    <ClCompile Include="..\\{winpath(f)}" />\n' for f in cpp)
     hdrs = ''.join(f'    <ClInclude Include="..\\{winpath(f)}" />\n' for f in hpp)
-    docs = ''.join(f'    <None Include="..\\{f}" />\n' for f in ['README.md', 'CREDITS.md', 'tools\\mapgen.py'])
+    docs = ''.join(f'    <None Include="..\\{f}" />\n' for f in ['README.md', 'CREDITS.md'])
     warn_off = '4244;4305;4267;4018;4996;4100;4101;4189;4456;4457;4458;4459;4146;4838;4309;4127;4702;4065'
     return HEADER + common_props('cshvh', GAME_GUID, 'Application') + f'''  <PropertyGroup>
     <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\'))</RepoRoot>
@@ -165,7 +165,7 @@ def game_project(cpp, hpp):
       <DisableSpecificWarnings>{warn_off};%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>opengl32.lib;gdi32.lib;winmm.lib;shell32.lib;user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;gdi32.lib;winmm.lib;shell32.lib;user32.lib;winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <!-- 8 MB stack like on Linux (worker threads inherit it) -->
       <StackReserveSize>8388608</StackReserveSize>
@@ -203,6 +203,9 @@ def game_project(cpp, hpp):
 {hdrs}  </ItemGroup>
   <ItemGroup>
 {docs}  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\\res\\cshvh.rc" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="raylib.vcxproj">
       <Project>{RAYLIB_GUID}</Project>

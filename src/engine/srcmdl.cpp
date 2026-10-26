@@ -191,22 +191,32 @@ Texture2D CSrcModel::MeshTexture(const SrcMdlMesh& m, int skin, bool* translucen
   int tex = m.skinRef;
   if (fam < (int)skins.size() && m.skinRef < (int)skins[fam].size()) tex = skins[fam][m.skinRef];
   if (tex < 0 || tex >= (int)textures.size()) { Texture2D t{}; return t; }
-  const SrcMaterial& mat = SrcMat_FindInDirs(textures[tex], cdmaterials);
-  if (translucent) *translucent = mat.translucent || mat.additive;
-  if (alphatest) *alphatest = mat.alphatest;
-  return mat.tex;
+  // the material lookup builds and normalizes path strings - do it once per texture slot, not per mesh per frame
+  if (m_matGen != SrcMat_Generation() || m_matCache.size() != textures.size()) { m_matCache.assign(textures.size(), MatCache{}); m_matGen = SrcMat_Generation(); }
+  MatCache& c = m_matCache[tex];
+  if (!c.valid) {
+    const SrcMaterial& mat = SrcMat_FindInDirs(textures[tex], cdmaterials);
+    c.tex = mat.tex; c.translucent = mat.translucent || mat.additive; c.alphatest = mat.alphatest; c.valid = true;
+  }
+  if (translucent) *translucent = c.translucent;
+  if (alphatest) *alphatest = c.alphatest;
+  return c.tex;
 }
 
-int CSrcModel::FindSequence(const std::string& label) const {
-  std::string l = srcfs::Normalize(label);
-  for (int i = 0; i < (int)seqs.size(); i++) if (srcfs::Normalize(seqs[i].label) == l) return i;
-  return -1;
+int CSrcModel::FindNamed(const std::string& q, bool bone) const {
+  auto& cache = bone ? m_boneIndex : m_seqIndex;
+  auto it = cache.find(q);
+  if (it != cache.end()) return it->second;
+  std::string l = srcfs::Normalize(q);
+  int r = -1;
+  if (bone) { for (int i = 0; i < (int)bones.size(); i++) if (srcfs::Normalize(bones[i].name) == l) { r = i; break; } }
+  else { for (int i = 0; i < (int)seqs.size(); i++) if (srcfs::Normalize(seqs[i].label) == l) { r = i; break; } }
+  if (cache.size() > 4096) cache.clear();
+  cache.emplace(q, r);
+  return r;
 }
-int CSrcModel::FindBone(const std::string& n) const {
-  std::string l = srcfs::Normalize(n);
-  for (int i = 0; i < (int)bones.size(); i++) if (srcfs::Normalize(bones[i].name) == l) return i;
-  return -1;
-}
+int CSrcModel::FindSequence(const std::string& label) const { return FindNamed(label, false); }
+int CSrcModel::FindBone(const std::string& n) const { return FindNamed(n, true); }
 
 void CSrcModel::ExtractAnimBone(const uint8_t* p, int bone, int frame, float, Vector& pos, Quat& q, int animFlags) const {
   const uint8_t* end = data.data() + data.size();

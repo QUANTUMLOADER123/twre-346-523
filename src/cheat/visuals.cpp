@@ -75,14 +75,13 @@ void Visuals_OnEvent(const IGameEvent& ev) {
 static int MaterialFlags() {
   switch (v.vis.chamsMaterial) { case 1: return STUDIO_FLAT_COLOR; case 2: return STUDIO_TINT | STUDIO_GLOW; case 3: return STUDIO_FLAT_COLOR | STUDIO_WIREFRAME; default: return STUDIO_TINT; }
 }
-static void DrawModelWithWeapon(const CStudioModel& mdl, const PlayerPoseOutput& pose, const CStudioModel* wpn, StudioDrawParams p) {
-  p.pose = &pose.pose; p.modelToWorld = pose.modelToWorld;
-  if (CSS_DrawPose(pose, p, wpn != nullptr)) return;
-  StudioRender_DrawModel(mdl, p);
-  if (wpn && pose.hasWeapon) { StudioDrawParams q = p; q.pose = nullptr; q.modelToWorld = pose.weaponToWorld; StudioRender_DrawModel(*wpn, q); }
+static void DrawModelWithWeapon(const PlayerPoseOutput& pose, bool wpn, StudioDrawParams p) {
+  p.modelToWorld = pose.modelToWorld;
+  CSS_DrawPose(pose, p, wpn);
 }
 
-bool DrawPlayer(CCSPlayer* p, const CStudioModel& mdl, const PlayerPoseOutput& pose, const CStudioModel* wpn, const StudioLight& light, const CViewSetup& view) {
+bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& light, const CViewSetup& view) {
+  const bool wpn = pose.hasWeapon;
   CCSPlayer* lp = g_pLocalPlayer;
   auto& s = v.vis;
   StudioDrawParams base; base.light = light; base.eye = view.origin;
@@ -96,7 +95,7 @@ bool DrawPlayer(CCSPlayer* p, const CStudioModel& mdl, const PlayerPoseOutput& p
       matrix3x4_t t1, t2; ConcatTransforms(rot, toOrigin, t1); ConcatTransforms(back, t1, t2);
       PlayerPoseOutput fake = pose; ConcatTransforms(t2, pose.modelToWorld, fake.modelToWorld); ConcatTransforms(t2, pose.weaponToWorld, fake.weaponToWorld); ConcatTransforms(t2, pose.cssToWorld, fake.cssToWorld);
       StudioDrawParams fp = base; fp.flags = STUDIO_FLAT_COLOR; fp.colorOverride = s.chamsFakeCol;
-      DrawModelWithWeapon(mdl, fake, nullptr, fp);
+      DrawModelWithWeapon(fake, false, fp);
     }
     C_WeaponCSBase* w = p->GetActiveCSWeapon();
     bool scoped = w && w->IsZoomed();
@@ -104,7 +103,7 @@ bool DrawPlayer(CCSPlayer* p, const CStudioModel& mdl, const PlayerPoseOutput& p
     if (s.chamsLocal) { lpd.flags = MaterialFlags(); lpd.colorOverride = s.chamsLocalCol; }
     if (scoped && s.scopeBlend < 100) { lpd.flags |= STUDIO_TINT; if (!s.chamsLocal) lpd.colorOverride = MkCol(255, 255, 255); lpd.colorOverride.a = (unsigned char)(255 * s.scopeBlend / 100.f); }
     if (!s.chamsLocal && !(scoped && s.scopeBlend < 100)) return false;
-    DrawModelWithWeapon(mdl, pose, wpn, lpd);
+    DrawModelWithWeapon(pose, wpn, lpd);
     return true;
   }
   bool enemy = lp && p->IsEnemy(lp);
@@ -117,20 +116,20 @@ bool DrawPlayer(CCSPlayer* p, const CStudioModel& mdl, const PlayerPoseOutput& p
     if (old && (old->origin - p->m_LagRecords.front().origin).Length() > 6.f) {
       PlayerPoseInput in; in.origin = old->origin; in.footYaw = p->m_bResolverActive ? p->m_flResolverFootYaw : p->m_flClientFootYaw; in.eyeAngles = old->eyeAngles;
       in.duckAmount = old->duckAmount; in.moveCycle = old->moveCycle; in.moveSpeed = old->moveSpeed; in.moveYaw = old->moveYaw; in.onGround = old->onGround; in.weaponId = 0;
-      PlayerPoseOutput po; BuildPlayerPose(mdl, nullptr, in, po, false); CSS_AttachPose(p, in, po);
+      PlayerPoseOutput po; BuildPlayerPose(p, in, po, false);
       StudioDrawParams bp = base; bp.flags = STUDIO_FLAT_COLOR; bp.colorOverride = s.chamsBacktrackCol;
-      DrawModelWithWeapon(mdl, po, nullptr, bp);
+      DrawModelWithWeapon(po, false, bp);
     }
   }
   if (!enemy) {
     StudioDrawParams tp = base; tp.flags = MaterialFlags(); tp.colorOverride = s.chamsTeamCol;
-    DrawModelWithWeapon(mdl, pose, wpn, tp);
+    DrawModelWithWeapon(pose, wpn, tp);
     return true;
   }
-  if (s.glow) { StudioDrawParams gp = base; gp.flags = STUDIO_FLAT_COLOR | STUDIO_NO_DEPTH | STUDIO_WIREFRAME; gp.colorOverride = s.glowCol; DrawModelWithWeapon(mdl, pose, nullptr, gp); }
-  if (s.chamsXqz) { StudioDrawParams xp = base; xp.flags = MaterialFlags() | STUDIO_NO_DEPTH; if (xp.flags & STUDIO_TINT) xp.flags = (xp.flags & ~STUDIO_TINT) | STUDIO_FLAT_COLOR; xp.colorOverride = s.chamsXqzCol; DrawModelWithWeapon(mdl, pose, wpn, xp); }
-  if (s.chams) { StudioDrawParams vp = base; vp.flags = MaterialFlags(); vp.colorOverride = s.chamsCol; DrawModelWithWeapon(mdl, pose, wpn, vp); }
-  else DrawModelWithWeapon(mdl, pose, wpn, base);
+  if (s.glow) { StudioDrawParams gp = base; gp.flags = STUDIO_FLAT_COLOR | STUDIO_NO_DEPTH | STUDIO_WIREFRAME; gp.colorOverride = s.glowCol; DrawModelWithWeapon(pose, false, gp); }
+  if (s.chamsXqz) { StudioDrawParams xp = base; xp.flags = MaterialFlags() | STUDIO_NO_DEPTH; if (xp.flags & STUDIO_TINT) xp.flags = (xp.flags & ~STUDIO_TINT) | STUDIO_FLAT_COLOR; xp.colorOverride = s.chamsXqzCol; DrawModelWithWeapon(pose, wpn, xp); }
+  if (s.chams) { StudioDrawParams vp = base; vp.flags = MaterialFlags(); vp.colorOverride = s.chamsCol; DrawModelWithWeapon(pose, wpn, vp); }
+  else DrawModelWithWeapon(pose, wpn, base);
   return true;
 }
 
@@ -467,16 +466,25 @@ void Visuals_Paint() {
       if (s.aaArrows && v.aa.enabled) DrawArrows();
     }
     // hotkey list
-    float ly = GetScreenHeight() * 0.42f;
+    // phones: the right side is full of touch buttons -> lists go to the top center, under the bind circles;
+    // binds that have an on-screen circle are not listed (the circle itself shows the state)
+    static ConVar* touchOn = FindConVar("touch_enable");
+    const bool touch = touchOn && touchOn->GetBool();
+    float lx = touch ? GetScreenWidth() * 0.5f - 95.f : GetScreenWidth() - 200.f;
+    float ly = touch ? GetScreenHeight() * 0.25f : GetScreenHeight() * 0.42f;
     if (s.keybindList) {
       std::vector<std::pair<std::string, std::string>> rows;
-      for (auto& nb : g_NamedBinds) if (nb.bind->key && nb.bind->mode != KEYMODE_ALWAYS && nb.bind->Active()) rows.push_back({ nb.name, nb.bind->mode == KEYMODE_HOLD ? "[holding]" : nb.bind->mode == KEYMODE_TOGGLE ? "[toggled]" : "[off]" });
-      if (!rows.empty() || g.menuOpen) { DrawListBox("Keybinds", GetScreenWidth() - 200.f, ly, rows); ly += 30 + rows.size() * 16; }
+      for (auto& nb : g_NamedBinds) {
+        if (!nb.bind->key || nb.bind->mode == KEYMODE_ALWAYS || !nb.bind->Active()) continue;
+        if (touch && nb.bind->key >= 3000) continue;   // K_TOUCHBIND (menu.cpp): on-screen circle
+        rows.push_back({ nb.name, nb.bind->mode == KEYMODE_HOLD ? "[holding]" : nb.bind->mode == KEYMODE_TOGGLE ? "[toggled]" : "[off]" });
+      }
+      if (!rows.empty() || g.menuOpen) { DrawListBox("Keybinds", lx, ly, rows); ly += 30 + rows.size() * 16; }
     }
     if (s.spectatorList) {
       std::vector<std::pair<std::string, std::string>> rows;
       for (CCSPlayer* p : UTIL_GetPlayers()) if (!p->IsAlive() && p != lp && p->m_hObserverTarget == lp) rows.push_back({ p->GetPlayerName(), p->m_iObserverMode == OBS_MODE_IN_EYE ? "1st" : "3rd" });
-      if (!rows.empty()) DrawListBox("Spectators", GetScreenWidth() - 200.f, ly, rows);
+      if (!rows.empty()) DrawListBox("Spectators", lx, ly, rows);
     }
   }
   if (s.watermark) DrawWatermark(lp);

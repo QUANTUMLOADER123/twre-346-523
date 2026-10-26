@@ -278,9 +278,12 @@ const SrcMaterial& SrcMat_FindInDirs(const std::string& name, const std::vector<
   return SrcMat_Find(dirs.empty() ? name : srcfs::Normalize(dirs[0] + "/" + name));
 }
 
+static int s_matGeneration = 1;
+int SrcMat_Generation() { return s_matGeneration; }
 void SrcMat_Clear() {
   for (auto& [k, t] : s_tex) if (t.ok && t.tex.id) UnloadTexture(t.tex);
   s_tex.clear(); s_mats.clear();
+  s_matGeneration++;
 }
 
 int SrcMat_SurfaceFromProp(const std::string& prop, const std::string& matName) {

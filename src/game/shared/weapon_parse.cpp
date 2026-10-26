@@ -1,7 +1,7 @@
 #include "weapon_parse.hpp"
 #include <cstring>
 
-#define M(x) "assets/models/weapons/" x ".glb"
+#define M(x) nullptr   // world models: CS:S w_*.mdl (css_models.cpp)
 // id, class, name, model, type, slot, team, price, award, clip, reserve, dmg, armorRatio, pen, range, rangeMod, cycle, cycleAlt, auto, bullets,
 // speed, speedAlt, hsMult, spread, spreadAlt, inCrouch, inStand, inJump, inLand, inFire, inMove, inCrouchAlt, inStandAlt, recCrouch, recStand,
 // recoilAngle, recoilAngleVar, recoilMag, recoilMagVar, zoomLevels, zoom1, zoom2, reload, deploy, silencer, length, tracerFreq, icon, flinch

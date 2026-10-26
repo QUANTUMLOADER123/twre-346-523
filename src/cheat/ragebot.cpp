@@ -105,11 +105,10 @@ static bool RecordValid(CCSPlayer* t, const CNetPlayerState& r) {
 }
 
 static void BuildRecordHitboxes(CCSPlayer* t, const CNetPlayerState& rec, float footYaw, HitboxSet& out) {
-  CStudioModel* mdl = t->GetModel(); if (!mdl) { out = rec.hitboxes; return; }
   PlayerPoseInput in; in.origin = rec.origin; in.footYaw = footYaw; in.eyeAngles = rec.eyeAngles; in.duckAmount = rec.duckAmount;
   in.moveCycle = rec.moveCycle; in.moveSpeed = rec.moveSpeed; in.moveYaw = rec.moveYaw; in.onGround = rec.onGround; in.landAmount = rec.landAmount;
   in.weaponId = rec.weaponId; in.fireAmount = rec.fireAmount; in.reloadCycle = rec.reloadCycle;
-  PlayerPoseOutput po; BuildPlayerPose(*mdl, t->GetWeaponWorldModel(rec.weaponId), in, po, true);
+  PlayerPoseOutput po; BuildPlayerPose(t, in, po, true);
   out = po.hitboxes;
 }
 

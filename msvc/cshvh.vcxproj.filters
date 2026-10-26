@@ -54,6 +54,9 @@
     <ClCompile Include="..\src\engine\convar.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\engine\download.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\engine\enginetrace.cpp">
       <Filter>src\engine</Filter>
     </ClCompile>
@@ -171,13 +174,22 @@
     <ClCompile Include="..\src\main.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\vgui\contentscreen.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\vgui\controls.cpp">
       <Filter>src\vgui</Filter>
     </ClCompile>
     <ClCompile Include="..\src\vgui\gameui.cpp">
       <Filter>src\vgui</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\vgui\mainmenu.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\vgui\surface.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vgui\vgui_images.cpp">
       <Filter>src\vgui</Filter>
     </ClCompile>
   </ItemGroup>
@@ -192,6 +204,9 @@
       <Filter>src\engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\engine\convar.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\download.hpp">
       <Filter>src\engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\engine\enginetrace.hpp">
@@ -299,13 +314,25 @@
     <ClInclude Include="..\src\game\shared\weapon_parse.hpp">
       <Filter>src\game\shared</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\vgui\contentscreen.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\vgui\controls.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\csgo_style.hpp">
       <Filter>src\vgui</Filter>
     </ClInclude>
     <ClInclude Include="..\src\vgui\gameui.hpp">
       <Filter>src\vgui</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\vgui\mainmenu.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\vgui\surface.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\vgui_images.hpp">
       <Filter>src\vgui</Filter>
     </ClInclude>
   </ItemGroup>

@@ -11,6 +11,7 @@
 //   t L       covered floor (tunnel, ceiling 128 above floor) / same with a lamp
 //   T K       terrorist / counter-terrorist spawn     A B   bombsite floor
 #include "mapinfo.hpp"
+#include "../../engine/worldrender.hpp"
 #include "../../engine/enginetrace.hpp"
 #include "../../engine/materialsystem.hpp"
 #include "../../engine/convar.hpp"
@@ -62,6 +63,9 @@ const char* CMapInfo::GetPlaceName(const Vector& p) const {
 }
 
 bool CMapInfo::Load(const std::string& path) {
+  // the renderer holds pointers into the model/material caches that are about to be freed -
+  // drop it first, so a failed load can never leave it drawing a half-destroyed world
+  g_WorldRender.Unload();
   if (path.rfind("css:", 0) == 0) return LoadSrc(path.substr(4));
   g_SrcBsp.Unload(); SrcMdl_Clear(); SrcMat_Clear();
   if (path.size() > 4 && hlfs::Lower(path.substr(path.size() - 4)) == ".bsp") return LoadBsp(path);
