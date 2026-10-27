@@ -48,7 +48,7 @@ public:
   float GetSmokeRadius() const;    // current (grows in / fades out)
 };
 // molotov / incendiary: bursts on the first floor hit (slope <= weapon_molotov_maxdetonateslope) and spreads an inferno,
-// after molotov_throw_detonate_time in the air it pops without fire
+// the fuse only stops it high in the air: just above the floor the bottle keeps flying and bursts on the ground
 class CMolotovProjectile : public CBaseCSGrenadeProjectile {
 public:
   using CBaseCSGrenadeProjectile::CBaseCSGrenadeProjectile;

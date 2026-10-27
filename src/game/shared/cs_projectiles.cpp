@@ -13,7 +13,7 @@ extern ConVar mp_c4timer;
 ConVar sv_grenade_trajectory("sv_grenade_trajectory", "0", FCVAR_REPLICATED | FCVAR_CHEAT, "Shows grenade trajectory visualization in-game.");
 ConVar ammo_grenade_limit_total("ammo_grenade_limit_total", "4", FCVAR_REPLICATED, "");
 
-ConVar sv_hegrenade_fuse("sv_hegrenade_fuse", "3.5", FCVAR_REPLICATED | FCVAR_ARCHIVE, "Seconds from the throw until an HE grenade explodes", true, 0.5f, true, 10.f);
+ConVar sv_hegrenade_fuse("sv_hegrenade_fuse", "2.0", FCVAR_REPLICATED, "Seconds from the throw until an HE grenade explodes", true, 0.5f, true, 10.f);
 ConVar sv_flashbang_fuse("sv_flashbang_fuse", "2.5", FCVAR_REPLICATED | FCVAR_ARCHIVE, "Seconds from the throw until a flashbang pops", true, 0.5f, true, 10.f);
 ConVar sv_smoke_duration("sv_smoke_duration", "25", FCVAR_REPLICATED | FCVAR_ARCHIVE, "How long a smoke grenade cloud lasts (seconds)", true, 3.f, true, 90.f);
 ConVar molotov_throw_detonate_time("molotov_throw_detonate_time", "2.0", FCVAR_REPLICATED | FCVAR_ARCHIVE, "Molotov / incendiary: seconds of flight before it bursts in the air", true, 0.3f, true, 10.f);
@@ -115,6 +115,7 @@ void PredictGrenadePath(int weaponId, const Vector& src, const Vector& vel, Gren
   float dt = gpGlobals->interval_per_tick, t = 0;
   const bool fire = IsFireGrenade(weaponId);
   float fuse = weaponId == WEAPON_SMOKEGRENADE ? 10.f : GrenadeFuseTime(weaponId);
+  if (fire) fuse = std::max(fuse, 6.f);   // it keeps flying to the floor (see CMolotovProjectile::PhysicsSimulate)
   out.points.push_back(src);
   float stoppedFor = 0;
   while (t < fuse) {
@@ -249,15 +250,26 @@ float CSmokeGrenadeProjectile::GetSmokeRadius() const {
 
 // ------------------------------------------------------------------------------------------------
 // molotov / incendiary
+static bool GroundBelow(const Vector& p, float drop, Vector& out);   // defined below (inferno placement)
 void CMolotovProjectile::PhysicsSimulate() {
   if (m_bDetonated) return;
+  // a bottle that runs out of fuse a little short of the floor keeps flying instead of popping in mid-air: if there
+  // is ground right under it, the fuse is extended (bounded, so a molotov lobbed high into the sky still bursts)
+  const float dt = gpGlobals->interval_per_tick;
+  if (!m_bStopped && ServerTime() + dt >= m_flDetonateTime && ServerTime() - m_flSpawnTime < 6.f) {
+    Vector ground;
+    if (GroundBelow(m_vecOrigin, 160.f, ground)) m_flDetonateTime = ServerTime() + 0.6f;
+  }
   CBaseCSGrenadeProjectile::PhysicsSimulate();            // air burst after the fuse -> Detonate()
   if (m_bDetonated || m_bMarkedForDeletion) return;
   if ((m_bBouncedThisTick && IsDetonateFloor(m_vecLastBounceNormal)) || m_bStopped) DetonateOnGround();
 }
 void CMolotovProjectile::Detonate() {
-  // fuse ran out in the air: the bottle pops, no fire
   if (m_bDetonated) return;
+  // the fuse ran out in the air: if there is a floor under the bottle the fire still lands there (from a real
+  // height the fire would only start on the ground anyway), otherwise the bottle just pops
+  Vector ground;
+  if (GroundBelow(m_vecOrigin, 200.f, ground)) { m_vecOrigin = ground; DetonateOnGround(); return; }
   EmitSound(m_iWeaponID == WEAPON_MOLOTOV ? "Molotov.Detonate" : "IncGrenade.Detonate", m_vecOrigin, entindex(), 0.8f);
   IGameEvent ev("molotov_detonate"); ev.SetInt("userid", m_hThrower ? m_hThrower->entindex() : 0).SetFloat("x", m_vecOrigin.x).SetFloat("y", m_vecOrigin.y).SetFloat("z", m_vecOrigin.z).SetBool("air", true);
   gameeventmanager->FireEvent(ev);
@@ -292,7 +304,7 @@ CInferno::CInferno(int weaponId, CCSPlayer* thrower, const Vector& pos) {
   m_iClassname = "inferno";
   m_iWeaponID = weaponId; m_iThrower = thrower ? thrower->entindex() : 0;
   m_iTeamNum = thrower ? thrower->m_iTeamNum : 0;
-  Vector g = pos; GroundBelow(pos, 48.f, g);
+  Vector g = pos; GroundBelow(pos, 160.f, g);
   m_vecCenter = m_vecOrigin = m_vecOldOrigin = g;
   m_flStart = ServerTime(); m_flEnd = m_flStart + inferno_flame_lifetime.GetFloat();
   m_flNextSpread = m_flStart + 0.08f; m_flNextSound = m_flStart + 0.4f;

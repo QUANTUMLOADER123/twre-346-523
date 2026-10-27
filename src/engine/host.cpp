@@ -254,6 +254,9 @@ static ConCommand cmd_exit("exit", [](const CCommand&) { g_Host.wantQuit = true;
 void Host_Init() {
   gpGlobals->interval_per_tick = 1.f / 64.f;
   Cmd_ExecFile("cfg/config.cfg", true);
+  // a config written by an older build still carries the old grenade fuse (3.5 s) - that value was the default
+  // back then, not a choice, so it is reset to the CS:GO 2 s once
+  if (ConVar* c = FindConVar("sv_hegrenade_fuse")) if (std::fabs(c->GetFloat() - 3.5f) < 0.01f) c->SetValue(2.0f);
 }
 
 // autoexec.cfg runs after the menu background is set up (it may load a map, like +map on the command line)
