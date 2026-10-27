@@ -309,13 +309,6 @@ void BuildCsgoBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector<m
   if (!base) base = aim;                      // idle: the aim pose is the whole body
   if (!base) base = Seq(m, "move");
   float cycle = moving ? in.moveCycle : 0.f;
-  m.SampleSeq(base, cycle, pv, pos, q);
-  if (crouch) { SrcSeqRef rc = Seq(m, "recrouch_generic"); if (rc) { m.SampleSeq(rc, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); } }
-  if (!in.onGround) {
-    SrcSeqRef j = moving ? Seq(m, "jump_moving") : Seq(m, "jump");
-    if (!j) j = Seq(m, "fall");
-    if (j) { m.SampleSeq(j, 0.35f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
-  }
   // upper body: the aim grid (its weights only cover the spine / arms, the legs keep walking)
   if (moving && aim) { m.SampleSeq(aim, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   if (in.reloadCycle >= 0) {
