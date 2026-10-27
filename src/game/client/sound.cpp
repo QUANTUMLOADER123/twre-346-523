@@ -78,7 +78,69 @@ void LoadSoundScripts() {
 // our name -> CS:S soundscript names / files ("file:" prefix) to try, in order
 std::vector<std::string> CssNames(const std::string& name) {
   static const std::unordered_map<std::string, std::vector<std::string>> alias = {
-    { "Weapon_m4a1_silencer.Silenced", { "Weapon_M4A1.Silenced" } }, { "Weapon_m4a1_silencer.Single", { "Weapon_M4A1.Single" } },
+    // real CS:GO weapon samples (sound/weapons/csgo/*, in the content pack) - they are tried first, a CS:S
+    // soundscript of the same name is only the fallback
+    { "Weapon_glock.Single", { "file:weapons/csgo/glock18/glock_01.ogg", "file:weapons/csgo/glock18/glock_02.ogg", "file:weapons/csgo/glock18/glock_03.ogg", "file:weapons/csgo/glock18/glock_04.ogg" } },
+    { "Weapon_usp_silencer.Single", { "file:weapons/csgo/usp/usp_01.ogg", "file:weapons/csgo/usp/usp_02.ogg", "file:weapons/csgo/usp/usp_03.ogg" } },
+    { "Weapon_usp.Single", { "file:weapons/csgo/usp/usp_unsilenced_01.ogg", "file:weapons/csgo/usp/usp_unsilenced_02.ogg", "file:weapons/csgo/usp/usp_unsilenced_03.ogg" } },
+    { "Weapon_p250.Single", { "file:weapons/csgo/p250/p250_01.ogg" } },
+    { "Weapon_deagle.Single", { "file:weapons/csgo/deagle/deagle_01.ogg", "file:weapons/csgo/deagle/deagle_02.ogg" } },
+    { "Weapon_revolver.Single", { "file:weapons/csgo/revolver/revolver-1_01.ogg" } },
+    { "Weapon_mac10.Single", { "file:weapons/csgo/mac10/mac10_01.ogg", "file:weapons/csgo/mac10/mac10_02.ogg", "file:weapons/csgo/mac10/mac10_03.ogg" } },
+    { "Weapon_mp9.Single", { "file:weapons/csgo/mp9/mp9_01.ogg", "file:weapons/csgo/mp9/mp9_02.ogg", "file:weapons/csgo/mp9/mp9_03.ogg", "file:weapons/csgo/mp9/mp9_04.ogg" } },
+    { "Weapon_ump45.Single", { "file:weapons/csgo/ump/ump45_02.ogg", "file:weapons/csgo/ump/ump45_04.ogg" } },
+    { "Weapon_p90.Single", { "file:weapons/csgo/p90/p90_01.ogg", "file:weapons/csgo/p90/p90_02.ogg", "file:weapons/csgo/p90/p90_03.ogg" } },
+    { "Weapon_nova.Single", { "file:weapons/csgo/nova/nova-1.ogg" } },
+    { "Weapon_xm1014.Single", { "file:weapons/csgo/xm1014/xm1014-1.ogg" } },
+    { "Weapon_galilar.Single", { "file:weapons/csgo/galilar/galil_01.ogg", "file:weapons/csgo/galilar/galil_02.ogg", "file:weapons/csgo/galilar/galil_03.ogg", "file:weapons/csgo/galilar/galil_04.ogg" } },
+    { "Weapon_famas.Single", { "file:weapons/csgo/famas/famas_01.ogg", "file:weapons/csgo/famas/famas_02.ogg", "file:weapons/csgo/famas/famas_03.ogg", "file:weapons/csgo/famas/famas_04.ogg" } },
+    { "Weapon_ak47.Single", { "file:weapons/csgo/ak47/ak47_01.ogg" } },
+    { "Weapon_m4a1.Single", { "file:weapons/csgo/m4a1/m4a1_01.ogg", "file:weapons/csgo/m4a1/m4a1_02.ogg", "file:weapons/csgo/m4a1/m4a1_03.ogg", "file:weapons/csgo/m4a1/m4a1_04.ogg" } },
+    { "Weapon_m4a1_silencer.Single", { "file:weapons/csgo/m4a1/m4a1_silencer_01.ogg" } },
+    { "Weapon_sg556.Single", { "file:weapons/csgo/sg556/sg556_01.ogg", "file:weapons/csgo/sg556/sg556_02.ogg", "file:weapons/csgo/sg556/sg556_03.ogg", "file:weapons/csgo/sg556/sg556_04.ogg" } },
+    { "Weapon_aug.Single", { "file:weapons/csgo/aug/aug_01.ogg", "file:weapons/csgo/aug/aug_02.ogg", "file:weapons/csgo/aug/aug_03.ogg", "file:weapons/csgo/aug/aug_04.ogg" } },
+    { "Weapon_ssg08.Single", { "file:weapons/csgo/ssg08/ssg08_01.ogg", "file:weapons/csgo/ssg08/ssg08-1.ogg" } },
+    { "Weapon_awp.Single", { "file:weapons/csgo/awp/awp_01.ogg", "file:weapons/csgo/awp/awp_02.ogg" } },
+    { "Weapon_g3sg1.Single", { "file:weapons/csgo/g3sg1/g3sg1_01.ogg", "file:weapons/csgo/g3sg1/g3sg1_02.ogg", "file:weapons/csgo/g3sg1/g3sg1_03.ogg" } },
+    { "Weapon_scar20.Single", { "file:weapons/csgo/scar20/scar20_01.ogg", "file:weapons/csgo/scar20/scar20_02.ogg", "file:weapons/csgo/scar20/scar20_03.ogg" } },
+    { "Weapon_elite.Single", { "file:weapons/csgo/elite/elites_01.ogg", "file:weapons/csgo/elite/elites_02.ogg", "file:weapons/csgo/elite/elites_03.ogg", "file:weapons/csgo/elite/elites_04.ogg" } },
+    { "Weapon_fiveseven.Single", { "file:weapons/csgo/fiveseven/fiveseven_01.ogg" } },
+    { "Weapon_tec9.Single", { "file:weapons/csgo/tec9/tec9_01.ogg", "file:weapons/csgo/tec9/tec9_02.ogg" } },
+    { "Weapon_cz75a.Single", { "file:weapons/csgo/cz75a/cz75_01.ogg", "file:weapons/csgo/cz75a/cz75_02.ogg", "file:weapons/csgo/cz75a/cz75_03.ogg" } },
+    { "Weapon_hkp2000.Single", { "file:weapons/csgo/hkp2000/hkp2000_01.ogg", "file:weapons/csgo/hkp2000/hkp2000_02.ogg", "file:weapons/csgo/hkp2000/hkp2000_03.ogg" } },
+    { "Weapon_mp7.Single", { "file:weapons/csgo/mp7/mp7_01.ogg", "file:weapons/csgo/mp7/mp7_02.ogg", "file:weapons/csgo/mp7/mp7_03.ogg", "file:weapons/csgo/mp7/mp7_04.ogg" } },
+    { "Weapon_bizon.Single", { "file:weapons/csgo/bizon/bizon_01.ogg", "file:weapons/csgo/bizon/bizon_02.ogg", "file:weapons/csgo/bizon/bizon_fire-01.ogg", "file:weapons/csgo/bizon/bizon_fire-02.ogg" } },
+    { "Weapon_mag7.Single", { "file:weapons/csgo/mag7/mag7_01.ogg", "file:weapons/csgo/mag7/mag7_02.ogg" } },
+    { "Weapon_sawedoff.Single", { "file:weapons/csgo/sawedoff/sawedoff-1.ogg" } },
+    { "Weapon_m249.Single", { "file:weapons/csgo/m249/m249-1.ogg" } },
+    { "Weapon_negev.Single", { "file:weapons/csgo/negev/negev_01.ogg", "file:weapons/csgo/negev/negev_02.ogg", "file:weapons/csgo/negev/negev_03.ogg", "file:weapons/csgo/negev/negev_04.ogg" } },
+    { "Weapon_mp5sd.Single", { "file:weapons/csgo/mp5/mp5_01.ogg", "file:weapons/csgo/mp5/mp5_02.ogg" } },
+    { "Weapon_usp_silencer.Reload", { "file:weapons/csgo/usp/usp_clipout.wav", "file:weapons/csgo/usp/usp_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_usp.Reload", { "file:weapons/csgo/usp/usp_clipout.wav", "file:weapons/csgo/usp/usp_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_p250.Reload", { "file:weapons/csgo/p250/p250_clipout.wav", "file:weapons/csgo/p250/p250_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_revolver.Reload", { "file:weapons/csgo/revolver/revolver_clipout.wav", "file:weapons/csgo/revolver/revolver_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_mac10.Reload", { "file:weapons/csgo/mac10/mac10_clipout.wav", "file:weapons/csgo/mac10/mac10_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_mp9.Reload", { "file:weapons/csgo/mp9/mp9_clipout.wav", "file:weapons/csgo/mp9/mp9_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_p90.Reload", { "file:weapons/csgo/p90/p90_clipout.wav", "file:weapons/csgo/p90/p90_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_famas.Reload", { "file:weapons/csgo/famas/famas_clipout.wav", "file:weapons/csgo/famas/famas_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_ak47.Reload", { "file:weapons/csgo/ak47/ak47_clipout.wav", "file:weapons/csgo/ak47/ak47_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_m4a1.Reload", { "file:weapons/csgo/m4a1/m4a1_clipout.wav", "file:weapons/csgo/m4a1/m4a1_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_m4a1_silencer.Reload", { "file:weapons/csgo/m4a1/m4a1_clipout.wav", "file:weapons/csgo/m4a1/m4a1_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_sg556.Reload", { "file:weapons/csgo/sg556/sg556_clipout.wav", "file:weapons/csgo/sg556/sg556_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_aug.Reload", { "file:weapons/csgo/aug/aug_clipout.wav", "file:weapons/csgo/aug/aug_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_ssg08.Reload", { "file:weapons/csgo/ssg08/ssg08_clipout.wav", "file:weapons/csgo/ssg08/ssg08_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_awp.Reload", { "file:weapons/csgo/awp/awp_clipout.wav", "file:weapons/csgo/awp/awp_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_g3sg1.Reload", { "file:weapons/csgo/g3sg1/g3sg1_clipout.wav", "file:weapons/csgo/g3sg1/g3sg1_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_scar20.Reload", { "file:weapons/csgo/scar20/scar20_clipout.wav", "file:weapons/csgo/scar20/scar20_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_elite.Reload", { "file:weapons/csgo/elite/elite_clipout.wav", "Weapon.Reload" } },
+    { "Weapon_fiveseven.Reload", { "file:weapons/csgo/fiveseven/fiveseven_clipout.wav", "file:weapons/csgo/fiveseven/fiveseven_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_tec9.Reload", { "file:weapons/csgo/tec9/tec9_clipout.wav", "file:weapons/csgo/tec9/tec9_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_hkp2000.Reload", { "file:weapons/csgo/hkp2000/hkp2000_clipout.wav", "file:weapons/csgo/hkp2000/hkp2000_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_mp7.Reload", { "file:weapons/csgo/mp7/mp7_clipout.wav", "file:weapons/csgo/mp7/mp7_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_bizon.Reload", { "file:weapons/csgo/bizon/bizon_clipout.wav", "file:weapons/csgo/bizon/bizon_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_mag7.Reload", { "file:weapons/csgo/mag7/mag7_clipout.wav", "file:weapons/csgo/mag7/mag7_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_mp5sd.Reload", { "file:weapons/csgo/mp5/mp5_clipout.wav", "file:weapons/csgo/mp5/mp5_clipin.wav", "Weapon.Reload" } },
+    { "Weapon_m4a1_silencer.Silenced", { "file:weapons/csgo/m4a1/m4a1_silencer_01.ogg", "Weapon_M4A1.Silenced" } },
     { "Weapon_usp_silencer.Silenced", { "Weapon_USP.SilencedShot" } }, { "Weapon_usp_silencer.Single", { "Weapon_USP.Single" } },
     { "Weapon_revolver.Single", { "file:weapons/csgo/revolver/revolver-1_01.wav", "Weapon_DEagle.Single" } },
     { "Weapon_revolver.Reload", { "file:weapons/csgo/revolver/revolver_clipout.wav", "Weapon_DEagle.Clipout" } },
@@ -314,6 +376,14 @@ void EmitSound(const char* name, const Vector& origin, int entindex, float vol, 
   PlayEntry(e, v, pan, p);
 }
 void EmitSound2D(const char* name, float vol, float pitch) { if (!s_ready || !name) return; PlayEntry(GetSound(name), vol, 0, pitch); }
+
+// console: which files a sound name resolves to (content audit)
+static ConCommand cmd_snd_check("snd_check", [](const CCommand& a) {
+  if (a.ArgC() < 2) { Msg("usage: snd_check Weapon_ak47.Single\n"); return; }
+  auto files = CssFiles(a.Arg(1));
+  if (files.empty()) Msg("%s: nothing found\n", a.Arg(1));
+  for (auto& f : files) Msg("%s -> sound/%s\n", a.Arg(1), f.c_str());
+}, "Report the files a sound name resolves to");
 
 static ConCommand cmd_play("play", [](const CCommand& a) { if (a.ArgC() > 1) EmitSound2D(a.Arg(1)); }, "Play a sound.");
 static void S_FlushSounds() {

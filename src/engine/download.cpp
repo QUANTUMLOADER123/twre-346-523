@@ -74,8 +74,10 @@ const char* kExtras = "content/extras";
 const char* const s_csgoMapFiles[] = {
   // dust2 (both the classic CS:GO "old" one and the CS 1.6 style remake), mirage, inferno, nuke, train, aztec
   "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/de_dust2_old.bsp",
-  "maps/de_dust2_16toGO.bsp", "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp",
+  "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp",
   "https://raw.githubusercontent.com/Roblox90864/CSGOMapArchive/HEAD/maps/de_train2014.bsp",
+  // the CS:GO "old" vertigo (the ladder one), ported
+  "https://raw.githubusercontent.com/Roblox90864/CSGOMapArchive/HEAD/maps/de_vertigo.bsp",
   "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp",
   // the classics
   "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_dust/de_dust.bsp",
@@ -139,24 +141,11 @@ Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-constexpr int kPacks = 9;
+constexpr int kPacks = 1;
+// ONE archive for everything: every model, texture, map and sound the game needs. It is far smaller than the sum of
+// the per-asset archives (the deflate window sees all the textures at once) and the player downloads it once.
 Pack s_packs[kPacks] = {
-  { "maps_go4", "CS:GO maps (classic versions)", nullptr, 253, s_csgoMapFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maps.zip" },
-  // the CS:S era textures those maps reference (their own materials live in the map pakfile already)
-  { "mapstex", "CS:GO map textures", nullptr, 90, s_mapTextureFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maptex.zip" },
-  // agents (4 CT + 4 T), sound effects, sound scripts and the stock Source map textures our CS:GO maps are
-  // missing (only the materials they actually reference are listed)
-  { "base3", "Agents, sounds and map textures", nullptr, 86, s_baseFiles, "content/css/cstrike", false, nullptr, "cshvh-content-base.zip" },
-  // CS:GO weapon view models + their materials (the exact list is content_weapons.inc)
-  { "weapons", "CS:GO weapon models", nullptr, 320, s_weaponFiles, "content/extras/csgo_weapons", false, nullptr, "cshvh-content-weapons.zip" },
-  { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
-  { "csgo", "CS:GO SCAR-20, SSG 08, molotov", nullptr, 22, s_csgoFiles, "content/extras/csgo_gsr", false },
-  { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
-  // the real CS:GO agent models (4 CT + 4 T with their variants) - the CS:S stand-ins stay only as a fallback
-  { "agents", "CS:GO agents", nullptr, 56, s_agentFiles, "content/extras/csgo_agents", false, nullptr, "cshvh-content-agents.zip" },
-  // the static props the older maps reference (doors, crates, furniture): without them the maps render with
-  // holes where the props should be, because a bsp only stores the prop *placements*, never the meshes
-  { "props", "Static props (doors, crates, furniture)", nullptr, 100, nullptr, "content/extras/csgo_props", false, nullptr, "cshvh-content-props.zip" },
+  { "all", "All game content (models, maps, textures, sounds)", nullptr, 0, nullptr, "content/extras/all", true, nullptr, "cshvh-content-all.zip" },
 };
 bool s_needCore = true;   // decided on the main thread in Start()
 bool s_haveCsgo = false;  // a local CS:GO install (pak01) - decided on the main thread, read by the worker
@@ -389,6 +378,8 @@ fs::path PackMarker(const Pack& p) { return fs::path(p.zipAsset || !p.files ? (p
 bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(p), ec); }
 bool PackWanted(const Pack& p) {
   if (PackDone(p)) return false;
+  // a local CS:GO / CS:S install already ships every model, map, sound and texture this archive carries
+  if (s_haveCsgo) return false;
   // a local CS:GO install already has every stock map and every texture, so both packs are not needed then
   if (p.files == s_csgoMapFiles && s_haveCsgo) return false;
   if (p.files == s_mapTextureFiles && s_haveCsgo) return false;
@@ -400,9 +391,10 @@ bool PackWanted(const Pack& p) {
 }
 
 // drop the maps that are not in the current list any more (an older, bigger map pack left them behind)
-void PruneStaleMaps() {
+// drop the maps that are not in the current list any more (an older, bigger map pack left them behind)
+void PruneMapsIn(const char* path) {
   std::error_code ec;
-  fs::path dir = fs::path("content/extras/csgo_maps/maps");
+  fs::path dir(path);
   if (!fs::is_directory(dir, ec)) return;
   auto lower = [](std::string v) { for (char& c : v) c = (char)std::tolower((unsigned char)c); return v; };
   std::vector<std::string> want;
@@ -422,6 +414,7 @@ void PruneStaleMaps() {
     if (!rec) Msg("content: removed the stale map %s\n", it->path().filename().string().c_str());
   }
 }
+void PruneStaleMaps() { for (const char* d : { "content/extras/all/maps", "content/extras/csgo_maps/maps" }) PruneMapsIn(d); }
 
 bool WriteFileAtomic(const fs::path& path, const std::vector<uint8_t>& data, std::string& err) {
   std::error_code ec; fs::create_directories(path.parent_path(), ec);

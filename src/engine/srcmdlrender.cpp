@@ -6,7 +6,7 @@
 #include <cmath>
 #include <algorithm>
 
-void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin, const std::vector<uint8_t>* boneMask) {
+void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin, const std::vector<uint8_t>* boneMask, bool strictMask) {
   if (!m.loaded || m.meshes.empty()) return;
   thread_local std::vector<matrix3x4_t> sk;
   m.SkinMatrices(bones, modelToWorld, sk);
@@ -39,6 +39,9 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
         vok.assign(vc, 0);
         for (size_t v = 0; v < vc; v++)
           for (int k = 0; k < 3; k++) { int b = me.bone[v * 3 + k]; if (me.weight[v * 3 + k] > 0 && b >= 0 && b < (int)boneMask->size() && (*boneMask)[b]) { vok[v] = 1; break; } }
+        if (strictMask)
+          for (size_t v = 0; v < vc; v++)
+            for (int k = 0; k < 3; k++) { int b = me.bone[v * 3 + k]; if (me.weight[v * 3 + k] > 0 && (b < 0 || b >= (int)boneMask->size() || !(*boneMask)[b])) { vok[v] = 0; break; } }
       }
       for (size_t v = 0; v < vc; v++) {
         Vector P(me.pos[v * 3], me.pos[v * 3 + 1], me.pos[v * 3 + 2]), N(me.normal[v * 3], me.normal[v * 3 + 1], me.normal[v * 3 + 2]);

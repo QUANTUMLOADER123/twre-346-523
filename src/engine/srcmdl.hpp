@@ -120,7 +120,9 @@ private:
 struct StudioDrawParams;
 // boneMask (optional): only triangles whose vertices are skinned to bones with a nonzero mask are drawn (c_arms style
 // view model hands cut out of a player model)
-void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin = 0, const std::vector<uint8_t>* boneMask = nullptr);
+// strictMask: draw only the vertices whose every influence is in boneMask (a partially merged limb - an arm skinned
+// by another model's skeleton - would otherwise be stretched across the screen by its unmerged shoulder bone)
+void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin = 0, const std::vector<uint8_t>* boneMask = nullptr, bool strictMask = false);
 
 // cache (cleared on map change)
 CSrcModel* SrcMdl_Get(const std::string& path);

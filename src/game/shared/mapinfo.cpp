@@ -461,7 +461,7 @@ std::string PrettyMapName(const std::string& n) {
     { "de_dust2", "Dust II" }, { "de_dust", "Dust" }, { "de_inferno", "Inferno" }, { "de_nuke", "Nuke" }, { "de_train", "Train" },
     { "de_aztec", "Aztec" }, { "de_cbble", "Cobblestone" }, { "de_chateau", "Chateau" }, { "de_piranesi", "Piranesi" }, { "de_port", "Port" },
     { "de_prodigy", "Prodigy" }, { "de_tides", "Tides" }, { "de_mirage", "Mirage" }, { "de_cache", "Cache" }, { "de_overpass", "Overpass" },
-    { "de_seaside", "Seaside" }, { "de_cpl_mill", "Mill" }, { "de_cpl_strike", "Strike" }, { "de_tuscan", "Tuscan" }, { "de_forge", "Forge" },
+    { "de_vertigo", "Vertigo" }, { "de_seaside", "Seaside" }, { "de_cpl_mill", "Mill" }, { "de_cpl_strike", "Strike" }, { "de_tuscan", "Tuscan" }, { "de_forge", "Forge" },
     { "cs_assault", "Assault" }, { "cs_compound", "Compound" }, { "cs_havana", "Havana" }, { "cs_italy", "Italy" }, { "cs_militia", "Militia" },
     { "cs_office", "Office" }, { "cs_downtown", "Downtown" }, { "cs_backalley", "Backalley" },
   };
@@ -514,5 +514,17 @@ std::vector<MapListEntry> ListMaps() {
     }
   }
   std::sort(out.begin(), out.end(), [](auto& a, auto& b) { return a.name < b.name; });
+  // two files of the same map ("de_dust2_old" and a remake): keep one, the classic "old" version wins
+  {
+    std::vector<MapListEntry> uniq;
+    for (auto& m : out) {
+      auto same = std::find_if(uniq.begin(), uniq.end(), [&](const MapListEntry& u) { return u.title == m.title; });
+      if (same == uniq.end()) { uniq.push_back(m); continue; }
+      const bool better = m.name.find("_old") != std::string::npos || m.name.size() < same->name.size();
+      if (better) *same = m;
+    }
+    out.swap(uniq);
+  }
+  std::sort(out.begin(), out.end(), [](auto& a, auto& b) { return a.title < b.title; });
   return out;
 }

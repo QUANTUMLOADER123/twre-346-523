@@ -160,74 +160,58 @@ report = []
 
 
 def main():
+    """Build ONE archive with all the content: models, materials, maps and sounds.
+
+    A single deflate stream over every file compresses better than a dozen small archives, and the player
+    downloads (and the game unpacks) exactly one file.
+    """
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "dist"
     os.makedirs(out_dir, exist_ok=True)
-
-    packs = {}
-
-
-    def base_pack():
-        # map textures, agents, sounds, sound scripts (unpacked into content/css/cstrike)
-        return [(p, BASE_URL + p) for p in quoted("src/engine/content_base.inc")]
-
-    def weapon_pack():
-        # CS:GO weapon models + their materials (content/extras/csgo_weapons)
-        return [(p, WEAPON_URL + p) for p in quoted("src/engine/content_weapons.inc")]
 
     def repo_path(url):
         """https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path> -> <path>"""
         rest = url.split("raw.githubusercontent.com/", 1)[1]
         return rest.split("/", 3)[3]
 
-    def map_pack():
-        # the .bsp files (their own materials ride inside each map's pakfile lump)
-        out = []
-        for e in map_entries():
-            if e.startswith(("http://", "https://")):
-                path = repo_path(e)
-                if path.endswith(".bsp") and not path.startswith("maps/"):
-                    path = "maps/" + path.rsplit("/", 1)[-1]
-                out.append((path, e))
-            else:
-                out.append((e, MAP_URL + e))
-        return out
+    items = []   # (zip entry, url)
 
-    def map_tex_pack():
-        # the CS:S era textures the CS:GO maps reference (same folder, separate archive)
-        return [(repo_path(u), u) for u in quoted("src/engine/content_maps_textures.inc")]
+    # CS:S player models + their materials, the stock textures, sounds and sound scripts
+    items += [(p, BASE_URL + p) for p in quoted("src/engine/content_base.inc")]
+    # CS:GO weapon models, their materials and the weapon sound samples
+    items += [(p, WEAPON_URL + p) for p in quoted("src/engine/content_weapons.inc")]
+    # the CS:S era textures our maps reference
+    items += [(repo_path(u), u) for u in quoted("src/engine/content_maps_textures.inc")]
+    # the CS:S player models (4 CT + 4 T) with their animations and materials
+    items += [(repo_path(u), u) for u in quoted("src/engine/content_agents.inc")]
+    # static props (doors, crates, furniture)
+    items += [(repo_path(u), u) for u in quoted("src/engine/content_props.inc")]
+    # the maps themselves (their own materials ride inside each map's pakfile lump)
+    for e in map_entries():
+        if e.startswith(("http://", "https://")):
+            path = repo_path(e)
+            if path.endswith(".bsp") and not path.startswith("maps/"):
+                path = "maps/" + path.rsplit("/", 1)[-1]
+            items.append((path, e))
+        else:
+            items.append((e, MAP_URL + e))
 
-    def agent_pack():
-        # real CS:GO agent models + materials (content/extras/csgo_agents)
-        out = []
-        for u in quoted("src/engine/content_agents.inc"):
-            out.append((repo_path(u), u))
-        return out
+    # one entry per zip path (the same texture can be listed by two packs)
+    seen, uniq = set(), []
+    for entry, url in items:
+        if entry in seen:
+            continue
+        seen.add(entry)
+        uniq.append((entry, url))
 
-    packs["cshvh-content-base.zip"] = base_pack
-    packs["cshvh-content-weapons.zip"] = weapon_pack
-    packs["cshvh-content-maps.zip"] = map_pack
-    packs["cshvh-content-maptex.zip"] = map_tex_pack
-    packs["cshvh-content-agents.zip"] = agent_pack
-
-    def props_pack():
-        # the static props of the older maps: doors, crates, furniture (content/extras/csgo_props)
-        return [(repo_path(u), u) for u in quoted("src/engine/content_props.inc")]
-    packs["cshvh-content-props.zip"] = props_pack
-
-    built = 0
-    for name, make in packs.items():
-        try:
-            build(name, make(), out_dir)
-            built += 1
-        except SystemExit as e:  # a mirror is down: skip this pack, the game falls back to single files
-            print(f"  {name}: skipped ({e})", flush=True)
-        except Exception as e:  # noqa: BLE001
-            print(f"  {name}: skipped ({e})", flush=True)
+    name = "cshvh-content-all.zip"
+    try:
+        build(name, uniq, out_dir)
+    except SystemExit as e:
+        print(f"  {name}: failed ({e})", flush=True)
+        raise
     with open(os.path.join(out_dir, "pack-report.txt"), "w", encoding="utf-8") as f:
-        for name, want, got, failed in report:
-            f.write(f"{name}: {got}/{want} files" + (f", missing {failed}" if failed else ", complete") + "\n")
-    if not built:
-        raise SystemExit("no content pack could be built")
+        for n, want, got, failed in report:
+            f.write(f"{n}: {got}/{want} files" + (f", missing {failed}" if failed else ", complete") + "\n")
 
 
 if __name__ == "__main__":

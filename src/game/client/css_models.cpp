@@ -159,8 +159,17 @@ const CsgoModel* CsgoModelFor(int wid) {
   return nullptr;
 }
 // gun drawn from its c_ view model in third person (nullptr: use the w_ model)
+// the bone the gun's meshes hang on: the ARC9 c_ models name it "v_weapon.<gun>_parent", some of them do not say
+int GunRootBone(const CSrcModel& m, const CsgoModel* c) {
+  if (c && c->mirrorRoot) { int b = m.FindBone(c->mirrorRoot); if (b >= 0) return b; }
+  for (size_t i = 0; i < m.bones.size(); i++) {
+    const std::string& n = m.bones[i].name;
+    if (n.rfind("v_weapon.", 0) == 0 && n.size() > 7 && n.compare(n.size() - 7, 7, "_parent") == 0) return (int)i;
+  }
+  return m.bones.empty() ? -1 : 0;
+}
 const CSrcModel* MirrorWeapon(int wid, const CsgoModel** info = nullptr) {
-  const CsgoModel* c = CsgoModelFor(wid); if (!c || c->world || !c->mirrorRoot) return nullptr;   // view model only
+  const CsgoModel* c = CsgoModelFor(wid); if (!c || c->world) return nullptr;   // view model only
   const CSrcModel* m = LoadedOrNull(SrcMdl_Get(c->view)); if (!m || m->seqs.empty()) return nullptr;
   if (info) *info = c;
   return m;
@@ -496,24 +505,17 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
     const CsgoModel* mi = nullptr;
     const CSrcModel* mirror = MirrorWeapon(in.weaponId, &mi);
     const CSrcModel* wm = WorldWeapon(in.weaponId, sil, false, mirror != nullptr);
-    if (mirror && wm && !wm->meshes.empty()) {
-      // place the CS:S stand-in first (bone merge + hand fix below), then hang the c_ gun on its weapon_bone
-      thread_local std::vector<matrix3x4_t> standIn;
-      BoneMerge(*wm, *m, out.cssBones, standIn);
-      int hand = m->FindBone("ValveBiped.Bip01_R_Hand"), grip = m->FindBone("ValveBiped.weapon_bone_RHand");
-      if (hand >= 0 && grip >= 0 && hand < (int)out.cssBones.size() && grip < (int)out.cssBones.size()) {
-        matrix3x4_t gripInv, fix; MatrixInvert(out.cssBones[grip], gripInv);
-        ConcatTransforms(out.cssBones[hand], gripInv, fix);
-        for (auto& b : standIn) { matrix3x4_t t; ConcatTransforms(fix, b, t); b = t; }
-      }
-      int wb = wm->FindBone("ValveBiped.weapon_bone"), root = mi->mirrorRoot ? mirror->FindBone(mi->mirrorRoot) : -1;
-      if (wb >= 0 && root >= 0) {
+    if (mirror) {
+      // the CS:GO c_ model is the gun: it is hung on the player's weapon bone (its own root is moved into that frame),
+      // so in third person the character holds the very gun the view model shows
+      const int wbone = m->FindBone("ValveBiped.weapon_bone"), root = GunRootBone(*mirror, mi);
+      if (wbone >= 0 && root >= 0 && wbone < (int)out.cssBones.size()) {
         thread_local std::vector<Vector> cp; thread_local std::vector<Quat> cq; thread_local std::vector<matrix3x4_t> cb;
         SrcSeqRef idle = mirror->FindSeq("idle"); if (!idle) idle = { mirror, 0, -1 };
         mirror->SampleSeq(idle, 0.f, SrcPoseValues(), cp, cq); mirror->BuildBones(cp, cq, cb);
         matrix3x4_t off; AngleMatrix(QAngle(0, 0, 0), mi->mirrorOffset, off);
         matrix3x4_t rootInv, a1, toWorld; MatrixInvert(cb[root], rootInv);
-        ConcatTransforms(standIn[wb], off, a1); ConcatTransforms(a1, rootInv, toWorld);
+        ConcatTransforms(out.cssBones[wbone], off, a1); ConcatTransforms(a1, rootInv, toWorld);
         out.cssWeaponBones.resize(cb.size());
         for (size_t i = 0; i < cb.size(); i++) ConcatTransforms(toWorld, cb[i], out.cssWeaponBones[i]);
         out.cssWeapon = mirror; out.hasWeapon = true;
@@ -592,26 +594,36 @@ bool CSS_DrawWorldWeapon(int weaponId, const matrix3x4_t& xf, const StudioDrawPa
 // ------------------------------------------------------------------------------------------------
 // view models
 namespace {
-// c_arms (Garry's Mod style): the CS:GO R8 view model has no hands, only ValveBiped.* arm bones - the arms of the
-// player's own agent model are bone merged onto them and only the forearm / hand / finger triangles are drawn
-void DrawViewModelArms(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm, const std::vector<matrix3x4_t>& pose, const matrix3x4_t& xf, const StudioDrawParams& dp) {
-  if (!pm || pm->meshes.empty() || pose.empty()) return;
-  // CS:GO view models ship without hands: the agent's own right arm is used, moved rigidly so that its hand lands on
-  // the view model's hand bone. Both skeletons are ValveBiped, so one bone matrix is enough: world = xf * gunHand * agentHand^-1
-  const int agentHand = pm->FindBone("ValveBiped.Bip01_R_Hand"), gunHand = vm.FindBone("ValveBiped.Bip01_R_Hand");
+// c_arms (Garry's Mod style): the CS:GO c_ view models ship without hands, only the ValveBiped arm bones they
+// animate. The player's own CS:S agent has the same skeleton, so each of its arms is moved by one rigid transform:
+// the hand lands exactly on the view model's hand bone of the same side and the forearm follows, so the trigger hand
+// and the support hand both sit on the gun.
+void DrawViewModelArm(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm,
+                      const std::vector<matrix3x4_t>& pose, const matrix3x4_t& xf, const StudioDrawParams& dp, char side) {
+  if (!pm || pose.empty()) return;
+  char bone[40]; snprintf(bone, sizeof bone, "ValveBiped.Bip01_%c_Hand", side);
+  const int agentHand = pm->FindBone(bone), gunHand = vm.FindBone(bone);
   if (agentHand < 0 || gunHand < 0 || agentHand >= (int)pose.size() || gunHand >= (int)vmBones.size()) return;
   matrix3x4_t handInv, world;
   MatrixInvert(pose[agentHand], handInv);
   ConcatTransforms(vmBones[gunHand], handInv, world);
   ConcatTransforms(xf, world, world);
+  char tag[8]; snprintf(tag, sizeof tag, "_%c_", side);
   thread_local std::vector<uint8_t> mask;
   mask.assign(pm->bones.size(), 0);
+  int n = 0;
   for (size_t i = 0; i < pm->bones.size(); i++) {
-    const std::string& n = pm->bones[i].name;
-    if (n.find("_R_Forearm") != std::string::npos || n.find("_R_Hand") != std::string::npos || n.find("_R_Finger") != std::string::npos)
-      mask[i] = 1;
+    const std::string& nm = pm->bones[i].name;
+    for (const char* part : { "Forearm", "Hand", "Finger", "Wrist" })
+      if (nm.find(std::string(tag) + part) != std::string::npos) { mask[i] = 1; n++; break; }
   }
+  if (!n) return;
   SrcMdl_Draw(*pm, pose, world, dp, 0, &mask);
+}
+void DrawViewModelArms(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm,
+                       const std::vector<matrix3x4_t>& pose, const matrix3x4_t& xf, const StudioDrawParams& dp) {
+  DrawViewModelArm(vm, vmBones, pm, pose, xf, dp, 'R');   // the trigger hand
+  DrawViewModelArm(vm, vmBones, pm, pose, xf, dp, 'L');   // the support hand
 }
 // the CS:GO models of the ARC9 port have no ACT_* activities - their sequences are named by hand ("idle", "shoot1",
 // "reload", "draw", ...), so an activity is mapped to the matching label when the activity search finds nothing
