@@ -169,7 +169,9 @@ def build(name, items, out_dir):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for entry in sorted(data):
             info = zipfile.ZipInfo(entry, date_time=(2024, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_STORED if entry.endswith(".bsp") else zipfile.ZIP_DEFLATED
+            # .bsp files are mostly raw, uncompressed VTF/lightmap data: deflating them saves ~55% and the game
+            # anyway unpacks the archive once, so there is no reason to store them
+            info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
             z.writestr(info, data[entry])
     print(f"  {name}: {len(data)} files, {os.path.getsize(path) / 1048576:.1f} MB "
