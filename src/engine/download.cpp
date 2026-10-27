@@ -400,7 +400,7 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
 // the archive packs unpack into their own destination folder, so their marker lives there too
 // bump this whenever the content of the archive changes: an install that already unpacked an older archive would
 // otherwise never see the new files (the marker says "done")
-constexpr int kContentVersion = 2;
+constexpr int kContentVersion = 3;
 fs::path PackMarker(const Pack& p) { return fs::path(p.zipAsset || !p.files ? (p.dest ? p.dest : kDest) : kExtras) / (std::string(".pack_") + p.id); }
 bool PackDone(const Pack& p) {
   std::error_code ec;

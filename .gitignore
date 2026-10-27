@@ -20,3 +20,7 @@ third_party/raylib-*/
 # documentation screenshots are tracked
 !docs/screenshots/
 !docs/screenshots/*.png
+
+# python bytecode from the content builder
+__pycache__/
+*.pyc

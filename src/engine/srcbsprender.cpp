@@ -281,8 +281,14 @@ void CWorldRenderer::BuildSrc() {
   static const char* suf[6] = { "rt", "bk", "lf", "ft", "up", "dn" };
   int skyOk = 0;
   for (int i = 0; i < 6; i++) {
-    const SrcMaterial& sm = SrcMat_Find("skybox/" + W.skyName + suf[i]);
-    if (sm.ok && sm.tex.id) { m_srcSky[i] = sm.tex; SetTextureWrap(m_srcSky[i], TEXTURE_WRAP_CLAMP); skyOk++; }
+    // a CS:S sky set is often only shipped in its HDR flavour (sky_dust_hdr{bk,dn,...}): the map still asks for the
+    // plain name, so fall back to <sky>_hdr<suffix> before giving up on the sky
+    const SrcMaterial* sm = &SrcMat_Find("skybox/" + W.skyName + suf[i]);
+    if (!sm->ok || !sm->tex.id) {
+      const SrcMaterial& hdr = SrcMat_Find("skybox/" + W.skyName + "_hdr" + suf[i]);
+      if (hdr.ok && hdr.tex.id) sm = &hdr;
+    }
+    if (sm->ok && sm->tex.id) { m_srcSky[i] = sm->tex; SetTextureWrap(m_srcSky[i], TEXTURE_WRAP_CLAMP); skyOk++; }
   }
   m_hasSky = skyOk == 6;
   numTris = tris; numVerts = tris * 3; numChunks = (int)m_bspChunks.size();

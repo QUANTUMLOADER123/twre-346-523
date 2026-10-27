@@ -345,12 +345,14 @@ def map_asset_items(tree, entries=None):
                 if cand.startswith(matdir) and cand.endswith((".vmt", ".vtf")):
                     out.append((cand, BASE_URL + cand))
         if sky:
-            for suf in ("rt", "bk", "lf", "ft", "up", "dn"):
-                for ext in (".vmt", ".vtf"):
-                    cand = f"materials/skybox/{sky}{suf}{ext}"
-                    if cand in have:
-                        out.append((cand, BASE_URL + cand))
-                        added += 1
+            # the CS:S repository keeps a lot of sky sets only in their HDR flavour
+            for name in (sky, sky + "_hdr"):
+                for suf in ("rt", "bk", "lf", "ft", "up", "dn"):
+                    for ext in (".vmt", ".vtf"):
+                        cand = f"materials/skybox/{name}{suf}{ext}"
+                        if cand in have:
+                            out.append((cand, BASE_URL + cand))
+                            added += 1
         print(f"  map assets: {e.rsplit('/', 1)[-1]}: {len(mats)} materials, {len(props)} prop models, "
               f"sky {sky}, {added} files found", flush=True)
     return out
