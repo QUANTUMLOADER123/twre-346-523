@@ -294,13 +294,14 @@ void BuildCsgoBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector<m
   pv.Set("move_blend_crouch", crouch ? 1.f : 0.f);
   pv.Set("move_blend_walk", (!crouch && moving && !run) ? 1.f : 0.f);
   pv.Set("move_blend_run", (!crouch && run) ? 1.f : 0.f);
-  // locomotion: the 9-way grid (per weapon family, so the arms hold the gun the right way)
-  std::string moveSeq = "move_c";
-  if (wc == "knife" && Seq(m, "move_knife_c")) moveSeq = "move_knife_c";
-  else if (wc == "grenade" && Seq(m, "move_grenade_c")) moveSeq = "move_grenade_c";
-  else if (wc == "c4" && Seq(m, "move_c4_c")) moveSeq = "move_c4_c";
+  // locomotion: the plain per-weapon walk/run cycle ("move", "move_knife", ...). The "move_c" 9-way grid
+  // needs the CS:GO animstate layering on top and comes out crouched / squashed when sampled alone.
+  std::string moveSeq = "move";
+  if (wc == "knife" && Seq(m, "move_knife")) moveSeq = "move_knife";
+  else if (wc == "grenade" && Seq(m, "move_grenade")) moveSeq = "move_grenade";
+  else if (wc == "c4" && Seq(m, "move_c4")) moveSeq = "move_c4";
   SrcSeqRef base = Seq(m, moveSeq);
-  if (!base) base = Seq(m, "move");
+  if (!base) base = Seq(m, "move_c");
   float cycle = moving ? in.moveCycle : std::fmod(now / std::max(0.1f, m.SeqDuration(base)), 1.f);
   m.SampleSeq(base, cycle, pv, pos, q);
   if (crouch) { SrcSeqRef rc = Seq(m, "recrouch_generic"); if (rc) { m.SampleSeq(rc, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); } }
