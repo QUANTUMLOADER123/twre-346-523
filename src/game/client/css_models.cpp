@@ -17,7 +17,7 @@
 ConVar cl_real_models("cl_real_models", "1", FCVAR_ARCHIVE, "Use the real player / weapon models from the content (CS:GO agents first, CS:S as a fallback)");
 ConVar cl_real_viewmodels("cl_real_viewmodels", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source view models (with hands) when CS:S content is installed");
 ConVar cl_css_anim_layers("cl_css_anim_layers", "255", FCVAR_CHEAT, "debug: 1 jump 2 upper 4 reload 8 aim 16 shoot");
-ConVar cl_r8_model("cl_r8_model", "0", FCVAR_ARCHIVE, "Use the CS:GO R8 Revolver model (no hands on that model) instead of the CS:S pistol");
+ConVar cl_r8_model("cl_r8_model", "1", FCVAR_ARCHIVE, "Use the real CS:GO R8 Revolver view model (with its own hands) instead of the CS:S pistol");
 ConVar cl_csgo_models("cl_csgo_models", "1", FCVAR_ARCHIVE, "Use the downloaded CS:GO models (SCAR-20, SSG 08, molotov, incendiary) instead of the CS:S stand-ins");
 ConVar cl_csgo_viewmodel_fov("cl_csgo_viewmodel_fov", "68", FCVAR_ARCHIVE, "Field of view of the CS:GO (c_) view models - CS:GO's viewmodel_fov", true, 40, true, 90);
 ConVar cl_real_viewmodel_fov("cl_real_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
@@ -771,7 +771,12 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     return nullptr;
   };
   bool csgo = false;
-  if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) { m = LoadedOrNull(SrcMdl_Get(kR8View)); r8 = m && !m->seqs.empty(); if (!r8) m = nullptr; }
+  if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) {
+    // the TTT R8 view model: the real CS:GO revolver WITH its hands baked in (the c_ models of the ARC9 port have no
+    // hands at all, and gluing the agent's arms onto them never lines up - the result was a black slab)
+    // the TTT R8 view model: the real CS:GO revolver with its own hands
+    m = LoadedOrNull(SrcMdl_Get(kR8View)); r8 = m && !m->seqs.empty(); if (!r8) m = nullptr;
+  }
   if (!m && cl_real_viewmodels.GetBool()) m = cssView(nullptr);
   if (!m) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
   if (!m) m = cssView(nullptr);
@@ -851,7 +856,10 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   float bt = bobTime * 2.f * (float)M_PI / 0.8f;
   QAngle ang = view.angles; ang.x += sway.x * 0.3f; ang.y += sway.y * 0.3f;
   // CS:S view models sit to the right of and below the eye; without this the hands hang off the bottom of the screen
-  Vector org = view.origin + view.right * cl_css_vm_x.GetFloat() - view.up * cl_css_vm_y.GetFloat() + view.forward * cl_css_vm_z.GetFloat();
+  // the CS:S view models sit a bit right / below the eye in their own coordinate space; the CS:GO models (csgo, r8)
+  // are already built around the eye, so the offset only applies to the CS:S ones
+  Vector org = view.origin;
+  if (!csgo && !r8) org += view.right * cl_css_vm_x.GetFloat() - view.up * cl_css_vm_y.GetFloat() + view.forward * cl_css_vm_z.GetFloat();
   org += view.forward * (std::sin(bt) * 0.4f * bob) - view.up * (landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * bob);
   matrix3x4_t xf; AngleMatrix(ang, org, xf);
   // CS:S v_ models are built left-handed (the game mirrors them for cl_righthand 1), the CS:GO R8 is right-handed
@@ -862,17 +870,38 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   StudioLight L;
   if (g_WorldRender.built) { LightSample s = g_WorldRender.SampleLight(view.origin); L.ambient = s.ambient * 1.15f; L.direct = s.direct * 0.8f; L.dir = s.dir; }
   L.ambient = L.ambient * (0.35f + 0.65f * cl.worldBrightness); L.direct = L.direct * cl.worldBrightness;
+  // view models are lit by the map light, which is far too dark for the near-black CS:GO guns (the R8 looked like a
+  // silhouette): a fill light keeps the metal readable while the shading still follows the map
+  L.ambient = VecMax(L.ambient, Vector(0.62f, 0.62f, 0.66f));
+  L.direct = VecMax(L.direct, Vector(0.85f, 0.85f, 0.9f));
   if (cl.nightvision) L.ambient = Vector(0.9f, 1.2f, 0.9f);
   StudioDrawParams dp; dp.light = L; dp.eye = view.origin;
 
   Matrix proj = BuildProjection(view.VerticalFov((r8 || csgo ? cl_csgo_viewmodel_fov : cl_real_viewmodel_fov).GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
   Render_ClearDepth();
   Render_Begin3D(view.view, proj);
-  SrcMdl_Draw(*m, bones, xf, dp);
+  // the ARC9 c_ models of some guns keep a copy of the hands in their bind pose, weighted to root-level ValveBiped
+  // bones: those vertices are dropped and the agent's own arms are drawn on the gun instead. The R8 addon model (r8)
+  // carries real, animated hands, so nothing is cut there.
+  thread_local std::vector<uint8_t> bindHands;
+  const CSrcModel* armsFrom = nullptr;
+  if (csgo) {
+    bindHands.assign(m->bones.size(), 0);
+    bool any = false;
+    for (size_t i = 0; i < m->bones.size(); i++) {
+      const std::string& bn = m->bones[i].name;
+      // a hand / finger / arm bone without a parent is a bind-pose copy that nothing animates
+      const bool handish = bn.find("ValveBiped") != std::string::npos || bn.find("Finger") != std::string::npos ||
+                           bn.find("_Hand") != std::string::npos || bn.find("_Arm") != std::string::npos;
+      if (handish && (m->bones[i].parent < 0 || bn.find("ValveBiped") != std::string::npos)) { bindHands[i] = 1; any = true; }
+    }
+    if (!any) bindHands.clear();
+    armsFrom = PlayerModel(p);
+  }
+  SrcMdl_Draw(*m, bones, xf, dp, 0, nullptr, false, bindHands.empty() ? nullptr : &bindHands);
   if (csgo) DrawCsgoScope(*m, bones, xf, dp);
   // CS:GO view models ship without hands: the agent's own arms are attached to the gun's hand bone. The CS:S view
   // models already carry their hands, so nothing is glued on them.
-  const CSrcModel* armsFrom = (csgo || r8) ? PlayerModel(p) : nullptr;
   if (armsFrom) {
     thread_local PlayerPoseOutput armPose;
     PlayerPoseInput ain;

@@ -106,6 +106,7 @@ struct Vars {
     bool tracers = true; Col tracerCol = MkCol(150, 130, 255, 220);
     bool impacts = false;
     bool grenadePrediction = true; Col grenadeCol = MkCol(150, 200, 60, 220);
+    bool grenadeFlight = true;   // live trajectory of a grenade that is already in the air
     bool spreadCircle = false;
     float fov = 0, zoomFov = 0, viewmodelFov = 68;
     bool hitmarker3d = true; bool damageMarker = true;
@@ -124,7 +125,7 @@ struct Vars {
     bool killsay = false;
     bool logHits = true, logHurt = true, logPurchases = false;
     bool clantag = false;
-    int quickPeekKey = 0; // 0 off, 1 ALT, 2 Duck+Shift, 3 Shift
+    KeyBind quickPeekKey;   // same bind widget as the duck peek assist
     int quickPeekDist = 150;
     Col accent = MkCol(150, 200, 60);
     Col menuCol = MkCol(170, 12, 12);          // aimware red
@@ -189,6 +190,8 @@ void Misc_CreateMove(CUserCmd& cmd, CCSPlayer* lp, const QAngle& viewAngles);
 void Misc_AutoBuy();
 void Visuals_Paint();
 void Visuals_DrawWorld3D(const CViewSetup& view);
+// defensive double tap: the fake model (= what the server / other players see) trails the real position by 500 ms
+bool DefensiveFakeOrigin(Vector& out);
 
 void FixMovement(CUserCmd& cmd, const QAngle& wishAngles);
 bool InGameInput();   // keyboard currently goes to the game (not chat/console/menus)

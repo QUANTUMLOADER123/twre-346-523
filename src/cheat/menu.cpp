@@ -108,7 +108,7 @@ static void RegisterVars() {
   R("vis.chams_fake", s.chamsFake); R("vis.chams_fake_col", s.chamsFakeCol); R("vis.scope_blend", s.scopeBlend); R("vis.noflash", s.removeFlash); R("vis.nosmoke", s.removeSmoke);
   R("vis.noscope2", s.removeScope); R("vis.novisrecoil", s.removeRecoil); R("vis.nightmode", s.nightmode); R("vis.tp_key", s.thirdpersonKey); R("vis.tp_dist", s.thirdpersonDist);
   R("vis.tp_dead", s.thirdpersonDead); R("vis.force_xhair", s.forceCrosshair); R("vis.pen_xhair", s.penCrosshair); R("vis.tracers", s.tracers); R("vis.tracer_col", s.tracerCol);
-  R("vis.impacts", s.impacts); R("vis.nade_pred", s.grenadePrediction); R("vis.nade_col", s.grenadeCol); R("vis.spread", s.spreadCircle); R("vis.fov", s.fov); R("vis.zoomfov", s.zoomFov);
+  R("vis.impacts", s.impacts); R("vis.nade_pred", s.grenadePrediction); R("vis.nade_flight", s.grenadeFlight); R("vis.nade_col", s.grenadeCol); R("vis.spread", s.spreadCircle); R("vis.fov", s.fov); R("vis.zoomfov", s.zoomFov);
   R("vis.vmfov", s.viewmodelFov); R("vis.hitmarker3d", s.hitmarker3d); R("vis.dmgmarker", s.damageMarker); R("vis.indicators", s.indicators); R("vis.arrows", s.aaArrows);
   R("vis.arrow_col", s.arrowCol); R("vis.watermark", s.watermark); R("vis.keybinds", s.keybindList); R("vis.spectators", s.spectatorList); R("vis.weapons", s.droppedWeapons);
   R("vis.bomb", s.bombEsp); R("vis.nades", s.grenadeEsp);
@@ -118,7 +118,7 @@ static void RegisterVars() {
   R("misc.clantag", m.clantag); R("misc.quickpeek_key", m.quickPeekKey); R("misc.quickpeek_dist", m.quickPeekDist); R("misc.accent", m.accent); R("misc.menu_col", m.menuCol); R("misc.menu_key", m.menuKey); R("misc.dpi", m.dpi);
   g_NamedBinds = { { "Ragebot", &r.key }, { "Minimum damage override", &r.minDamageOverrideKey }, { "Force body aim", &r.forceBaimKey }, { "Force safe point", &r.forceSafeKey },
     { "Double tap", &r.doubletapKey }, { "Hide shots", &r.hideshotsKey }, { "Anti-aim inverter", &a.inverter }, { "Freestanding", &a.freestandKey },
-    { "Manual left", &a.manualLeft }, { "Manual right", &a.manualRight }, { "Manual back", &a.manualBack }, { "Duck peek assist", &a.fakeDuckKey },
+    { "Manual left", &a.manualLeft }, { "Manual right", &a.manualRight }, { "Manual back", &a.manualBack }, { "Duck peek assist", &a.fakeDuckKey }, { "Quick peek assist", &m.quickPeekKey },
     { "Slow motion", &a.slowWalkKey }, { "Thirdperson", &s.thirdpersonKey }, { "Edge jump", &m.edgeJumpKey } };
 }
 
@@ -607,7 +607,7 @@ static void PaintRage(float x, float y, float w, float h) {
   Combo("Anti-aim correction", r.resolver, { "Off", "Default", "Bruteforce" });
   Checkbox("Double tap", r.doubletap); KeyBindW("rage.dtkey", r.doubletapKey);
   Combo("Double tap mode", r.doubletapMode, { "Offensive", "Defensive" });
-  Combo("Quick Peek", v.misc.quickPeekKey, { "Off", "ALT", "Duck+Shift", "Shift" });
+  LabelW("Quick peek assist"); KeyBindW("misc.quickpeek", v.misc.quickPeekKey);
   float qpDist = (float)v.misc.quickPeekDist;
   SliderF("Quick Peek dist", qpDist, 50.f, 300.f);
   v.misc.quickPeekDist = (int)qpDist;
@@ -706,7 +706,8 @@ static void PaintVisuals(float x, float y, float w, float h) {
   Checkbox("Penetration reticle", s.penCrosshair);
   Checkbox("Bullet tracers", s.tracers); ColorPickerW("tracer", s.tracerCol);
   Checkbox("Bullet impacts", s.impacts);
-  Checkbox("Grenade trajectory", s.grenadePrediction); ColorPickerW("nade", s.grenadeCol);
+  Checkbox("Grenade trajectory", s.grenadePrediction);
+  Checkbox("Grenade in-flight path", s.grenadeFlight); ColorPickerW("nade", s.grenadeCol);
   Checkbox("Spread circle", s.spreadCircle);
   SliderF("Override FOV", s.fov, 0, 130, "%.0f°", 1, "Off");
   SliderF("Override zoom FOV", s.zoomFov, 0, 100, "%.0f%%", 1, "Off");

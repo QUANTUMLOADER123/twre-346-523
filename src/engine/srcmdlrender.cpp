@@ -6,7 +6,7 @@
 #include <cmath>
 #include <algorithm>
 
-void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin, const std::vector<uint8_t>* boneMask, bool strictMask) {
+void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin, const std::vector<uint8_t>* boneMask, bool strictMask, const std::vector<uint8_t>* skipBones) {
   if (!m.loaded || m.meshes.empty()) return;
   thread_local std::vector<matrix3x4_t> sk;
   m.SkinMatrices(bones, modelToWorld, sk);
@@ -23,7 +23,7 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
   const float det = X[0][0] * (X[1][1] * X[2][2] - X[1][2] * X[2][1]) - X[0][1] * (X[1][0] * X[2][2] - X[1][2] * X[2][0]) + X[0][2] * (X[1][0] * X[2][1] - X[1][1] * X[2][0]);
   const bool mirrored = det < 0.f;
   if (mirrored) rlSetCullFace(RL_CULL_FACE_FRONT);
-  thread_local std::vector<Vector> wp; thread_local std::vector<Color> wc; thread_local std::vector<uint8_t> vok;
+  thread_local std::vector<Vector> wp; thread_local std::vector<Color> wc; thread_local std::vector<uint8_t> vok, sok;
   // opaque meshes first, translucent ones after
   for (int pass = 0; pass < 2; pass++) {
     for (const SrcMdlMesh& me : m.meshes) {
@@ -33,6 +33,20 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
       if ((pass == 1) != translucent) continue;
       const size_t vc = me.pos.size() / 3;
       wp.resize(vc); wc.resize(vc);
+      // vertices weighted only to the skipped bones (the bind-pose hands some ARC9 view models carry) are dropped: a
+      // triangle that has no other vertex is not drawn at all
+      if (skipBones) {
+        sok.assign(vc, 1);
+        for (size_t v = 0; v < vc; v++) {
+          bool onlySkipped = true, any = false;
+          for (int k = 0; k < 3; k++) {
+            int b = me.bone[v * 3 + k]; if (me.weight[v * 3 + k] <= 0) continue;
+            any = true;
+            if (b < 0 || b >= (int)skipBones->size() || !(*skipBones)[b]) { onlySkipped = false; break; }
+          }
+          if (any && onlySkipped) sok[v] = 0;
+        }
+      }
       if (boneMask) {
         // a vertex belongs to the masked part if any of its influences is in the mask (arm vertices blend into the
         // shoulder, so requiring all three would cut the whole arm away)
@@ -97,6 +111,7 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
         rlBegin(RL_TRIANGLES);
         for (size_t t = t0; t < t1; t++) {
           if (boneMask && !(vok[me.idx[t * 3]] && vok[me.idx[t * 3 + 1]] && vok[me.idx[t * 3 + 2]])) continue;
+          if (skipBones && !(sok[me.idx[t * 3]] || sok[me.idx[t * 3 + 1]] || sok[me.idx[t * 3 + 2]])) continue;
           for (int q = 0; q < 3; q++) {
             uint16_t vi = me.idx[t * 3 + q]; const Vector& v = wp[vi]; const Color& c = wc[vi];
             rlColor4ub(c.r, c.g, c.b, c.a); rlTexCoord2f(me.uv[vi * 2], me.uv[vi * 2 + 1]); rlVertex3f(v.x, v.y, v.z);

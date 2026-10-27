@@ -417,6 +417,11 @@ static ConCommand mat_check("mat_check", [](const CCommand& c) {
   CSrcModel* md = SrcMdl_Get(c.Arg(1));
   if (!md) { Msg("can't load %s\n", c.Arg(1)); return; }
   int bad = 0;
-  for (auto& t : md->textures) { const SrcMaterial& m = SrcMat_FindInDirs(t, md->cdmaterials); if (!m.ok || m.texMissing) { Msg("missing %s (dirs:", t.c_str()); for (auto& d : md->cdmaterials) Msg(" %s", d.c_str()); Msg(")\n"); bad++; } }
+  const bool verbose = c.ArgC() > 2;
+  for (auto& t : md->textures) {
+    const SrcMaterial& m = SrcMat_FindInDirs(t, md->cdmaterials);
+    if (!m.ok || m.texMissing) { Msg("missing %s (dirs:", t.c_str()); for (auto& d : md->cdmaterials) Msg(" %s", d.c_str()); Msg(")\n"); bad++; }
+    else if (verbose) Msg("tex %s ok=%d %dx%d translucent=%d alphatest=%d additive=%d alpha=%.2f color=%.2f %.2f %.2f\n", t.c_str(), (int)m.ok, m.width, m.height, (int)m.translucent, (int)m.alphatest, (int)m.additive, m.alpha, m.color.x, m.color.y, m.color.z);
+  }
   Msg("%d / %d textures unresolved\n", bad, (int)md->textures.size());
 }, "Report the materials a model or the current map cannot resolve");

@@ -87,6 +87,7 @@ bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& l
   StudioDrawParams base; base.light = light; base.eye = view.origin;
   if (p->IsLocalPlayer()) {
     // fake model (what other players see: client side feet yaw)
+    bool fakeDrawn = false;
     if (s.chamsFake && v.aa.enabled && v.aa.bodyYaw) {
       float delta = AngleDiff(p->m_PlayerAnimState.m_flFootYaw, p->m_flFakeFootYaw); // main model = sent yaw, ghost = desynced server body
       matrix3x4_t rot; AngleMatrix(QAngle(0, delta, 0), rot);
@@ -96,6 +97,23 @@ bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& l
       PlayerPoseOutput fake = pose; ConcatTransforms(t2, pose.modelToWorld, fake.modelToWorld); ConcatTransforms(t2, pose.weaponToWorld, fake.weaponToWorld); ConcatTransforms(t2, pose.cssToWorld, fake.cssToWorld);
       StudioDrawParams fp = base; fp.flags = STUDIO_FLAT_COLOR; fp.colorOverride = s.chamsFakeCol;
       DrawModelWithWeapon(fake, false, fp);
+      fakeDrawn = true;
+    }
+    // defensive double tap: the server still has us at the position of half a second ago, so the fake model is shown
+    // there - that is exactly the spot the enemies can hit (and it stays behind while we walk)
+    Vector lag;
+    if (DefensiveFakeOrigin(lag)) {
+      Vector delta = lag - p->m_vecRenderOrigin;
+      if (delta.LengthSqr() > 1.f) {
+        matrix3x4_t shift; shift.SetOrigin(delta);
+        PlayerPoseOutput fake = pose;
+        ConcatTransforms(shift, pose.modelToWorld, fake.modelToWorld);
+        ConcatTransforms(shift, pose.weaponToWorld, fake.weaponToWorld);
+        ConcatTransforms(shift, pose.cssToWorld, fake.cssToWorld);
+        StudioDrawParams fp = base; fp.flags = STUDIO_FLAT_COLOR;
+        fp.colorOverride = s.chamsFake ? s.chamsFakeCol.Alpha(110) : MkCol(80, 160, 255, 110);
+        if (!fakeDrawn || delta.LengthSqr() > 64.f) DrawModelWithWeapon(fake, false, fp);
+      }
     }
     C_WeaponCSBase* w = p->GetActiveCSWeapon();
     bool scoped = w && w->IsZoomed();
@@ -143,6 +161,38 @@ bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& l
 // 3D
 static void DrawCapsuleLines(const mstudiobbox_t& b, Color c) {
   DrawCapsuleWires({ b.a.x, b.a.y, b.a.z }, { b.b.x, b.b.y, b.b.z }, b.radius, 8, 3, c);
+}
+
+// live trajectory of every grenade that is already flying: the path it has flown (from its trail) and the rest of the
+// path from its current velocity, so you see where it will land while it is still in the air
+static void DrawGrenadeFlight() {
+  auto& s = v.vis;
+  if (!s.grenadeFlight) return;
+  rlDrawRenderBatchActive(); rlDisableDepthTest();
+  for (C_BaseEntity* e : g_EntityList.All()) {
+    if (!e || e->m_bMarkedForDeletion || e->m_iEntClass != ENTCLASS_GRENADE_PROJECTILE) continue;
+    CBaseCSGrenadeProjectile* gp = (CBaseCSGrenadeProjectile*)e;
+    if (gp->m_bDetonated) continue;
+    const Col c = Col(s.grenadeCol);
+    // flown part
+    const auto& tr = gp->m_Trail;
+    for (size_t i = 1; i < tr.size(); i++)
+      DrawLine3D({ tr[i - 1].x, tr[i - 1].y, tr[i - 1].z }, { tr[i].x, tr[i].y, tr[i].z }, c.Alpha(90));
+    // the rest of the flight
+    GrenadePath path;
+    PredictGrenadePath(gp->m_iWeaponID, gp->m_vecOrigin, gp->m_vecVelocity, path, gp);
+    for (size_t i = 1; i < path.points.size(); i++) {
+      const Vector &a = path.points[i - 1], &b = path.points[i];
+      DrawLine3D({ a.x, a.y, a.z }, { b.x, b.y, b.z }, c);
+    }
+    for (const Vector& b : path.bounces) DrawCubeWires({ b.x, b.y, b.z }, 3, 3, 3, { 255, 255, 255, 200 });
+    const Vector& d = path.detonate;
+    for (int i = 0; i < 24; i++) {
+      float a0 = i * 2 * M_PI_F / 24, a1 = (i + 1) * 2 * M_PI_F / 24;
+      DrawLine3D({ d.x + std::cos(a0) * 12, d.y + std::sin(a0) * 12, d.z + 2 }, { d.x + std::cos(a1) * 12, d.y + std::sin(a1) * 12, d.z + 2 }, c.Alpha(200));
+    }
+  }
+  rlDrawRenderBatchActive(); rlEnableDepthTest();
 }
 
 void Visuals_DrawWorld3D(const CViewSetup& view) {
@@ -198,6 +248,7 @@ void Visuals_DrawWorld3D(const CViewSetup& view) {
       }
     }
   }
+  DrawGrenadeFlight();
 }
 
 // ------------------------------------------------------------------------------------------------

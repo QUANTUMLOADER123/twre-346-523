@@ -23,6 +23,9 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE_URL = "https://raw.githubusercontent.com/bouletmarc/css_content/master/"
+# the second CS:S dump: a fuller cstrike folder (materials, models/props, maps). It is indexed after BASE_URL, so a
+# path that both have comes from bouletmarc and everything that only one of them has is still found.
+CSS2_URL = "https://raw.githubusercontent.com/razenxc/css_content/main/"
 WEAPON_URL = "https://raw.githubusercontent.com/Seulyy/ARC9-GSR/5e16cf9baa37348fc82ba0c824d842dbcb44ab18/"
 MAP_URL = "https://raw.githubusercontent.com/wiktorxxiii/csgo-fastdl/HEAD/csgo/"
 R8_URL = ("https://raw.githubusercontent.com/EntranceJew/gmod-addons/"
@@ -252,14 +255,18 @@ def bsp_map_assets(d):
 
 
 def css_tree():
-    """every file path of the CS:S content repository"""
-    try:
-        d = fetch("https://api.github.com/repos/bouletmarc/css_content/git/trees/master?recursive=1", headers=auth_headers())
-        import json
-        return {t["path"] for t in json.loads(d)["tree"] if t["type"] == "blob"}
-    except Exception as e:  # noqa: BLE001 - best effort, the pack is still built
-        print(f"  map assets: can't list the CS:S repository ({e})", flush=True)
-        return set()
+    """{path: url} of every file the two CS:S content dumps provide (the first one wins on a shared path)"""
+    import json
+    index = {}
+    for repo, ref, base in (("bouletmarc/css_content", "master", BASE_URL), ("razenxc/css_content", "main", CSS2_URL)):
+        try:
+            d = fetch(f"https://api.github.com/repos/{repo}/git/trees/{ref}?recursive=1", headers=auth_headers())
+            for t in json.loads(d)["tree"]:
+                if t["type"] == "blob" and t["path"] not in index:
+                    index[t["path"]] = base + t["path"]
+        except Exception as e:  # noqa: BLE001 - best effort, the pack is still built
+            print(f"  map assets: can't list {repo} ({e})", flush=True)
+    return index
 
 
 def icon_items():
@@ -314,10 +321,10 @@ def port_map_items():
 
 
 def map_asset_items(tree, entries=None):
-    """the materials / prop models / skyboxes the shipped maps reference, as far as the CS:S repository has them"""
-    have = tree
+    """the materials / prop models / skyboxes the shipped maps reference, as far as the CS:S dumps have them"""
+    have = tree      # {path: url}
     out = []
-    for e in (entries if entries is not None else map_entries()):
+    for e in (entries if entries is not None else map_entries() + map_entries("s_cssMapFiles")):
         url = e if e.startswith(("http://", "https://")) else MAP_URL + e
         try:
             if e in PORT_CACHE:
@@ -330,20 +337,20 @@ def map_asset_items(tree, entries=None):
         mats, props, sky = bsp_map_assets(data)
         added = 0
         for m in mats:
-            for cand in (f"materials/{m}.vmt", f"materials/{m}.vtf"):
+            for cand in (f"materials/{m}.vmt", f"materials/{m}.vtf", f"materials/{m}_normal.vtf"):
                 if cand in have:
-                    out.append((cand, BASE_URL + cand))
+                    out.append((cand, have[cand]))
                     added += 1
         for p in props:
             folder = p.rsplit("/", 1)[0]
             for ext in (".mdl", ".vvd", ".dx90.vtx", ".phy"):
                 cand = p[:-4] + ext
                 if cand in have:
-                    out.append((cand, BASE_URL + cand))
+                    out.append((cand, have[cand]))
             matdir = "materials/" + folder[len("models/"):].lower() + "/"
             for cand in have:
                 if cand.startswith(matdir) and cand.endswith((".vmt", ".vtf")):
-                    out.append((cand, BASE_URL + cand))
+                    out.append((cand, have[cand]))
         if sky:
             # the CS:S repository keeps a lot of sky sets only in their HDR flavour
             for name in (sky, sky + "_hdr"):
@@ -351,7 +358,7 @@ def map_asset_items(tree, entries=None):
                     for ext in (".vmt", ".vtf"):
                         cand = f"materials/skybox/{name}{suf}{ext}"
                         if cand in have:
-                            out.append((cand, BASE_URL + cand))
+                            out.append((cand, have[cand]))
                             added += 1
         print(f"  map assets: {e.rsplit('/', 1)[-1]}: {len(mats)} materials, {len(props)} prop models, "
               f"sky {sky}, {added} files found", flush=True)
@@ -409,7 +416,7 @@ def main():
     except Exception as e:  # noqa: BLE001 - content is best effort, the release must still ship
         print(f"  map assets: skipped ({e})", flush=True)
     # the maps themselves (their own materials ride inside each map's pakfile lump)
-    for e in map_entries():
+    for e in map_entries() + map_entries("s_cssMapFiles"):
         if e.startswith(("http://", "https://")):
             path = repo_path(e)
             if path.endswith(".bsp") and not path.startswith("maps/"):

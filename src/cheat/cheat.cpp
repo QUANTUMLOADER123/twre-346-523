@@ -11,7 +11,6 @@
 
 extern ConVar sv_maxusrcmdprocessticks;
 extern ConVar sv_maxdtshift;
-static ConVar quickPeekKey("quickpeek_key", "0", FCVAR_ARCHIVE, "Key for Quick Peek Assist (0=off, 1=ALT, 2=CTRL, 3=SHIFT)", true, 0, true, 3);
 static ConVar quickPeekDist("quickpeek_dist", "150", FCVAR_ARCHIVE, "Quick Peek distance (units)", true, 50, true, 300);
 
 namespace cheat {
@@ -45,18 +44,32 @@ static bool IsShooting(const CUserCmd& cmd, CCSPlayer* lp) {
   return (cmd.buttons & IN_ATTACK) && now >= w->m_flNextPrimaryAttack && now >= lp->m_flNextAttack && w->m_iClip1 > 0 && !w->IsReloading();
 }
 
-// Defensive DT: position history buffer (0.5s = ~32 ticks)
+// Defensive DT: position history buffer (0.5s = ~32 ticks), stamped with the server time it was recorded at
+static constexpr float kFakeTrailSeconds = 0.5f;   // the fake model trails the real position by half a second
 static std::vector<Vector> s_posHistory;
 static std::vector<QAngle> s_angHistory;
+static std::vector<float> s_timeHistory;
 static void RecordHistory(const Vector& pos, const QAngle& ang) {
-  s_posHistory.push_back(pos); s_angHistory.push_back(ang);
-  const int maxTicks = (int)(0.5f / gpGlobals->interval_per_tick);
-  while ((int)s_posHistory.size() > maxTicks) { s_posHistory.erase(s_posHistory.begin()); s_angHistory.erase(s_angHistory.begin()); }
+  s_posHistory.push_back(pos); s_angHistory.push_back(ang); s_timeHistory.push_back(ServerTime());
+  while (!s_timeHistory.empty() && ServerTime() - s_timeHistory.front() > kFakeTrailSeconds + 0.1f) {
+    s_posHistory.erase(s_posHistory.begin()); s_angHistory.erase(s_angHistory.begin()); s_timeHistory.erase(s_timeHistory.begin());
+  }
+}
+
+// the position the server still sees us at: exactly kFakeTrailSeconds ago, in defensive DT
+bool DefensiveFakeOrigin(Vector& out) {
+  if (v.rage.doubletapMode != 1 || !g.doubletapping || s_posHistory.empty()) return false;
+  const float want = ServerTime() - kFakeTrailSeconds;
+  // the newest sample that is at least 500 ms old (the buffer holds the last half second)
+  for (size_t i = s_posHistory.size(); i-- > 0;)
+    if (s_timeHistory[i] <= want) { out = s_posHistory[i]; return true; }
+  out = s_posHistory.front();
+  return (ServerTime() - s_timeHistory.front()) > 0.3f;   // not warmed up yet: no ghost for the first frames
 }
 
 void CreateMove(CUserCmd& cmd) {
   CCSPlayer* lp = g_pLocalPlayer;
-  if (!lp || !lp->IsAlive() || lp->m_iTeamNum < TEAM_TERRORIST) { g.choked = 0; cmd.bSendPacket = true; s_posHistory.clear(); s_angHistory.clear(); return; }
+  if (!lp || !lp->IsAlive() || lp->m_iTeamNum < TEAM_TERRORIST) { g.choked = 0; cmd.bSendPacket = true; s_posHistory.clear(); s_angHistory.clear(); s_timeHistory.clear(); return; }
   const QAngle view = cmd.viewangles;
   Misc_CreateMove(cmd, lp, view);
   size_t shotsBefore = g.shots.size();
@@ -114,11 +127,8 @@ void CreateMove(CUserCmd& cmd) {
   static bool s_peeking = false;
   static bool s_returning = false;
   static float s_peekSide = 0;
-  int qpKey = quickPeekKey.GetInt();
-  bool qpHeld = false;
-  if (qpKey == 1) qpHeld = (cmd.buttons & IN_ALT1) != 0;       // ALT
-  else if (qpKey == 2) qpHeld = (cmd.buttons & IN_DUCK) != 0 && (cmd.buttons & IN_SPEED) != 0;  // CTRL (duck+shift combo)
-  else if (qpKey == 3) qpHeld = (cmd.buttons & IN_SPEED) != 0 && !(cmd.buttons & IN_DUCK);  // SHIFT alone
+  // the same key bind widget the duck peek assist uses (hold / toggle / always on)
+  const bool qpHeld = v.misc.quickPeekKey.key != 0 && v.misc.quickPeekKey.Active();
   
   float peekDist = quickPeekDist.GetFloat();
   if (qpHeld && !s_peeking && !s_returning) {
