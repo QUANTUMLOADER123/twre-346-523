@@ -547,12 +547,21 @@ bool DownloadZipPack(const Pack& p, const std::string& url, double doneMB, std::
 
 void Worker() {
   PruneStaleMaps();
-  s_packs[0].url = cl_content_url_maps_go.GetString(); s_packs[0].api = cl_content_url_maps_go_api.GetString();
-  s_packs[1].url = cl_content_url_base.GetString(); s_packs[1].api = cl_content_url_base_api.GetString();
-  s_packs[2].url = cl_content_url_csgo.GetString(); s_packs[2].api = cl_content_url_csgo_api.GetString();
-  s_packs[3].url = cl_content_url_r8.GetString(); s_packs[3].api = cl_content_url_r8_api.GetString();
-  s_packs[4].url = cl_content_url_csgo.GetString(); s_packs[4].api = cl_content_url_csgo_api.GetString();
-  s_packs[5].url = cl_content_url_icons.GetString(); s_packs[5].api = cl_content_url_icons_api.GetString();
+  // the mirror of every single-file pack, matched by pack id (the pack list order may change)
+  const struct { const char* id; ConVar* url; ConVar* api; } kUrls[] = {
+    { "maps_go", &cl_content_url_maps_go, &cl_content_url_maps_go_api },
+    { "mapstex", &cl_content_url_maps_go, &cl_content_url_maps_go_api },
+    { "base", &cl_content_url_base, &cl_content_url_base_api },
+    { "weapons", &cl_content_url_csgo, &cl_content_url_csgo_api },
+    { "r8", &cl_content_url_r8, &cl_content_url_r8_api },
+    { "csgo", &cl_content_url_csgo, &cl_content_url_csgo_api },
+    { "icons", &cl_content_url_icons, &cl_content_url_icons_api },
+    { "agents", &cl_content_url_maps_go, &cl_content_url_maps_go_api },
+  };
+  for (auto& p : s_packs) {
+    p.url = cl_content_url_base.GetString(); p.api = cl_content_url_base_api.GetString();
+    for (auto& u : kUrls) if (std::strncmp(p.id, u.id, std::strlen(u.id)) == 0) { p.url = u.url->GetString(); p.api = u.api->GetString(); break; }
+  }
   double expected = 0; for (auto& p : s_packs) if (PackWanted(p)) expected += p.approxMB;
   { std::lock_guard<std::mutex> l(s_mtx); s_prog = Progress(); s_prog.state = RUNNING; s_prog.packCount = kPacks; s_prog.totalExpectedMB = expected; }
   std::error_code ec;
