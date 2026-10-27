@@ -138,6 +138,4 @@ jobs:
             artifacts/windows/dist/CounterStrikeHvH-windows.zip
             artifacts/windows/bin/cshvh.exe
             artifacts/android/cshvh.apk
-            artifacts/content/dist/cshvh-content-base.zip
-            artifacts/content/dist/cshvh-content-weapons.zip
-            artifacts/content/dist/cshvh-content-maps.zip
+            artifacts/content/dist/cshvh-content-*.zip

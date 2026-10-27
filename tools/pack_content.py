@@ -134,10 +134,15 @@ def build(name, items, out_dir):
     report.append((name, len(items), len(data), sorted(f[0] for f in failed)))
     if not data:
         raise SystemExit("nothing downloaded")
+    if failed and len(data) < len(items) * 0.9:
+        raise SystemExit(f"only {len(data)} of {len(items)} files downloaded")
     if failed:
-        # the game marks an unpacked archive as complete, so never ship a partial one: the single-file
-        # download (resumable, retried on the next start) handles the pack instead
-        raise SystemExit(f"{len(failed)} of {len(items)} files are unreachable")
+        # a few dead/renamed files are not a reason to drop a whole pack: the game marks an unpacked archive as
+        # done, so a missing texture only means one surface falls back. A larger hole means the mirror is down.
+        limit = max(3, len(items) // 50)
+        if len(failed) > limit:
+            raise SystemExit(f"{len(failed)} of {len(items)} files are unreachable")
+        print(f"  {name}: shipping without {len(failed)} file(s)", flush=True)
 
     path = os.path.join(out_dir, name)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
@@ -174,7 +179,7 @@ def main():
         return rest.split("/", 3)[3]
 
     def map_pack():
-        # the maps and the shared textures they reference, in one archive
+        # the .bsp files (their own materials ride inside each map's pakfile lump)
         out = []
         for e in map_entries():
             if e.startswith(("http://", "https://")):
@@ -184,9 +189,11 @@ def main():
                 out.append((path, e))
             else:
                 out.append((e, MAP_URL + e))
-        for u in quoted("src/engine/content_maps_textures.inc"):
-            out.append((repo_path(u), u))
         return out
+
+    def map_tex_pack():
+        # the CS:S era textures the CS:GO maps reference (same folder, separate archive)
+        return [(repo_path(u), u) for u in quoted("src/engine/content_maps_textures.inc")]
 
     def agent_pack():
         # real CS:GO agent models + materials (content/extras/csgo_agents)
@@ -198,6 +205,7 @@ def main():
     packs["cshvh-content-base.zip"] = base_pack
     packs["cshvh-content-weapons.zip"] = weapon_pack
     packs["cshvh-content-maps.zip"] = map_pack
+    packs["cshvh-content-maptex.zip"] = map_tex_pack
     packs["cshvh-content-agents.zip"] = agent_pack
 
     built = 0

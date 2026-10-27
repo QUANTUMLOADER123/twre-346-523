@@ -142,9 +142,11 @@ Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-constexpr int kPacks = 7;
+constexpr int kPacks = 8;
 Pack s_packs[kPacks] = {
-  { "maps_go4", "CS:GO maps (classic versions)", nullptr, 340, s_csgoMapFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maps.zip" },
+  { "maps_go4", "CS:GO maps (classic versions)", nullptr, 253, s_csgoMapFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maps.zip" },
+  // the CS:S era textures those maps reference (their own materials live in the map pakfile already)
+  { "mapstex", "CS:GO map textures", nullptr, 90, s_mapTextureFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maptex.zip" },
   // agents (4 CT + 4 T), sound effects, sound scripts and the stock Source map textures our CS:GO maps are
   // missing (only the materials they actually reference are listed)
   { "base3", "Agents, sounds and map textures", nullptr, 86, s_baseFiles, "content/css/cstrike", false, nullptr, "cshvh-content-base.zip" },
@@ -156,17 +158,6 @@ Pack s_packs[kPacks] = {
   // the real CS:GO agent models (4 CT + 4 T with their variants) - the CS:S stand-ins stay only as a fallback
   { "agents", "CS:GO agents", nullptr, 56, s_agentFiles, "content/extras/csgo_agents", false, nullptr, "cshvh-content-agents.zip" },
 };
-// the map pack is one archive: the .bsp files plus the shared textures they reference
-const char* const* MapPackFiles() {
-  static std::vector<const char*> v;
-  if (v.empty()) {
-    for (const char* const* f = s_csgoMapFiles; *f; f++) v.push_back(*f);
-    for (const char* const* f = s_mapTextureFiles; *f; f++) v.push_back(*f);
-    v.push_back(nullptr);
-  }
-  return v.data();
-}
-
 bool s_needCore = true;   // decided on the main thread in Start()
 bool s_haveCsgo = false;  // a local CS:GO install (pak01) - decided on the main thread, read by the worker
 
@@ -398,7 +389,8 @@ bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(
 bool PackWanted(const Pack& p) {
   if (PackDone(p)) return false;
   // a local CS:GO install already has every stock map and every texture, so both packs are not needed then
-  if (p.files == MapPackFiles() && s_haveCsgo) return false;
+  if (p.files == s_csgoMapFiles && s_haveCsgo) return false;
+  if (p.files == s_mapTextureFiles && s_haveCsgo) return false;
   if (p.files == s_baseFiles && s_haveCsgo) return false;   // a CS:GO install brings its own agents, weapons and sounds
   if (p.files == s_weaponFiles && s_haveCsgo) return false; // ... and its own CS:GO view models
   if (p.files == s_agentFiles && s_haveCsgo) return false;  // ... and its own CS:GO agent models
@@ -644,7 +636,6 @@ void DismissCoreHint() { std::error_code ec; fs::create_directories("content", e
 
 void Start() {
   if (s_busy) return;
-  s_packs[0].files = MapPackFiles();
   if (s_thread.joinable()) s_thread.join();
   s_haveCsgo = srcfs::CsgoAvailable();
   s_needCore = CoreContentMissing();
