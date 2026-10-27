@@ -27,6 +27,7 @@
 #include <sstream>
 #include <map>
 #include <cstring>
+#include <cctype>
 #include <filesystem>
 
 namespace {
@@ -454,6 +455,27 @@ bool CMapInfo::LoadSrc(const std::string& mapName) {
   return true;
 }
 
+// "de_nuke_ve" -> "Nuke": the names the map picker shows (the file names of the older versions are ugly)
+std::string PrettyMapName(const std::string& n) {
+  static const std::pair<const char*, const char*> t[] = {
+    { "de_dust2", "Dust II" }, { "de_dust", "Dust" }, { "de_inferno", "Inferno" }, { "de_nuke", "Nuke" }, { "de_train", "Train" },
+    { "de_aztec", "Aztec" }, { "de_cbble", "Cobblestone" }, { "de_chateau", "Chateau" }, { "de_piranesi", "Piranesi" }, { "de_port", "Port" },
+    { "de_prodigy", "Prodigy" }, { "de_tides", "Tides" }, { "de_mirage", "Mirage" }, { "de_cache", "Cache" }, { "de_overpass", "Overpass" },
+    { "de_seaside", "Seaside" }, { "de_cpl_mill", "Mill" }, { "de_cpl_strike", "Strike" }, { "de_tuscan", "Tuscan" }, { "de_forge", "Forge" },
+    { "cs_assault", "Assault" }, { "cs_compound", "Compound" }, { "cs_havana", "Havana" }, { "cs_italy", "Italy" }, { "cs_militia", "Militia" },
+    { "cs_office", "Office" }, { "cs_downtown", "Downtown" }, { "cs_backalley", "Backalley" },
+  };
+  // "de_dust2_old" / "de_dust2_16toGO" / "de_nuke_ve" / "de_train2014" all resolve through their stem
+  for (auto& e : t) {
+    size_t len = std::strlen(e.first);
+    if (n.compare(0, len, e.first) != 0) continue;
+    char next = n.size() > len ? n[len] : 0;
+    if (next && next != '_' && !std::isdigit((unsigned char)next)) continue;
+    return e.second;
+  }
+  return n;
+}
+
 std::vector<MapListEntry> ListMaps() {
   std::vector<MapListEntry> out;
   std::error_code ec;
@@ -486,7 +508,7 @@ std::vector<MapListEntry> ListMaps() {
       std::string n = hlfs::Lower(n0);
       if (n.rfind("test_", 0) == 0) continue;
       auto it = std::find_if(out.begin(), out.end(), [&](const MapListEntry& m) { return m.name == n; });
-      MapListEntry m; m.name = n; m.title = n; m.file = "css:" + n; m.desc = "Source";
+      MapListEntry m; m.name = n; m.title = PrettyMapName(n); m.file = "css:" + n; m.desc = "Source";
       m.mode = n.rfind("de_", 0) == 0 ? "bomb" : (n.rfind("cs_", 0) == 0 ? "hostage" : "elimination");
       if (it != out.end()) { m.title = it->title; *it = m; } else out.push_back(m);
     }

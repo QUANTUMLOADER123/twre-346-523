@@ -32,6 +32,8 @@ std::string LoosePath(const std::string& rel);      // real path of a loose file
 std::vector<std::string> List(const std::string& relDir, const std::string& ext);   // file stems in a directory
 // map pakfile
 void MountPak(std::vector<uint8_t> zip);
+// one file out of a zip embedded in a file on disk (a map's bsp pakfile) - used for the menu map previews
+bool ReadZipEntryFile(const std::string& path, const std::string& entry, std::vector<uint8_t>& out);
 int PakFileCount();                                  // files inside the mounted bsp pakfile (diagnostics)
 void UnmountPak();
 std::string Normalize(const std::string& rel);      // lower case, forward slashes, no leading slash, no "./"

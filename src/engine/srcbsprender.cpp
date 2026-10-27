@@ -80,7 +80,21 @@ void CWorldRenderer::BuildSrc() {
   int matOk = 0, matFallback = 0;
   for (size_t i = 0; i < W.materials.size(); i++) {
     mats[i] = &SrcMat_Find(W.materials[i]);
-    if (mats[i]->ok) matOk++; else matFallback++;
+    if (mats[i]->ok && !mats[i]->texMissing) matOk++; else matFallback++;
+  }
+  // the CS:S-only stock textures these old maps use are not redistributable: borrow the closest real material
+  // from the same folder (a wall stays a wall) instead of drawing the procedural placeholder
+  for (size_t i = 0; i < W.materials.size(); i++) {
+    if (mats[i]->ok && !mats[i]->texMissing) continue;
+    const std::string& key = W.materials[i];
+    size_t slash = key.find('/');
+    if (slash == std::string::npos) continue;
+    const std::string dir = key.substr(0, slash + 1);
+    for (size_t j = 0; j < W.materials.size(); j++) {
+      if (j == i || !mats[j]->ok || mats[j]->texMissing || W.materials[j].compare(0, dir.size(), dir) != 0) continue;
+      mats[i] = mats[j];
+      break;
+    }
   }
   // ---- lightmap atlas
   struct Slot { int x = -1, y = -1; };
@@ -120,8 +134,13 @@ void CWorldRenderer::BuildSrc() {
   for (int fi : order) {
     const SrcFace& f = W.faces[fi]; if (slot[fi].x < 0) continue;
     int w = f.lmSize[0] + 1, h = f.lmSize[1] + 1;
-    for (int ty = -1; ty <= h; ty++) for (int tx = -1; tx <= w; tx++)
-      put(slot[fi].x + 1 + tx, slot[fi].y + 1 + ty, fullbright ? Vector(1, 1, 1) : luxel(f, tx, ty));
+    for (int ty = -1; ty <= h; ty++) for (int tx = -1; tx <= w; tx++) {
+      Vector l = fullbright ? Vector(1, 1, 1) : luxel(f, tx, ty);
+      // the HDR lighting of the CS:GO era maps is pitch black in places the real engine fills with ambient
+      // light; without a floor those surfaces come out as holes in the map
+      if (!fullbright) l = VecMax(l, Vector(0.30f, 0.30f, 0.30f));
+      put(slot[fi].x + 1 + tx, slot[fi].y + 1 + ty, l);
+    }
   }
   m_lightmap = LoadTextureFromImage(Image{ atlas.data(), AW, AH, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 });
 #ifndef CS_HEADLESS

@@ -43,5 +43,7 @@ inline CMapInfo g_MapInfo;
 
 struct MapListEntry { std::string name, title, mode, desc, file; };
 std::vector<MapListEntry> ListMaps();
+// "de_nuke_ve" -> "Nuke" (the display name of a map, both for the picker and the server list)
+std::string PrettyMapName(const std::string& name);
 // "de_dust2" -> maps/de_dust2.bsp from the CS 1.6 install when available (hl_content 1), else assets/maps/de_dust2.map
 std::string ResolveMapFile(const std::string& name);

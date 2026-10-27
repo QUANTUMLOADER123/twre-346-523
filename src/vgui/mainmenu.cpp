@@ -10,6 +10,7 @@
 #include "../engine/srcfs.hpp"
 #include "../engine/srcmaterial.hpp"
 #include "../engine/download.hpp"
+#include "../engine/mapoverview.hpp"
 #include "../game/client/cl_main.hpp"
 #include "../game/client/css_models.hpp"
 #include "../game/shared/mapinfo.hpp"
@@ -197,14 +198,10 @@ void ScrollBar(const Scroll& s, float x, float y, float w, float h) {   // after
 // ------------------------------------------------------------------------------------------------
 // maps
 const char* MapTitle(const std::string& n) {
-  static const std::map<std::string, const char*> t = {
-    { "de_dust2", "Dust II" }, { "de_dust", "Dust" }, { "de_inferno", "Inferno" }, { "de_nuke", "Nuke" }, { "de_train", "Train" },
-    { "de_aztec", "Aztec" }, { "de_cbble", "Cobblestone" }, { "de_chateau", "Chateau" }, { "de_piranesi", "Piranesi" }, { "de_port", "Port" },
-    { "de_prodigy", "Prodigy" }, { "de_tides", "Tides" }, { "de_mirage", "Mirage" }, { "de_cache", "Cache" }, { "de_overpass", "Overpass" },
-    { "cs_assault", "Assault" }, { "cs_compound", "Compound" }, { "cs_havana", "Havana" }, { "cs_italy", "Italy" }, { "cs_militia", "Militia" },
-    { "cs_office", "Office" },
-  };
-  auto it = t.find(n); return it != t.end() ? it->second : n.c_str();
+  static std::map<std::string, std::string> cache;
+  auto it = cache.find(n);
+  if (it == cache.end()) it = cache.emplace(n, PrettyMapName(n)).first;
+  return it->second.c_str();
 }
 std::vector<MapListEntry> s_maps; float s_mapsTime = -100;
 const std::vector<MapListEntry>& Maps() {
@@ -218,6 +215,44 @@ const std::vector<MapListEntry>& Maps() {
 const Texture2D* Thumb(const std::string& map) {
   const Texture2D* t = VGUI_Image("materials/vgui/menu_thumb_" + map + ".vtf");
   return t ? t : VGUI_Image("materials/vgui/maps/menu_thumb_" + map + ".vtf");
+}
+
+// The real overview radar of the map (resource/overviews/<map>_radar.dds inside the map itself) - exactly the
+// image CS:GO's map picker uses. Decoded once per map and cached, cropped to the part the map covers.
+struct MapPreview { Texture2D tex{}; };
+std::map<std::string, MapPreview> s_previews;
+const MapPreview* Preview(const std::string& map) {
+  auto it = s_previews.find(map);
+  if (it != s_previews.end()) return it->second.tex.id ? &it->second : nullptr;
+  MapPreview& p = s_previews[map];
+  std::vector<uint8_t> rgba; int w = 0, h = 0; mapoverview::Info ov;
+  if (!mapoverview::Load(map, rgba, w, h, ov) || w <= 0 || h <= 0) return nullptr;
+  int x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+    if (!rgba[((size_t)y * w + x) * 4 + 3]) continue;
+    x0 = std::min(x0, x); x1 = std::max(x1, x); y0 = std::min(y0, y); y1 = std::max(y1, y);
+  }
+  if (x1 < x0 || y1 < y0) { x0 = y0 = 0; x1 = w - 1; y1 = h - 1; }
+  int cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+  std::vector<uint8_t> crop((size_t)cw * ch * 4);
+  for (int y = 0; y < ch; y++) std::memcpy(&crop[(size_t)y * cw * 4], &rgba[((size_t)(y + y0) * w + x0) * 4], (size_t)cw * 4);
+  Image img{ crop.data(), cw, ch, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+  if (cw > 1024 || ch > 1024) ImageResize(&img, cw > ch ? 1024 : cw * 1024 / ch, ch >= cw ? 1024 : ch * 1024 / cw);
+  p.tex = LoadTextureFromImage(img);
+  SetTextureFilter(p.tex, TEXTURE_FILTER_BILINEAR);
+  return p.tex.id ? &p : nullptr;
+}
+// draws the preview into dst, letterboxed on the map picker tile colour; false when the map has no overview
+bool PaintPreview(const std::string& map, Rectangle dst, bool bright) {
+  const MapPreview* p = Preview(map);
+  if (!p) return false;
+  float a = p->tex.width / (float)p->tex.height, box = dst.width / dst.height;
+  float w = box > a ? dst.height * a : dst.width, h = box > a ? dst.height : dst.width / a;
+  float x = dst.x + (dst.width - w) * 0.5f, y = dst.y + (dst.height - h) * 0.5f;
+  DrawRectangleRec(dst, { 24, 24, 27, 255 });   // the radar itself is transparent outside the map
+  DrawTexturePro(p->tex, { 0, 0, (float)p->tex.width, (float)p->tex.height }, { x, y, w, h }, { 0, 0 }, 0,
+                 bright ? Color{ 255, 255, 255, 255 } : Color{ 205, 205, 205, 255 });
+  return true;
 }
 const char* MapModeTag(const std::string& n) { return n.rfind("de_", 0) == 0 ? "BOMB DEFUSAL" : n.rfind("cs_", 0) == 0 ? "HOSTAGE RESCUE" : "CUSTOM"; }
 
@@ -486,7 +521,7 @@ void PaintPlay() {
     float ih = th - 30;
     { // picture, cropped to the visible part
       float iy0 = std::max(y, vy0), iy1 = std::min(y + ih, vy1);
-      if (iy1 > iy0) {
+      if (iy1 > iy0 && !(full && PaintPreview(n, { x, y, tw, ih }, hv || sel))) {
         if (const Texture2D* t = Thumb(n)) {
           float sh = t->height * 0.75f, u0 = (iy0 - y) / ih, u1 = (iy1 - y) / ih;
           DrawTexturePro(*t, { 0, sh * u0, (float)t->width, sh * (u1 - u0) }, { x, iy0, tw, iy1 - iy0 }, { 0, 0 }, 0, hv || sel ? WHITE : Color{ 200, 200, 200, 255 });
@@ -497,7 +532,7 @@ void PaintPlay() {
       S()->DrawText(FONT_GO_BOLD, MapTitle(n), x + 10, y + ih + 7, csgo::Text);
       S()->DrawTextRight(FONT_GO, MapModeTag(n), x + tw - 8, y + ih + 7, csgo::TextFaint);
     }
-    if (!Thumb(n) && y + ih * 0.5f > vy0 && y + ih * 0.5f + 20 < vy1) S()->DrawTextCentered(FONT_GO_TITLE, MapTitle(n), x + tw * 0.5f, y + ih * 0.5f - 12, csgo::Alpha(csgo::Text, 0.6f));
+    if (!Thumb(n) && !s_previews.count(n) && y + ih * 0.5f > vy0 && y + ih * 0.5f + 20 < vy1) S()->DrawTextCentered(FONT_GO_TITLE, MapTitle(n), x + tw * 0.5f, y + ih * 0.5f - 12, csgo::Alpha(csgo::Text, 0.6f));
     if (sel && full) { DrawRectangleLinesEx({ x, y, tw, th }, 3, csgo::Accent); DrawRectangleRec({ x + tw - 30, y + 6, 24, 24 }, csgo::Accent); DrawLineEx({ x + tw - 25, y + 18 }, { x + tw - 20, y + 24 }, 3, WHITE); DrawLineEx({ x + tw - 20, y + 24 }, { x + tw - 11, y + 11 }, 3, WHITE); }
     if (Clicked(x, vy0, tw, vy1 - vy0) && Over(gx, gy, gw, gh)) { s_ms.map = n; PlayClick(); }
   }

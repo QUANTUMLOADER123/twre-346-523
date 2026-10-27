@@ -326,6 +326,54 @@ std::vector<std::string> List(const std::string& relDir, const std::string& ext)
   return out;
 }
 
+// Read one entry out of a zip archive that is embedded in a file on disk (the pakfile lump of a map's .bsp).
+// Only the tail + central directory + the requested entry are touched, so a 100 MB map is not read for a preview.
+bool ReadZipEntryFile(const std::string& path, const std::string& entry, std::vector<uint8_t>& out) {
+  FILE* f = fopen(path.c_str(), "rb"); if (!f) return false;
+  auto fail = [&]() { fclose(f); return false; };
+  if (fseek(f, 0, SEEK_END) != 0) return fail();
+  long fsz = ftell(f); if (fsz < 22) return fail();
+  size_t tail = (size_t)std::min<long>(fsz, 70000);
+  std::vector<uint8_t> buf(tail);
+  if (fseek(f, (long)((size_t)fsz - tail), SEEK_SET) != 0 || fread(buf.data(), 1, tail, f) != tail) return fail();
+  size_t eocd = std::string::npos;
+  for (size_t i = tail - 22 + 1; i-- > 0;) if (buf[i] == 0x50 && buf[i + 1] == 0x4b && buf[i + 2] == 5 && buf[i + 3] == 6) { eocd = i; break; }
+  if (eocd == std::string::npos) return fail();
+  uint16_t count; uint32_t cdSize, cdOff;
+  std::memcpy(&count, &buf[eocd + 10], 2); std::memcpy(&cdSize, &buf[eocd + 12], 4); std::memcpy(&cdOff, &buf[eocd + 16], 4);
+  size_t eocdAbs = (size_t)fsz - tail + eocd;              // where the zip "starts" if it is appended to another file
+  long base = (long)eocdAbs - (long)(cdOff + cdSize); if (base < 0) return fail();
+  std::vector<uint8_t> cd(cdSize);
+  if (fseek(f, base + (long)cdOff, SEEK_SET) != 0 || fread(cd.data(), 1, cdSize, f) != cdSize) return fail();
+  std::string want = Normalize(entry);
+  size_t p = 0;
+  for (int i = 0; i < count && p + 46 <= cd.size(); i++) {
+    uint32_t sig; std::memcpy(&sig, &cd[p], 4); if (sig != 0x02014b50) break;
+    uint16_t method, nl, xl, cl; uint32_t csize, usize, off;
+    std::memcpy(&method, &cd[p + 10], 2); std::memcpy(&csize, &cd[p + 20], 4); std::memcpy(&usize, &cd[p + 24], 4);
+    std::memcpy(&nl, &cd[p + 28], 2); std::memcpy(&xl, &cd[p + 30], 2); std::memcpy(&cl, &cd[p + 32], 2); std::memcpy(&off, &cd[p + 42], 4);
+    if (p + 46 + nl > cd.size()) break;
+    std::string name((const char*)&cd[p + 46], nl);
+    if (Normalize(name) == want) {
+      uint8_t lh[30];
+      if (fseek(f, base + (long)off, SEEK_SET) != 0 || fread(lh, 1, 30, f) != 30) return fail();
+      uint16_t lnl, lxl; std::memcpy(&lnl, &lh[26], 2); std::memcpy(&lxl, &lh[28], 2);
+      std::vector<uint8_t> raw(csize);
+      if (fseek(f, base + (long)off + 30 + lnl + lxl, SEEK_SET) != 0 || fread(raw.data(), 1, csize, f) != csize) return fail();
+      fclose(f);
+      if (method == 0) { out = std::move(raw); return true; }
+      if (method == 8) {
+        int outSize = 0; unsigned char* d = DecompressData(raw.data(), (int)raw.size(), &outSize);
+        if (!d) return false;
+        out.assign(d, d + outSize); MemFree(d); return true;
+      }
+      return false;
+    }
+    p += 46 + nl + xl + cl;
+  }
+  return fail();
+}
+
 void MountPak(std::vector<uint8_t> zip) {
   State& s = S(); s.pak = std::move(zip); s.pakFiles.clear();
   const auto& d = s.pak; if (d.size() < 22) return;

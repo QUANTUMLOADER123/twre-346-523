@@ -294,15 +294,21 @@ void BuildCsgoBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector<m
   pv.Set("move_blend_crouch", crouch ? 1.f : 0.f);
   pv.Set("move_blend_walk", (!crouch && moving && !run) ? 1.f : 0.f);
   pv.Set("move_blend_run", (!crouch && run) ? 1.f : 0.f);
-  // locomotion: the plain per-weapon walk/run cycle ("move", "move_knife", ...). The "move_c" 9-way grid
-  // needs the CS:GO animstate layering on top and comes out crouched / squashed when sampled alone.
+  // Standing still: the "<weapon>_aim_idle" sequences are full body poses (CS:GO uses them as the whole pose
+  // when the speed is 0). Walking / running: the per-weapon walk cycle, with the aim grid layered on top for
+  // the spine and the arms.
+  const std::string st = crouch ? (moving ? "crouch_moving" : "crouch_idle") : (run ? "run" : moving ? "walk" : "idle");
+  SrcSeqRef aim = Seq(m, wc + "_aim_" + st);
+  if (!aim) aim = Seq(m, wc + "_aim_idle");
   std::string moveSeq = "move";
   if (wc == "knife" && Seq(m, "move_knife")) moveSeq = "move_knife";
   else if (wc == "grenade" && Seq(m, "move_grenade")) moveSeq = "move_grenade";
   else if (wc == "c4" && Seq(m, "move_c4")) moveSeq = "move_c4";
-  SrcSeqRef base = Seq(m, moveSeq);
-  if (!base) base = Seq(m, "move_c");
-  float cycle = moving ? in.moveCycle : std::fmod(now / std::max(0.1f, m.SeqDuration(base)), 1.f);
+  SrcSeqRef base = moving ? Seq(m, moveSeq) : SrcSeqRef();
+  if (moving && !base) base = Seq(m, "move_c");
+  if (!base) base = aim;                      // idle: the aim pose is the whole body
+  if (!base) base = Seq(m, "move");
+  float cycle = moving ? in.moveCycle : 0.f;
   m.SampleSeq(base, cycle, pv, pos, q);
   if (crouch) { SrcSeqRef rc = Seq(m, "recrouch_generic"); if (rc) { m.SampleSeq(rc, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); } }
   if (!in.onGround) {
@@ -310,11 +316,8 @@ void BuildCsgoBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector<m
     if (!j) j = Seq(m, "fall");
     if (j) { m.SampleSeq(j, 0.35f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   }
-  // upper body: aim grid (the sequences only weight the spine / arms, the legs keep walking)
-  const std::string st = crouch ? (moving ? "crouch_moving" : "crouch_idle") : (run ? "run" : moving ? "walk" : "idle");
-  SrcSeqRef aim = Seq(m, wc + "_aim_" + st);
-  if (!aim) aim = Seq(m, wc + "_aim_idle");
-  if (aim) { m.SampleSeq(aim, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  // upper body: the aim grid (its weights only cover the spine / arms, the legs keep walking)
+  if (moving && aim) { m.SampleSeq(aim, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   if (in.reloadCycle >= 0) {
     SrcSeqRef r = Seq(m, wc + "_reload" + (crouch ? "_crouch" : moving ? "_moving" : ""));
     if (!r) r = Seq(m, wc + "_reload");
@@ -773,7 +776,9 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   Render_Begin3D(view.view, proj);
   SrcMdl_Draw(*m, bones, xf, dp);
   if (csgo) DrawCsgoScope(*m, bones, xf, dp);
-  if (r8 || csgo) DrawViewModelArms(*m, bones, PlayerModel(p), xf, dp);
+  // CS:GO view models ship without hands: the agent's own arms are bone merged onto the gun
+  const CSrcModel* armsFrom = PlayerModel(p);
+  if (armsFrom) DrawViewModelArms(*m, bones, armsFrom, xf, dp);
   Render_End3D();
   muzzleOut = m->attachments.empty() ? view.origin + view.forward * 20.f - view.up * 4.f : m->AttachmentPos(0, bones, xf);
   return true;

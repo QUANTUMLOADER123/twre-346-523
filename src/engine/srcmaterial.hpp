@@ -13,6 +13,7 @@ bool VTF_Load(const std::string& rel, std::vector<uint8_t>& rgba, int& w, int& h
 struct SrcMaterial {
   std::string name, shader;
   bool ok = false;                 // vmt found
+  bool texMissing = false;         // the vmt is there but its $basetexture is not (a placeholder was used)
   Texture2D tex{}, tex2{};         // $basetexture, $basetexture2 (WorldVertexTransition blends with vertex alpha)
   int width = 64, height = 64;     // full resolution of $basetexture (texture coordinates are in these texels)
   bool translucent = false, alphatest = false, additive = false, nocull = false, vertexalpha = false;

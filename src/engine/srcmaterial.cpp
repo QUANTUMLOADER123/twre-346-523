@@ -264,7 +264,17 @@ static SrcMaterial BuildMaterial(const std::string& key) {
   if (key.rfind("tools/", 0) == 0) m.tool = true;
   if (key.rfind("tools/toolsnodraw", 0) == 0 || key.rfind("tools/toolsskip", 0) == 0 || key.rfind("tools/toolshint", 0) == 0) m.nodraw = true;
   if (key.rfind("tools/toolsskybox", 0) == 0) m.sky = true;
-  if (!kv) { m.tex = FallbackTex(key); m.width = m.height = 128; return m; }
+  if (!kv) {
+    // a model material often comes without its .vmt (the loose texture sets only ship textures): a plain
+    // unlit-ish VertexLitGeneric with that very texture is exactly what the missing vmt would have said
+    const TexEntry& t = LoadTex(key);
+    if (t.ok) {
+      m.ok = true; m.shader = "vertexlitgeneric"; m.tex = t.tex; m.width = t.fullW; m.height = t.fullH;
+      m.translucent = t.hasAlpha; m.alpha = 1.f;
+      return m;
+    }
+    m.tex = FallbackTex(key); m.width = m.height = 128; return m;
+  }
   m.ok = true; m.shader = shader;
   auto B = [&](const char* k) { return kv->GetInt(k, 0) != 0; };
   m.translucent = B("$translucent"); m.alphatest = B("$alphatest"); m.additive = B("$additive"); m.nocull = B("$nocull");
@@ -282,7 +292,7 @@ static SrcMaterial BuildMaterial(const std::string& key) {
   if (!bt.empty()) {
     const TexEntry& t = LoadTex(bt);
     if (t.ok) { m.tex = t.tex; m.width = t.fullW; m.height = t.fullH; }
-    else { m.tex = FallbackTex(bt); m.width = m.height = 128; }
+    else { m.tex = FallbackTex(bt); m.width = m.height = 128; m.texMissing = true; }
     if (!m.translucent && !m.alphatest && t.ok && t.hasAlpha && m.additive) {}
   } else { m.tex = FallbackTex(key); m.width = m.height = 128; }
   std::string bt2 = kv->GetString("$basetexture2");
@@ -295,7 +305,19 @@ const SrcMaterial& SrcMat_Find(const std::string& name, bool) {
   if (key.rfind("materials/", 0) == 0) key.erase(0, 10);
   if (key.size() > 4 && key.compare(key.size() - 4, 4, ".vmt") == 0) key.resize(key.size() - 4);
   auto it = s_mats.find(key); if (it != s_mats.end()) return it->second;
-  return s_mats[key] = BuildMaterial(key);
+  SrcMaterial m = BuildMaterial(key);
+  if (!m.ok) {
+    // the displacement blends of the old maps are named "<material>_bottom" / "_top" while the content only
+    // has the plain "<material>": the blend layer is lost, but the wall gets its real texture back
+    static const char* suf[] = { "_bottom", "_top", "_middle" };
+    for (const char* sfx : suf) {
+      size_t n = std::strlen(sfx);
+      if (key.size() <= n || key.compare(key.size() - n, n, sfx) != 0) continue;
+      const SrcMaterial& b = SrcMat_Find(key.substr(0, key.size() - n));
+      if (b.ok) { m = b; break; }
+    }
+  }
+  return s_mats[key] = m;
 }
 
 const SrcMaterial& SrcMat_FindInDirs(const std::string& name, const std::vector<std::string>& dirs) {

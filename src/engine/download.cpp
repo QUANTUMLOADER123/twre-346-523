@@ -80,9 +80,6 @@ const char* const s_csgoMapFiles[] = {
   // the classics
   "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_dust/de_dust.bsp",
   "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
-  "maps/de_rats_1337.bsp", "maps/fy_pool_day.bsp", "maps/surf_ski_2_GO.bsp",
-  // small warm-up maps (a few hundred KB each, the ones the aim/1x1 crowd actually plays)
-  "maps/aim_redline.bsp", "maps/6v6_ak_m4a1.bsp",
   nullptr };
 
 const char* const s_r8Files[] = {
@@ -142,7 +139,7 @@ Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-constexpr int kPacks = 8;
+constexpr int kPacks = 9;
 Pack s_packs[kPacks] = {
   { "maps_go4", "CS:GO maps (classic versions)", nullptr, 253, s_csgoMapFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maps.zip" },
   // the CS:S era textures those maps reference (their own materials live in the map pakfile already)
@@ -157,6 +154,9 @@ Pack s_packs[kPacks] = {
   { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
   // the real CS:GO agent models (4 CT + 4 T with their variants) - the CS:S stand-ins stay only as a fallback
   { "agents", "CS:GO agents", nullptr, 56, s_agentFiles, "content/extras/csgo_agents", false, nullptr, "cshvh-content-agents.zip" },
+  // the static props the older maps reference (doors, crates, furniture): without them the maps render with
+  // holes where the props should be, because a bsp only stores the prop *placements*, never the meshes
+  { "props", "Static props (doors, crates, furniture)", nullptr, 100, nullptr, "content/extras/csgo_props", false, nullptr, "cshvh-content-props.zip" },
 };
 bool s_needCore = true;   // decided on the main thread in Start()
 bool s_haveCsgo = false;  // a local CS:GO install (pak01) - decided on the main thread, read by the worker
@@ -384,7 +384,8 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
 }
 #endif
 
-fs::path PackMarker(const Pack& p) { return fs::path(p.files ? kExtras : kDest) / (std::string(".pack_") + p.id); }
+// the archive packs unpack into their own destination folder, so their marker lives there too
+fs::path PackMarker(const Pack& p) { return fs::path(p.zipAsset || !p.files ? (p.dest ? p.dest : kDest) : kExtras) / (std::string(".pack_") + p.id); }
 bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(p), ec); }
 bool PackWanted(const Pack& p) {
   if (PackDone(p)) return false;
@@ -394,6 +395,7 @@ bool PackWanted(const Pack& p) {
   if (p.files == s_baseFiles && s_haveCsgo) return false;   // a CS:GO install brings its own agents, weapons and sounds
   if (p.files == s_weaponFiles && s_haveCsgo) return false; // ... and its own CS:GO view models
   if (p.files == s_agentFiles && s_haveCsgo) return false;  // ... and its own CS:GO agent models
+  if (std::strcmp(p.id, "props") == 0 && s_haveCsgo) return false;
   return !p.core || s_needCore;
 }
 
@@ -557,6 +559,7 @@ void Worker() {
     { "csgo", &cl_content_url_csgo, &cl_content_url_csgo_api },
     { "icons", &cl_content_url_icons, &cl_content_url_icons_api },
     { "agents", &cl_content_url_maps_go, &cl_content_url_maps_go_api },
+    { "props", &cl_content_url_maps_go, &cl_content_url_maps_go_api },
   };
   for (auto& p : s_packs) {
     p.url = cl_content_url_base.GetString(); p.api = cl_content_url_base_api.GetString();

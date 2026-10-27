@@ -11,6 +11,7 @@ writes
     dist/cshvh-content-base.zip      materials/, sound/, scripts/, models/player/  (map textures, agents, sounds)
     dist/cshvh-content-weapons.zip   models/weapons/csgo/**, materials/models/csgo/**  (CS:GO weapon models)
     dist/cshvh-content-maps.zip      maps/*.bsp  (the old map versions)
+    dist/cshvh-content-props.zip     models/props*, materials/models/props*  (the static props of those maps)
 """
 import concurrent.futures as cf
 import os
@@ -207,6 +208,11 @@ def main():
     packs["cshvh-content-maps.zip"] = map_pack
     packs["cshvh-content-maptex.zip"] = map_tex_pack
     packs["cshvh-content-agents.zip"] = agent_pack
+
+    def props_pack():
+        # the static props of the older maps: doors, crates, furniture (content/extras/csgo_props)
+        return [(repo_path(u), u) for u in quoted("src/engine/content_props.inc")]
+    packs["cshvh-content-props.zip"] = props_pack
 
     built = 0
     for name, make in packs.items():

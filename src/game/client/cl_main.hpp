@@ -34,6 +34,7 @@ constexpr int K_MOUSE1 = 1001, K_MOUSE2 = 1002, K_MOUSE3 = 1003, K_MOUSE4 = 1004
 struct ClientState {
   QAngle viewangles;           // client view angles (what the mouse controls)
   bool thirdperson = false;
+  bool noHud = false;          // -nohud: draw the world only (map preview renders)
   bool showScores = false;
   bool buyMenuOpen = false, teamMenuOpen = false, chatOpen = false, chatTeam = false;
   std::string chatBuffer;

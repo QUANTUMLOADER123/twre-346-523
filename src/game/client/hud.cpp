@@ -16,6 +16,7 @@
 #include "../../engine/hlfs.hpp"
 #include "../../engine/srcfs.hpp"
 #include "../../engine/srcmaterial.hpp"
+#include "../../engine/mapoverview.hpp"
 #include "../../engine/keyvalues.hpp"
 #include "rlgl.h"
 #include <deque>
@@ -110,29 +111,27 @@ static void OnEvent(const IGameEvent& e) {
 // radar image <-> world: world = s_radarW0 + u * s_radarDU + v * s_radarDV  (u, v in texture pixels)
 static Vector s_radarW0, s_radarDU, s_radarDV;
 
-// CS 1.6 overview (overviews/<map>.txt + .bmp from the player's install), HL1 spectator overview layout
-// CS:S: resource/overviews/<map>.txt (pos_x, pos_y, scale) + materials/overviews/<map>.vtf
+// CS:GO / CS:S overview: resource/overviews/<map>.txt (pos_x, pos_y, scale) + <map>_radar.dds, both inside the
+// map's pakfile. Old CS:S/VTF-only maps fall back to materials/overviews/<map>.vtf.
 static bool LoadSrcOverviewRadar(const CMapInfo& m) {
-  float px = 0, py = 0, scale = 0;
-  std::vector<uint8_t> txt;
-  if (srcfs::Read("resource/overviews/" + m.name + ".txt", txt)) {
-    auto kv = KeyValues::Parse((const char*)txt.data(), txt.size());
-    const KeyValues* root = kv && !kv->children.empty() ? kv->children[0].get() : nullptr;
-    if (root) { px = root->GetFloat("pos_x"); py = root->GetFloat("pos_y"); scale = root->GetFloat("scale"); }
-  }
-  if (scale <= 0) {   // stock maps (the overview scripts are not part of every content pack)
-    struct O { const char* n; float x, y, s; };
-    static const O known[] = { { "de_dust2", -2476, 3239, 4.4f }, { "de_inferno", -2087, 3870, 4.9f }, { "de_nuke", -3453, 2887, 7.f } };
-    for (auto& o : known) if (m.name == o.n) { px = o.x; py = o.y; scale = o.s; }
-  }
-  if (scale <= 0) return false;
+  mapoverview::Info ov;
   std::vector<uint8_t> rgba; int w = 0, h = 0;
-  if (!VTF_Load("materials/overviews/" + m.name + ".vtf", rgba, w, h, 1024) && !VTF_Load("materials/overviews/" + m.name + "_radar.vtf", rgba, w, h, 1024)) return false;
+  if (!mapoverview::Load(m.name, rgba, w, h, ov) || !w || !h) {
+    if (!VTF_Load("materials/overviews/" + m.name + ".vtf", rgba, w, h, 1024) &&
+        !VTF_Load("materials/overviews/" + m.name + "_radar.vtf", rgba, w, h, 1024)) return false;
+    ov.scale = 0;
+  }
+  if (ov.scale <= 0) {   // a few maps ship the radar without the script: the stock scale is 1024 px per 4 units grid
+    struct O { const char* n; float x, y, s; } ;
+    static const O known[] = { { "de_dust2", -2476, 3239, 4.4f }, { "de_inferno", -2087, 3870, 4.9f }, { "de_nuke", -3453, 2887, 7.f } };
+    for (auto& o : known) if (m.name == o.n) { ov.posX = o.x; ov.posY = o.y; ov.scale = o.s; }
+  }
+  if (ov.scale <= 0) return false;
   Image img{ rgba.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
-  float upp = scale * 1024.f / (float)w;
-  s_radarW0 = Vector(px, py, 0); s_radarDU = Vector(upp, 0, 0); s_radarDV = Vector(0, -upp, 0);
+  float upp = ov.scale * 1024.f / (float)w;   // the script scale is in "world units per 1024 pixel"
+  s_radarW0 = Vector(ov.posX, ov.posY, 0); s_radarDU = Vector(upp, 0, 0); s_radarDV = Vector(0, -upp, 0);
   s_radarTex = LoadTextureFromImage(img); SetTextureFilter(s_radarTex, TEXTURE_FILTER_BILINEAR);
-  Msg("Radar: materials/overviews/%s.vtf (scale %.2f)\n", m.name.c_str(), scale);
+  Msg("Radar: %s overview (%dx%d, scale %.2f)\n", m.name.c_str(), w, h, ov.scale);
   return true;
 }
 

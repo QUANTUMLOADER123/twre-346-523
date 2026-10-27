@@ -533,7 +533,7 @@ void CL_RenderFrame() {
   }
   if (cl.nightvision) { BeginBlendMode(BLEND_ADDITIVE); DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), { 0, 60, 0, 255 }); EndBlendMode(); }
   // 2D
-  HUD_Paint();
+  if (!cl.noHud) HUD_Paint();
   cheat::Paint();
 }
 

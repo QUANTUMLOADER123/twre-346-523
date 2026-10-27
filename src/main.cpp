@@ -116,6 +116,7 @@ int main(int argc, char** argv) {
   bool fullscreen = false;
   float fixedDt = 0;
   std::string shotPath;
+  bool noHud = false;   // -nohud: world only (used to render the map picker previews)
   std::vector<std::string> plusCmds;
   std::vector<std::pair<int, std::string>> timedCmds; // -at <frame> "<command>"
   for (int i = 1; i < argc; i++) {
@@ -128,6 +129,7 @@ int main(int argc, char** argv) {
     else if (a == "-at") { int f = std::atoi(next().c_str()); timedCmds.push_back({ f, next() }); }
     else if (a == "-frames") frames = std::atoi(next().c_str());
     else if (a == "-shot") shotPath = next();
+    else if (a == "-nohud") noHud = true;
     else if (a == "-dt") fixedDt = (float)std::atof(next().c_str());
     else if (a == "-game") { std::error_code ec; std::filesystem::current_path(next(), ec); }
     else if (a[0] == '+') {
@@ -163,6 +165,7 @@ int main(int argc, char** argv) {
   vgui::surface()->Init();
   S_Init();
   CL_Init();
+  cl.noHud = noHud;
   Host_Init();          // execs cfg/config.cfg
   Cbuf_Execute();
   cheat::Init();
@@ -202,8 +205,7 @@ int main(int argc, char** argv) {
     BeginDrawing();
     if (inGame) { CL_RenderFrame(); Touch_Draw(); }
     else CL_RenderMenuBackground((float)GetTime());
-    gameui::Paint();
-    cheat::PaintMenu();
+    if (!noHud) { gameui::Paint(); cheat::PaintMenu(); }
     EndDrawing();
 
     if (s_wantScreenshot) {
