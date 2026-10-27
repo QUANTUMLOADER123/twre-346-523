@@ -81,21 +81,31 @@ bool SilencerModel(int wid) { return wid == WEAPON_USP_SILENCER || wid == WEAPON
 const CSrcModel* LoadedOrNull(const CSrcModel* m);
 const char* const s_agentCT[4] = { "ct_urban", "ct_gsg9", "ct_sas", "ct_gign" };
 const char* const s_agentT[4] = { "t_phoenix", "t_leet", "t_arctic", "t_guerilla" };
-// the same four classes as real CS:GO agents (models/player/custom_player/legacy/<name>/<name>.mdl)
-const char* const s_goAgentCT[4] = { "ctm_st6", "ctm_gign", "ctm_sas", "ctm_idf" };
-const char* const s_goAgentT[4] = { "tm_phoenix", "tm_leet", "tm_arctic", "tm_guerilla" };
+// real CS:GO agents: models/player/custom_player/legacy/<name>.mdl - the four CT and four T classes, each one
+// with the skin variant we ship (the "agents" content pack); the plain names are what a CS:GO install uses
+const char* const s_goAgentCT[4] = { "ctm_st6", "ctm_st6_variant_sas", "ctm_st6_variant_gsg9", "ctm_st6_variant_urban" };
+const char* const s_goAgentT[4] = { "tm_phoenix", "tm_phoenix_variant_arctic", "tm_phoenix_variant_guerilla", "tm_phoenix_variant_leet_r" };
+const char* const s_goAgentCTAlt[4] = { "ctm_gign", "ctm_sas", "ctm_idf", "ctm_st6_variant_vip" };
+const char* const s_goAgentTAlt[4] = { "tm_leet", "tm_arctic", "tm_guerilla", "tm_phoenix_variant_classic" };
 const CSrcModel* AgentModel(int team, int idx) {
   idx &= 3;
-  const char* css = team == TEAM_CT ? s_agentCT[idx] : s_agentT[idx];
-  if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(std::string("models/player/") + css + ".mdl"))) return m;
-  if (!srcfs::CsgoAvailable()) return nullptr;
-  const char* go = team == TEAM_CT ? s_goAgentCT[idx] : s_goAgentT[idx];
-  static const char* goDirs[] = { "models/player/custom_player/legacy/%s/%s.mdl", "models/player/custom_player/legacy/%s.mdl" };
-  for (const char* fmt : goDirs) {
-    char path[256]; snprintf(path, sizeof path, fmt, go, go);
-    if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(path))) return m;
+  // the real CS:GO agents first: they come with the "agents" content pack (or from a local CS:GO install)
+  const char* names[3] = { team == TEAM_CT ? s_goAgentCT[idx] : s_goAgentT[idx],
+                           team == TEAM_CT ? s_goAgentCTAlt[idx] : s_goAgentTAlt[idx],
+                           team == TEAM_CT ? s_goAgentCT[idx] : s_goAgentT[idx] };
+  static const char* goDirs[] = { "models/player/custom_player/legacy/%s.mdl", "models/player/custom_player/legacy/%s/%s.mdl" };
+  for (int n = 0; n < 3; n++) {
+    if (n == 2 && !srcfs::CsgoAvailable()) break;
+    for (int d = 0; d < 2; d++) {
+      char path[256];
+      if (d == 0) snprintf(path, sizeof path, goDirs[d], names[n]);
+      else snprintf(path, sizeof path, goDirs[d], names[n], names[n]);
+      if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(path))) return m;
+    }
   }
-  return nullptr;
+  // CS:S stand-ins (only when no CS:GO agent model is available)
+  const char* css = team == TEAM_CT ? s_agentCT[idx] : s_agentT[idx];
+  return LoadedOrNull(SrcMdl_Get(std::string("models/player/") + css + ".mdl"));
 }
 const CSrcModel* PlayerModel(CCSPlayer* p) {
   int idx = (p->entindex() + p->m_iPlayerModel) & 3;

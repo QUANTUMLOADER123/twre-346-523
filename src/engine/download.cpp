@@ -122,6 +122,7 @@ const char* const s_csgoFiles[] = {
 #include "content_base.inc"
 #include "content_weapons.inc"
 #include "content_maps_textures.inc"
+#include "content_agents.inc"
 
 #define ICON(n) "svg_normal/" n ".svg"
 const char* const s_iconFiles[] = {
@@ -141,7 +142,7 @@ Progress s_prog;
 std::atomic<bool> s_cancel{ false }, s_busy{ false };
 std::thread s_thread;
 
-constexpr int kPacks = 6;
+constexpr int kPacks = 7;
 Pack s_packs[kPacks] = {
   { "maps_go4", "CS:GO maps (classic versions)", nullptr, 340, s_csgoMapFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maps.zip" },
   // agents (4 CT + 4 T), sound effects, sound scripts and the stock Source map textures our CS:GO maps are
@@ -152,6 +153,8 @@ Pack s_packs[kPacks] = {
   { "r8", "CS:GO R8 Revolver", nullptr, 9, s_r8Files, "content/extras/csgo_r8", false },
   { "csgo", "CS:GO SCAR-20, SSG 08, molotov", nullptr, 22, s_csgoFiles, "content/extras/csgo_gsr", false },
   { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
+  // the real CS:GO agent models (4 CT + 4 T with their variants) - the CS:S stand-ins stay only as a fallback
+  { "agents", "CS:GO agents", nullptr, 56, s_agentFiles, "content/extras/csgo_agents", false, nullptr, "cshvh-content-agents.zip" },
 };
 // the map pack is one archive: the .bsp files plus the shared textures they reference
 const char* const* MapPackFiles() {
@@ -398,6 +401,7 @@ bool PackWanted(const Pack& p) {
   if (p.files == MapPackFiles() && s_haveCsgo) return false;
   if (p.files == s_baseFiles && s_haveCsgo) return false;   // a CS:GO install brings its own agents, weapons and sounds
   if (p.files == s_weaponFiles && s_haveCsgo) return false; // ... and its own CS:GO view models
+  if (p.files == s_agentFiles && s_haveCsgo) return false;  // ... and its own CS:GO agent models
   return !p.core || s_needCore;
 }
 

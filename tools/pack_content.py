@@ -188,9 +188,17 @@ def main():
             out.append((repo_path(u), u))
         return out
 
+    def agent_pack():
+        # real CS:GO agent models + materials (content/extras/csgo_agents)
+        out = []
+        for u in quoted("src/engine/content_agents.inc"):
+            out.append((repo_path(u), u))
+        return out
+
     packs["cshvh-content-base.zip"] = base_pack
     packs["cshvh-content-weapons.zip"] = weapon_pack
     packs["cshvh-content-maps.zip"] = map_pack
+    packs["cshvh-content-agents.zip"] = agent_pack
 
     built = 0
     for name, make in packs.items():
