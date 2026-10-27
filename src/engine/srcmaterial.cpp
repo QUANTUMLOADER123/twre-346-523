@@ -5,6 +5,8 @@
 #include "convar.hpp"
 #include "materialsystem.hpp"
 #include "enginetrace.hpp"
+#include "srcbsp.hpp"
+#include "srcmdl.hpp"
 #include "rlgl.h"
 #include <unordered_map>
 #include <map>
@@ -270,7 +272,9 @@ static SrcMaterial BuildMaterial(const std::string& key) {
     const TexEntry& t = LoadTex(key);
     if (t.ok) {
       m.ok = true; m.shader = "vertexlitgeneric"; m.tex = t.tex; m.width = t.fullW; m.height = t.fullH;
-      m.translucent = t.hasAlpha; m.alpha = 1.f;
+      // the vmt is what says "translucent": a DXT5 texture simply has an alpha channel (phong mask, detail), and
+      // treating it as glass turned solid props (crates, doors, lamps) into see-through ones
+      m.translucent = false; m.alpha = 1.f;
       return m;
     }
     m.tex = FallbackTex(key); m.width = m.height = 128; return m;
@@ -357,3 +361,19 @@ int SrcMat_SurfaceFromProp(const std::string& prop, const std::string& matName) 
   if (has("stone") || has("rock")) return SURFACE_SANDSTONE;
   return SURFACE_CONCRETE;
 }
+
+// console: which materials a model / the level could not resolve (shipped content audit)
+static ConCommand mat_check("mat_check", [](const CCommand& c) {
+  if (c.ArgC() < 2) { Msg("usage: mat_check models/player/ct_urban.mdl | mat_check map\n"); return; }
+  if (!std::strcmp(c.Arg(1), "map")) {
+    int bad = 0;
+    for (auto& n : g_SrcBsp.materials) { const SrcMaterial& m = SrcMat_Find(n); if (!m.ok || m.texMissing) { Msg("missing %s\n", n.c_str()); bad++; } }
+    Msg("%d / %d map materials unresolved\n", bad, (int)g_SrcBsp.materials.size());
+    return;
+  }
+  CSrcModel* md = SrcMdl_Get(c.Arg(1));
+  if (!md) { Msg("can't load %s\n", c.Arg(1)); return; }
+  int bad = 0;
+  for (auto& t : md->textures) { const SrcMaterial& m = SrcMat_FindInDirs(t, md->cdmaterials); if (!m.ok || m.texMissing) { Msg("missing %s (dirs:", t.c_str()); for (auto& d : md->cdmaterials) Msg(" %s", d.c_str()); Msg(")\n"); bad++; } }
+  Msg("%d / %d textures unresolved\n", bad, (int)md->textures.size());
+}, "Report the materials a model or the current map cannot resolve");

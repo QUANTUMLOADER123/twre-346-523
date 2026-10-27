@@ -82,20 +82,8 @@ void CWorldRenderer::BuildSrc() {
     mats[i] = &SrcMat_Find(W.materials[i]);
     if (mats[i]->ok && !mats[i]->texMissing) matOk++; else matFallback++;
   }
-  // the CS:S-only stock textures these old maps use are not redistributable: borrow the closest real material
-  // from the same folder (a wall stays a wall) instead of drawing the procedural placeholder
-  for (size_t i = 0; i < W.materials.size(); i++) {
-    if (mats[i]->ok && !mats[i]->texMissing) continue;
-    const std::string& key = W.materials[i];
-    size_t slash = key.find('/');
-    if (slash == std::string::npos) continue;
-    const std::string dir = key.substr(0, slash + 1);
-    for (size_t j = 0; j < W.materials.size(); j++) {
-      if (j == i || !mats[j]->ok || mats[j]->texMissing || W.materials[j].compare(0, dir.size(), dir) != 0) continue;
-      mats[i] = mats[j];
-      break;
-    }
-  }
+  // a material the content pack does not cover keeps the placeholder: borrowing "the closest material from the same
+  // folder" put another map's textures all over the level (a concrete wall turned into a wooden crate)
   // ---- lightmap atlas
   struct Slot { int x = -1, y = -1; };
   std::vector<Slot> slot(W.faces.size());

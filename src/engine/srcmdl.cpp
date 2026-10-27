@@ -192,24 +192,6 @@ bool CSrcModel::Load(const std::string& path) {
     }
   }
   // Y-up detection: a standing skeleton spans ~72 units along its up axis, so the axis with by far the
-  // largest spread is the up axis. Everything else in Source is Z-up.
-  if (bones.size() >= 16) {
-    std::vector<matrix3x4_t> rest(bones.size());
-    for (size_t i = 0; i < bones.size(); i++) {
-      matrix3x4_t local; QuaternionMatrix(bones[i].quat, bones[i].pos, Vector(1, 1, 1), local);
-      int p = bones[i].parent;
-      if (p >= 0 && p < (int)i) ConcatTransforms(rest[p], local, rest[i]); else rest[i] = local;
-    }
-    float mn[3] = { 1e9f, 1e9f, 1e9f }, mx[3] = { -1e9f, -1e9f, -1e9f };
-    for (auto& r : rest) for (int k = 0; k < 3; k++) { mn[k] = std::min(mn[k], r[k][3]); mx[k] = std::max(mx[k], r[k][3]); }
-    float spanY = mx[1] - mn[1], spanZ = mx[2] - mn[2];
-    if (spanY > 40.f && spanY > spanZ * 1.5f) {
-      // (x, y, z) -> (x, -z, y): the model space turns Z-up, the way the rest of the engine draws models
-      std::memset(axisFix.m, 0, sizeof(axisFix.m));
-      axisFix[0][0] = 1; axisFix[1][2] = -1; axisFix[2][1] = 1;
-      Msg("%s: Y-up model space detected, rotated to Z-up (spans %.0f / %.0f)\n", name.c_str(), spanY, spanZ);
-    }
-  }
   loaded = true;
   return true;
 }
@@ -459,17 +441,15 @@ void CSrcModel::SampleSeq(const SrcSeqRef& r, float cycle, const SrcPoseValues& 
 }
 
 void CSrcModel::SkinMatrices(const std::vector<matrix3x4_t>& bm, const matrix3x4_t& modelToWorld, std::vector<matrix3x4_t>& out) const {
-  matrix3x4_t mtw; ConcatTransforms(modelToWorld, axisFix, mtw);
   out.resize(bones.size());
   for (size_t b = 0; b < bones.size(); b++) {
     matrix3x4_t t; ConcatTransforms(b < bm.size() ? bm[b] : matrix3x4_t(), bones[b].poseToBone, t);
-    ConcatTransforms(mtw, t, out[b]);
+    ConcatTransforms(modelToWorld, t, out[b]);
   }
 }
 Vector CSrcModel::AttachmentPos(int idx, const std::vector<matrix3x4_t>& bm, const matrix3x4_t& modelToWorld) const {
   if (idx < 0 || idx >= (int)attachments.size()) return VectorTransform(Vector(), modelToWorld);
   const SrcMdlAttachment& a = attachments[idx];
-  matrix3x4_t mtw; ConcatTransforms(modelToWorld, axisFix, mtw);
-  matrix3x4_t bw; ConcatTransforms(mtw, a.bone < (int)bm.size() ? bm[a.bone] : matrix3x4_t(), bw);
+  matrix3x4_t bw; ConcatTransforms(modelToWorld, a.bone < (int)bm.size() ? bm[a.bone] : matrix3x4_t(), bw);
   return VectorTransform(Vector(a.local.m[0][3], a.local.m[1][3], a.local.m[2][3]), bw);
 }

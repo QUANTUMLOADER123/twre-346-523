@@ -78,31 +78,12 @@ WeaponModel WeaponInfo(int wid) {
 bool SilencerModel(int wid) { return wid == WEAPON_USP_SILENCER || wid == WEAPON_M4A1_SILENCER; }
 
 const CSrcModel* LoadedOrNull(const CSrcModel* m);
+// CS:S player models: Z-up model space and the ValveBiped skeleton, so the CS:GO view models merge onto their arms and
+// nothing has to be rotated. Four classes per team, the ones the "agents" content pack ships.
 const char* const s_agentCT[4] = { "ct_urban", "ct_gsg9", "ct_sas", "ct_gign" };
 const char* const s_agentT[4] = { "t_phoenix", "t_leet", "t_arctic", "t_guerilla" };
-// real CS:GO agents: models/player/custom_player/legacy/<name>.mdl - the four CT and four T classes, each one
-// with the skin variant we ship (the "agents" content pack); the plain names are what a CS:GO install uses
-const char* const s_goAgentCT[4] = { "ctm_st6", "ctm_st6_variant_sas", "ctm_st6_variant_gsg9", "ctm_st6_variant_urban" };
-const char* const s_goAgentT[4] = { "tm_phoenix", "tm_phoenix_variant_arctic", "tm_phoenix_variant_guerilla", "tm_phoenix_variant_leet_r" };
-const char* const s_goAgentCTAlt[4] = { "ctm_gign", "ctm_sas", "ctm_idf", "ctm_st6_variant_vip" };
-const char* const s_goAgentTAlt[4] = { "tm_leet", "tm_arctic", "tm_guerilla", "tm_phoenix_variant_classic" };
 const CSrcModel* AgentModel(int team, int idx) {
   idx &= 3;
-  // the real CS:GO agents first: they come with the "agents" content pack (or from a local CS:GO install)
-  const char* names[3] = { team == TEAM_CT ? s_goAgentCT[idx] : s_goAgentT[idx],
-                           team == TEAM_CT ? s_goAgentCTAlt[idx] : s_goAgentTAlt[idx],
-                           team == TEAM_CT ? s_goAgentCT[idx] : s_goAgentT[idx] };
-  static const char* goDirs[] = { "models/player/custom_player/legacy/%s.mdl", "models/player/custom_player/legacy/%s/%s.mdl" };
-  for (int n = 0; n < 3; n++) {
-    if (n == 2 && !srcfs::CsgoAvailable()) break;
-    for (int d = 0; d < 2; d++) {
-      char path[256];
-      if (d == 0) snprintf(path, sizeof path, goDirs[d], names[n]);
-      else snprintf(path, sizeof path, goDirs[d], names[n], names[n]);
-      if (const CSrcModel* m = LoadedOrNull(SrcMdl_Get(path))) return m;
-    }
-  }
-  // CS:S stand-ins (only when no CS:GO agent model is available)
   const char* css = team == TEAM_CT ? s_agentCT[idx] : s_agentT[idx];
   return LoadedOrNull(SrcMdl_Get(std::string("models/player/") + css + ".mdl"));
 }
@@ -473,37 +454,11 @@ void FallbackHitboxes(const PlayerPoseInput& in, HitboxSet& out) {
   }
 }
 
-// CS:GO agents name their bones "arm_lower_R" / "hand_L" / "finger_index_1_R" where the CS:S models (and every CS:S
-// weapon / view model, including the CS:GO ports) say "ValveBiped.Bip01_R_Forearm" / "..._R_Hand" / "..._R_Finger11".
-// Same skeleton, two naming schemes - the view model's arms are found through this.
-std::string ValveBoneForAgent(const std::string& n) {
-  static const char* const kFinger[5] = { "thumb", "index", "middle", "ring", "pinky" };
-  auto side = [](const std::string& v) -> const char* { return v == "L" ? "L" : v == "R" ? "R" : nullptr; };
-  if (n.size() > 13 && n.compare(n.size() - 2, 1, "_") == 0) {
-    const char* sd = side(n.substr(n.size() - 1));
-    if (!sd) return std::string();
-    const std::string base = n.substr(0, n.size() - 2), sfx = std::string("_") + sd;
-    if (base == "arm_upper") return std::string("ValveBiped.Bip01") + sfx + "_UpperArm";
-    if (base == "arm_lower") return std::string("ValveBiped.Bip01") + sfx + "_Forearm";
-    if (base == "hand") return std::string("ValveBiped.Bip01") + sfx + "_Hand";
-    for (int d = 0; d < 5; d++) {   // finger_<name>_<meta|0|1|2>
-      const std::string pre = std::string("finger_") + kFinger[d] + "_";
-      if (base.compare(0, pre.size(), pre) != 0) continue;
-      const std::string j = base.substr(pre.size());
-      std::string num = std::to_string(d);
-      if (j == "1") num += "1"; else if (j == "2") num += "2";   // meta / 0 are the base bone "Finger0".."Finger4"
-      return std::string("ValveBiped.Bip01") + sfx + "_Finger" + num;
-    }
-  }
-  return std::string();
-}
-
 // weapon bone merge: bones with the same name as a player bone follow the player
 void BoneMerge(const CSrcModel& w, const CSrcModel& parent, const std::vector<matrix3x4_t>& pb, std::vector<matrix3x4_t>& out) {
   out.resize(w.bones.size());
   for (size_t i = 0; i < w.bones.size(); i++) {
     int j = parent.FindBone(w.bones[i].name);
-    if (j < 0) { const std::string alias = ValveBoneForAgent(w.bones[i].name); if (!alias.empty()) j = parent.FindBone(alias); }
     if (j >= 0 && j < (int)pb.size()) { out[i] = pb[j]; continue; }
     matrix3x4_t local; QuaternionMatrix(w.bones[i].quat, w.bones[i].pos, Vector(1, 1, 1), local);
     int p = w.bones[i].parent;
@@ -642,23 +597,19 @@ namespace {
 void DrawViewModelArms(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm, const std::vector<matrix3x4_t>& pose, const matrix3x4_t& xf, const StudioDrawParams& dp) {
   if (!pm || pm->meshes.empty() || pose.empty()) return;
   // CS:GO view models ship without hands: the agent's own right arm is used, moved rigidly so that its hand lands on
-  // the view model's hand bone. A model's final bone matrix is modelToWorld * axisFix * bone (CSrcModel::SkinMatrices),
-  // so the arm transform W has to satisfy  W * agentAxis * agentHand = vmAxis * gunHand  (xf applies to both).
-  const int agentHand = pm->FindBone("hand_R"), gunHand = vm.FindBone("ValveBiped.Bip01_R_Hand");
+  // the view model's hand bone. Both skeletons are ValveBiped, so one bone matrix is enough: world = xf * gunHand * agentHand^-1
+  const int agentHand = pm->FindBone("ValveBiped.Bip01_R_Hand"), gunHand = vm.FindBone("ValveBiped.Bip01_R_Hand");
   if (agentHand < 0 || gunHand < 0 || agentHand >= (int)pose.size() || gunHand >= (int)vmBones.size()) return;
-  matrix3x4_t handInv, axisInv, delta, gunFinal, world;
+  matrix3x4_t handInv, world;
   MatrixInvert(pose[agentHand], handInv);
-  MatrixInvert(pm->axisFix, axisInv);
-  ConcatTransforms(vm.axisFix, vmBones[gunHand], gunFinal);
-  ConcatTransforms(gunFinal, handInv, delta);
-  ConcatTransforms(delta, axisInv, delta);
-  ConcatTransforms(xf, delta, world);
+  ConcatTransforms(vmBones[gunHand], handInv, world);
+  ConcatTransforms(xf, world, world);
   thread_local std::vector<uint8_t> mask;
   mask.assign(pm->bones.size(), 0);
   for (size_t i = 0; i < pm->bones.size(); i++) {
     const std::string& n = pm->bones[i].name;
-    const bool right = n.size() > 2 && n.compare(n.size() - 2, 2, "_R") == 0;
-    if (right && (n.rfind("arm_lower", 0) == 0 || n.rfind("hand_", 0) == 0 || n.rfind("finger_", 0) == 0)) mask[i] = 1;
+    if (n.find("_R_Forearm") != std::string::npos || n.find("_R_Hand") != std::string::npos || n.find("_R_Finger") != std::string::npos)
+      mask[i] = 1;
   }
   SrcMdl_Draw(*pm, pose, world, dp, 0, &mask);
 }

@@ -70,10 +70,6 @@ public:
   bool loaded = false;
   int version = 0;
   Vector hullMin, hullMax, eyePos;
-  // a few model families (the CS:GO "custom_player" agents) store the whole file - skeleton and vertices - in a
-  // Y-up space while every other Source model is Z-up; this rotation is applied on top of the model-to-world
-  // matrix so those models stand up like all the others
-  matrix3x4_t axisFix{};
   std::vector<std::string> cdmaterials, textures;
   std::vector<std::vector<int16_t>> skins;   // [family][skinref] -> texture
   std::vector<SrcMdlMesh> meshes;
