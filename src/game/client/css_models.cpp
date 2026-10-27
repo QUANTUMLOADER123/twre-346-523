@@ -17,10 +17,13 @@
 ConVar cl_real_models("cl_real_models", "1", FCVAR_ARCHIVE, "Use the real player / weapon models from the content (CS:GO agents first, CS:S as a fallback)");
 ConVar cl_real_viewmodels("cl_real_viewmodels", "1", FCVAR_ARCHIVE, "Use the Counter-Strike: Source view models (with hands) when CS:S content is installed");
 ConVar cl_css_anim_layers("cl_css_anim_layers", "255", FCVAR_CHEAT, "debug: 1 jump 2 upper 4 reload 8 aim 16 shoot");
-ConVar cl_r8_model("cl_r8_model", "1", FCVAR_ARCHIVE, "Use the CS:GO R8 Revolver model (downloaded with the game content) instead of the Desert Eagle");
+ConVar cl_r8_model("cl_r8_model", "0", FCVAR_ARCHIVE, "Use the CS:GO R8 Revolver model (no hands on that model) instead of the CS:S pistol");
 ConVar cl_csgo_models("cl_csgo_models", "1", FCVAR_ARCHIVE, "Use the downloaded CS:GO models (SCAR-20, SSG 08, molotov, incendiary) instead of the CS:S stand-ins");
 ConVar cl_csgo_viewmodel_fov("cl_csgo_viewmodel_fov", "68", FCVAR_ARCHIVE, "Field of view of the CS:GO (c_) view models - CS:GO's viewmodel_fov", true, 40, true, 90);
 ConVar cl_real_viewmodel_fov("cl_real_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
+static ConVar cl_css_vm_x("cl_css_viewmodel_x", "1.5", FCVAR_ARCHIVE, "CS:S view model offset right", true, -8, true, 8);
+static ConVar cl_css_vm_y("cl_css_viewmodel_y", "-1", FCVAR_ARCHIVE, "CS:S view model offset down", true, -8, true, 8);
+static ConVar cl_css_vm_z("cl_css_viewmodel_z", "2", FCVAR_ARCHIVE, "CS:S view model offset forward", true, -8, true, 8);
 
 ConVar cl_agent_ct("cl_agent_ct", "0", FCVAR_ARCHIVE, "Your CT agent: 0 SEAL Team 6, 1 GSG-9, 2 SAS, 3 GIGN", true, 0, true, 3);
 ConVar cl_agent_t("cl_agent_t", "0", FCVAR_ARCHIVE, "Your T agent: 0 Phoenix, 1 Elite Crew, 2 Arctic Avengers, 3 Guerilla Warfare", true, 0, true, 3);
@@ -649,7 +652,14 @@ static void CurlFingers(const CSrcModel& pm, std::vector<matrix3x4_t>& bones, ch
       Vector ax(b[0][axis], b[1][axis], b[2][axis]);
       if (ax.LengthSqr() > 1e-6f) {
         ax.NormalizeInPlace();
-        const Quat q = AxisAngleQuat(ax, -deg);   // negative: curl towards the palm
+        // the joints of one finger cannot all bend by the same amount - the tip would roll up into the palm. The
+        // knuckle takes most of the curl, the middle joint less and the tip barely moves (a real fist).
+        int depth = 0;
+        for (int k = pm.bones[i].parent; k >= 0 && depth < 4; k = pm.bones[k].parent)
+          if (pm.bones[k].name.find(tagS + "Finger") != std::string::npos) depth++;
+        static const float kGrade[] = { 1.f, 0.62f, 0.30f, 0.18f };
+        const float d = deg * kGrade[std::min(depth, 3)];
+        const Quat q = AxisAngleQuat(ax, -d);   // negative: curl towards the palm
         matrix3x4_t r; QuaternionMatrix(q, Vector(0, 0, 0), Vector(1, 1, 1), r);
         matrix3x4_t toOrg, fromOrg, rot; AngleMatrix(QAngle(0, 0, 0), org, toOrg); AngleMatrix(QAngle(0, 0, 0), -org, fromOrg);
         ConcatTransforms(toOrg, r, rot); ConcatTransforms(rot, fromOrg, local);
@@ -748,11 +758,23 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   WeaponModel wi = WeaponInfo(wid); if (!wi.model) return false;
   const CSrcModel* m = nullptr;
   bool r8 = false;   // CS:GO model: right-handed, hands from the agent model, its own FOV
-  if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) { m = LoadedOrNull(SrcMdl_Get(kR8View)); r8 = m && !m->seqs.empty(); if (!r8) m = nullptr; }
+  // the Counter-Strike: Source view model of this weapon: the hands and the fingers are modelled onto the grip, so
+  // nothing has to be posed per frame. Preferred by default - the CS:GO c_ models ship without hands and gluing the
+  // agent's arms on them never put the fingers on the grip.
+  auto cssView = [&](std::string* which) -> const CSrcModel* {
+    const char* paths[] = { "models/weapons/v_%s.mdl", "models/weapons/v_models/v_%s.mdl" };
+    for (const char* fmt : paths) {
+      char buf[256]; snprintf(buf, sizeof buf, fmt, wi.model);
+      const CSrcModel* c = LoadedOrNull(SrcMdl_Get(buf));
+      if (c && !c->meshes.empty() && !c->seqs.empty()) { if (which) *which = buf; return c; }
+    }
+    return nullptr;
+  };
   bool csgo = false;
+  if (wid == WEAPON_REVOLVER && cl_r8_model.GetBool()) { m = LoadedOrNull(SrcMdl_Get(kR8View)); r8 = m && !m->seqs.empty(); if (!r8) m = nullptr; }
+  if (!m && cl_real_viewmodels.GetBool()) m = cssView(nullptr);
   if (!m) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
-  if (!m) m = LoadedOrNull(SrcMdl_Get(std::string("models/weapons/v_") + wi.model + ".mdl"));
-  if (!m) m = LoadedOrNull(SrcMdl_Get(std::string("models/weapons/v_models/v_") + wi.model + ".mdl"));   // real CS:GO layout
+  if (!m) m = cssView(nullptr);
   if (!m) {
     static const struct { const char* css; const char* go; } *ren = nullptr; (void)ren;
     const char* alias = nullptr;
@@ -828,7 +850,9 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   // Source: view model at the eye with the view angles; bob + sway on top
   float bt = bobTime * 2.f * (float)M_PI / 0.8f;
   QAngle ang = view.angles; ang.x += sway.x * 0.3f; ang.y += sway.y * 0.3f;
-  Vector org = view.origin + view.forward * (std::sin(bt) * 0.4f * bob) - view.up * (landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * bob);
+  // CS:S view models sit to the right of and below the eye; without this the hands hang off the bottom of the screen
+  Vector org = view.origin + view.right * cl_css_vm_x.GetFloat() - view.up * cl_css_vm_y.GetFloat() + view.forward * cl_css_vm_z.GetFloat();
+  org += view.forward * (std::sin(bt) * 0.4f * bob) - view.up * (landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * bob);
   matrix3x4_t xf; AngleMatrix(ang, org, xf);
   // CS:S v_ models are built left-handed (the game mirrors them for cl_righthand 1), the CS:GO R8 is right-handed
   static ConVar* righthand = FindConVar("cl_righthand");
@@ -846,8 +870,9 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   Render_Begin3D(view.view, proj);
   SrcMdl_Draw(*m, bones, xf, dp);
   if (csgo) DrawCsgoScope(*m, bones, xf, dp);
-  // CS:GO view models ship without hands: the agent's own arms are attached to the gun's hand bone
-  const CSrcModel* armsFrom = PlayerModel(p);
+  // CS:GO view models ship without hands: the agent's own arms are attached to the gun's hand bone. The CS:S view
+  // models already carry their hands, so nothing is glued on them.
+  const CSrcModel* armsFrom = (csgo || r8) ? PlayerModel(p) : nullptr;
   if (armsFrom) {
     thread_local PlayerPoseOutput armPose;
     PlayerPoseInput ain;

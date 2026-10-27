@@ -99,7 +99,7 @@ struct Vars {
     bool chamsFake = true; Col chamsFakeCol = MkCol(255, 255, 255, 70);
     float scopeBlend = 40;                   // local model transparency in scope
     // world/view
-    bool removeFlash = true, removeSmoke = false, removeScope = true, removeRecoil = true;
+    bool removeFlash = true, removeSmoke = false, removeScope = false, removeRecoil = true;
     float nightmode = 0;
     KeyBind thirdpersonKey{ 0, KEYMODE_TOGGLE }; float thirdpersonDist = 140; bool thirdpersonDead = true;
     bool forceCrosshair = true; bool penCrosshair = true;

@@ -25,6 +25,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE_URL = "https://raw.githubusercontent.com/bouletmarc/css_content/master/"
 WEAPON_URL = "https://raw.githubusercontent.com/Seulyy/ARC9-GSR/5e16cf9baa37348fc82ba0c824d842dbcb44ab18/"
 MAP_URL = "https://raw.githubusercontent.com/wiktorxxiii/csgo-fastdl/HEAD/csgo/"
+R8_URL = ("https://raw.githubusercontent.com/EntranceJew/gmod-addons/"
+          "48675a7f3a5a06d826bebba97078e24d0124f728/weapon_ttt_csgo_r8revolver/gamemodes/terrortown/content/")
 UA = {"User-Agent": "cshvh-content-builder"}
 # on CI an authenticated token lifts the contents-API limit from 60 to 5000 requests per hour
 TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
@@ -33,6 +35,19 @@ TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
 def quoted(path):
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         return re.findall(r'"([^"]+)"', f.read())
+
+
+def file_entries(array):
+    """a `const char* const s_XFiles[]` block of download.cpp -> the relative file names it lists"""
+    src = open(os.path.join(ROOT, "src/engine/download.cpp"), encoding="utf-8").read()
+    start = src.index(f"const char* const {array}[]")
+    end = src.index("nullptr };", start)
+    out = []
+    for line in src[start:end].splitlines():
+        if line.strip().startswith("//"):
+            continue
+        out += re.findall(r'"([^"]+)"', line)
+    return out
 
 
 def map_entries(array="s_csgoMapFiles"):
@@ -367,6 +382,11 @@ def main():
     items += [(repo_path(u), u) for u in quoted("src/engine/content_agents.inc")]
     # static props (doors, crates, furniture)
     items += [(repo_path(u), u) for u in quoted("src/engine/content_props.inc")]
+    # the CS:GO extras that have their own mirror: the R8 revolver (view + world model, textures, sounds) and the
+    # SCAR-20 / SSG 08 / molotov (models, scopes, sounds). These arrays used to be downloaded file-by-file, which the
+    # single archive has no path for - the revolver had no view model at all without them.
+    items += [(pth, R8_URL + pth) for pth in file_entries("s_r8Files")]
+    items += [(pth, WEAPON_URL + pth) for pth in file_entries("s_csgoFiles")]
     # the buy menu weapon icons
     items += icon_items()
     # the CS:GO -> CS:S ports: unpacked here (the game has no bz2 decoder) and shipped as maps/<name>.bsp

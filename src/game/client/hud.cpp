@@ -54,7 +54,7 @@ static std::deque<ChatLine> s_chat;
 static std::string s_center; static float s_centerEnd = 0;
 static std::string s_hint; static float s_hintEnd = 0;
 static int s_lastMoney = -1; static int s_moneyDelta = 0; static float s_moneyDeltaTime = -100;
-static Texture2D s_radarTex{}; static Texture2D s_scopeTex{};
+static Texture2D s_radarTex{};
 static int s_listener = 0;
 
 float HudScale() { return surface()->Scale() * hud_scaling.GetFloat(); }
@@ -227,26 +227,12 @@ static void BuildRadarTexture() {
   UnloadImage(img);
 }
 
-static void BuildScopeTexture() {
-  const int S = 512;
-  Image img = GenImageColor(S, S, { 0, 0, 0, 255 });
-  for (int y = 0; y < S; y++) for (int x = 0; x < S; x++) {
-    float dx = (x + 0.5f) / S * 2 - 1, dy = (y + 0.5f) / S * 2 - 1; float r = std::sqrt(dx * dx + dy * dy);
-    float a = Clamp((r - 0.985f) / 0.015f, 0.f, 1.f);
-    // inner vignette
-    float vig = Clamp((r - 0.6f) / 0.4f, 0.f, 1.f) * 0.35f;
-    ImageDrawPixel(&img, x, y, { 0, 0, 0, (unsigned char)(255 * std::max(a, vig)) });
-  }
-  s_scopeTex = LoadTextureFromImage(img); SetTextureFilter(s_scopeTex, TEXTURE_FILTER_BILINEAR);
-  UnloadImage(img);
-}
-
 void HUD_Init() {
   if (!s_listener) s_listener = gameeventmanager->AddListener(nullptr, OnEvent);
 }
 void HUD_LevelInit() {
   s_deaths.clear(); s_chat.clear(); s_lastMoney = -1; g_HudRoundHistory.clear();
-  if (IsWindowReady()) { BuildRadarTexture(); if (!s_scopeTex.id) BuildScopeTexture(); }
+  if (IsWindowReady()) BuildRadarTexture();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -685,22 +671,34 @@ static void DrawCrosshair(CCSPlayer* p, float sc) {
 static void DrawScope(CCSPlayer* p) {
   C_WeaponCSBase* w = p->GetActiveCSWeapon();
   if (!w || w->m_zoomLevel == 0 || !IsSniper(w->GetCSWeaponID())) return;
-  int W = surface()->ScreenWide(), H = surface()->ScreenTall();
-  float cx = W * 0.5f, cy = H * 0.5f;
+  const int W = surface()->ScreenWide(), H = surface()->ScreenTall();
+  const float cx = W * 0.5f, cy = H * 0.5f;
   if (cl.removeScope) { // cheat: simple lines across the screen
-    surface()->DrawFilledRect(0, cy, (float)W, 1, { 0, 0, 0, 255 }); surface()->DrawFilledRect(cx, 0, 1, (float)H, { 0, 0, 0, 255 });
+    surface()->DrawFilledRect(0, cy, (float)W, 1, BLACK); surface()->DrawFilledRect(cx, 0, 1, (float)H, BLACK);
     return;
   }
-  float s = (float)H;
-  if (s_scopeTex.id) DrawTexturePro(s_scopeTex, { 0, 0, (float)s_scopeTex.width, (float)s_scopeTex.height }, { cx - s / 2, 0, s, s }, { 0, 0 }, 0, WHITE);
-  surface()->DrawFilledRect(0, 0, cx - s / 2 + 1, (float)H, BLACK); surface()->DrawFilledRect(cx + s / 2 - 1, 0, W - (cx + s / 2) + 2, (float)H, BLACK);
-  // crosshair: thin center lines + thicker outer
-  surface()->DrawFilledRect(cx - s / 2, cy, s, 1, BLACK); surface()->DrawFilledRect(cx, 0, 1, (float)H, BLACK);
-  surface()->DrawFilledRect(cx - s / 2, cy - 1, s * 0.3f, 3, BLACK); surface()->DrawFilledRect(cx + s * 0.2f, cy - 1, s * 0.3f, 3, BLACK);
-  surface()->DrawFilledRect(cx - 1, cy + s * 0.2f, 3, s * 0.3f, BLACK);
-  // inaccuracy blur ring
-  float inacc = w->GetInaccuracy();
-  if (inacc > 0.004f) { float r = std::min(s * 0.45f, inacc * s * 3.5f); DrawRing({ cx, cy }, r, r + 2, 0, 360, 48, { 0, 0, 0, 90 }); }
+  // lens: black outside the circle, row by row, so it fills the screen at any aspect ratio and needs no texture
+  const float r = std::min(W, H) * 0.47f;
+  for (int y = 0; y < H; y++) {
+    const float dy = (y + 0.5f) - cy;
+    const float half = std::fabs(dy) >= r ? 0.f : std::sqrt(r * r - dy * dy);
+    if (half <= 0.f) { surface()->DrawFilledRect(0, (float)y, (float)W, 1, BLACK); continue; }
+    surface()->DrawFilledRect(0, (float)y, cx - half, 1, BLACK);
+    surface()->DrawFilledRect(cx + half, (float)y, W - (cx + half), 1, BLACK);
+  }
+  // lens ring + inner shadow ring
+  DrawRing({ cx, cy }, r - 2.5f, r + 1.5f, 0, 360, 128, { 10, 10, 10, 255 });
+  DrawRing({ cx, cy }, r - 14.f, r - 11.f, 0, 360, 128, { 0, 0, 0, 70 });
+  // crosshair: thin lines through the middle, thick segments further out
+  surface()->DrawFilledRect(cx - r, cy, 2 * r, 1, { 0, 0, 0, 220 }); surface()->DrawFilledRect(cx, cy - r, 1, 2 * r, { 0, 0, 0, 220 });
+  for (float sgn : { -1.f, 1.f }) {
+    surface()->DrawFilledRect(cx + sgn * r * 0.30f - (sgn < 0 ? r * 0.24f : 0.f), cy - 1, r * 0.24f, 3, BLACK);
+    surface()->DrawFilledRect(cx - 1, cy + sgn * r * 0.30f - (sgn < 0 ? r * 0.24f : 0.f), 3, r * 0.24f, BLACK);
+    surface()->DrawFilledRect(cx + sgn * 1.f - (sgn < 0 ? 2.f : 0.f), cy - 1, 2, 3, BLACK);   // centre dot
+  }
+  // inaccuracy ring
+  const float inacc = w->GetInaccuracy();
+  if (inacc > 0.004f) { const float ir = std::min(r * 0.9f, inacc * r * 6.f); DrawRing({ cx, cy }, ir, ir + 1.5f, 0, 360, 64, { 0, 0, 0, 110 }); }
 }
 
 static void DrawFlash(CCSPlayer* p) {

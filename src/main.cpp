@@ -174,7 +174,13 @@ int main(int argc, char** argv) {
   if (plusCmds.empty()) ContentScreen_Run();   // first start: download the CS:S content (not for scripted runs)
   LoadMenuBackground();
   Host_ExecAutoexec();
-  for (auto& c : plusCmds) Cbuf_AddText(c + "\n");
+  for (auto& c : plusCmds) {
+    // scripted runs use "+cmd args" like Quake; the key buttons are registered as "+attack2" themselves, so a
+    // command that is not found on its own is retried with its plus
+    std::string first = c.substr(0, c.find(' '));
+    if (!CCvar::Get().Find(first.c_str()) && CCvar::Get().Find(("+" + first).c_str())) c = "+" + c;
+    Cbuf_AddText(c + "\n");
+  }
   if (!plusCmds.empty()) gameui::Hide();
 
   int frame = 0;

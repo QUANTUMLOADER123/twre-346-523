@@ -106,7 +106,7 @@ static void RegisterVars() {
   R("vis.chams", s.chams); R("vis.chams_col", s.chamsCol); R("vis.xqz", s.chamsXqz); R("vis.xqz_col", s.chamsXqzCol); R("vis.chams_mat", s.chamsMaterial); R("vis.chams_team", s.chamsTeam);
   R("vis.chams_team_col", s.chamsTeamCol); R("vis.chams_bt", s.chamsBacktrack); R("vis.chams_bt_col", s.chamsBacktrackCol); R("vis.chams_local", s.chamsLocal); R("vis.chams_local_col", s.chamsLocalCol);
   R("vis.chams_fake", s.chamsFake); R("vis.chams_fake_col", s.chamsFakeCol); R("vis.scope_blend", s.scopeBlend); R("vis.noflash", s.removeFlash); R("vis.nosmoke", s.removeSmoke);
-  R("vis.noscope", s.removeScope); R("vis.novisrecoil", s.removeRecoil); R("vis.nightmode", s.nightmode); R("vis.tp_key", s.thirdpersonKey); R("vis.tp_dist", s.thirdpersonDist);
+  R("vis.noscope2", s.removeScope); R("vis.novisrecoil", s.removeRecoil); R("vis.nightmode", s.nightmode); R("vis.tp_key", s.thirdpersonKey); R("vis.tp_dist", s.thirdpersonDist);
   R("vis.tp_dead", s.thirdpersonDead); R("vis.force_xhair", s.forceCrosshair); R("vis.pen_xhair", s.penCrosshair); R("vis.tracers", s.tracers); R("vis.tracer_col", s.tracerCol);
   R("vis.impacts", s.impacts); R("vis.nade_pred", s.grenadePrediction); R("vis.nade_col", s.grenadeCol); R("vis.spread", s.spreadCircle); R("vis.fov", s.fov); R("vis.zoomfov", s.zoomFov);
   R("vis.vmfov", s.viewmodelFov); R("vis.hitmarker3d", s.hitmarker3d); R("vis.dmgmarker", s.damageMarker); R("vis.indicators", s.indicators); R("vis.arrows", s.aaArrows);
