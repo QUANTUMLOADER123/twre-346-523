@@ -1,5 +1,6 @@
 // css_models.cpp - Counter-Strike: Source player / weapon / view models (see css_models.hpp)
 #include "css_models.hpp"
+#include <functional>
 #include "cl_main.hpp"
 #include "../../engine/srcmdl.hpp"
 #include "../../engine/srcfs.hpp"
@@ -508,14 +509,37 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
     if (mirror) {
       // the CS:GO c_ model is the gun: it is hung on the player's weapon bone (its own root is moved into that frame),
       // so in third person the character holds the very gun the view model shows
+      // the gun goes into the right hand: the c_ model carries the very same ValveBiped skeleton, so its own hand bone
+      // is the frame the hand grips the gun in - matching the two hand frames puts the grip into the palm (weapon_bone
+      // is only the fallback, the CS:S animations move it away from the hands because Source lets IK pull them onto it)
       const int wbone = m->FindBone("ValveBiped.weapon_bone"), root = GunRootBone(*mirror, mi);
-      if (wbone >= 0 && root >= 0 && wbone < (int)out.cssBones.size()) {
+      const int handBone = m->FindBone("ValveBiped.Bip01_R_Hand"), gunHandBone = mirror->FindBone("ValveBiped.Bip01_R_Hand");
+      const bool handRooted = handBone >= 0 && gunHandBone >= 0 && handBone < (int)out.cssBones.size();
+      if (handRooted || (wbone >= 0 && root >= 0 && wbone < (int)out.cssBones.size())) {
         thread_local std::vector<Vector> cp; thread_local std::vector<Quat> cq; thread_local std::vector<matrix3x4_t> cb;
         SrcSeqRef idle = mirror->FindSeq("idle"); if (!idle) idle = { mirror, 0, -1 };
         mirror->SampleSeq(idle, 0.f, SrcPoseValues(), cp, cq); mirror->BuildBones(cp, cq, cb);
-        matrix3x4_t off; AngleMatrix(QAngle(0, 0, 0), mi->mirrorOffset, off);
-        matrix3x4_t rootInv, a1, toWorld; MatrixInvert(cb[root], rootInv);
-        ConcatTransforms(out.cssBones[wbone], off, a1); ConcatTransforms(a1, rootInv, toWorld);
+        matrix3x4_t toWorld;
+        if (handRooted) {
+          // rotation from the gun's own hand frame (the grip orientation of the c_ model), position from the player's
+          // hand: the palm holds the grip, the barrel keeps pointing where the hand points. Taking the hand bone frame
+          // as a whole put the gun inside the hip instead, the two models' hand bones are not the same frame.
+          matrix3x4_t gunHandRot = cb[gunHandBone];
+          for (int i = 0; i < 3; i++) gunHandRot[i][3] = 0.f;
+          matrix3x4_t handRot = out.cssBones[handBone];
+          for (int i = 0; i < 3; i++) handRot[i][3] = 0.f;
+          matrix3x4_t gunHandInv, rotOnly; MatrixInvert(gunHandRot, gunHandInv);
+          ConcatTransforms(handRot, gunHandInv, rotOnly);
+          toWorld = rotOnly;
+          // the gun's grip point into the middle of the palm
+          const Vector grip = VectorTransform(Vector(cb[root][0][3], cb[root][1][3], cb[root][2][3]), toWorld);
+          const Vector palm(out.cssBones[handBone][0][3], out.cssBones[handBone][1][3], out.cssBones[handBone][2][3]);
+          for (int i = 0; i < 3; i++) toWorld[i][3] = palm[i] - grip[i];
+        } else {
+          matrix3x4_t off; AngleMatrix(QAngle(0, 0, 0), mi->mirrorOffset, off);
+          matrix3x4_t rootInv, a1; MatrixInvert(cb[root], rootInv);
+          ConcatTransforms(out.cssBones[wbone], off, a1); ConcatTransforms(a1, rootInv, toWorld);
+        }
         out.cssWeaponBones.resize(cb.size());
         for (size_t i = 0; i < cb.size(); i++) ConcatTransforms(toWorld, cb[i], out.cssWeaponBones[i]);
         out.cssWeapon = mirror; out.hasWeapon = true;
@@ -598,6 +622,52 @@ namespace {
 // animate. The player's own CS:S agent has the same skeleton, so each of its arms is moved by one rigid transform:
 // the hand lands exactly on the view model's hand bone of the same side and the forearm follows, so the trigger hand
 // and the support hand both sit on the gun.
+// The agent's arms come out of a relaxed idle pose: the fingers are straight, so a hand put on a gun either sinks into
+// the grip or hovers around it. Every finger joint is curled around its own knuckle axis here, which wraps the fingers
+// onto the grip. `axis` picks the knuckle axis of the ValveBiped finger bones (0 = x, 1 = y, 2 = z of the bone frame).
+static ConVar cl_viewmodel_grip("cl_viewmodel_grip", "46", FCVAR_ARCHIVE,
+                                "Degrees each finger joint of the view model hands is curled to grip the weapon", true, 0.f, true, 90.f);
+static ConVar cl_viewmodel_grip_axis("cl_viewmodel_grip_axis", "2", FCVAR_ARCHIVE,
+                                     "Knuckle axis the view model fingers curl around (0 x, 1 y, 2 z)");
+static void CurlFingers(const CSrcModel& pm, std::vector<matrix3x4_t>& bones, char side) {
+  const float deg = cl_viewmodel_grip.GetFloat();
+  if (deg <= 0.01f) return;
+  const int axis = std::max(0, std::min(2, cl_viewmodel_grip_axis.GetInt()));
+  char tag[8]; snprintf(tag, sizeof tag, "_%c_", side);
+  const std::string tagS = tag;
+  std::vector<matrix3x4_t> acc(pm.bones.size());
+  std::vector<int> state(pm.bones.size(), 0);   // 0 = not visited, 1 = in progress, 2 = done
+  std::function<const matrix3x4_t&(int)> fix = [&](int i) -> const matrix3x4_t& {
+    if (state[i] == 2) return acc[i];
+    if (state[i] == 1) { acc[i] = {}; return acc[i]; }   // broken parent loop: identity
+    state[i] = 1;
+    matrix3x4_t local{};
+    const std::string& nm = pm.bones[i].name;
+    if (nm.find(tagS + "Finger") != std::string::npos && i < (int)bones.size()) {
+      const matrix3x4_t& b = bones[i];
+      const Vector org(b[0][3], b[1][3], b[2][3]);
+      Vector ax(b[0][axis], b[1][axis], b[2][axis]);
+      if (ax.LengthSqr() > 1e-6f) {
+        ax.NormalizeInPlace();
+        const Quat q = AxisAngleQuat(ax, -deg);   // negative: curl towards the palm
+        matrix3x4_t r; QuaternionMatrix(q, Vector(0, 0, 0), Vector(1, 1, 1), r);
+        matrix3x4_t toOrg, fromOrg, rot; AngleMatrix(QAngle(0, 0, 0), org, toOrg); AngleMatrix(QAngle(0, 0, 0), -org, fromOrg);
+        ConcatTransforms(toOrg, r, rot); ConcatTransforms(rot, fromOrg, local);
+      }
+    }
+    const int par = pm.bones[i].parent;
+    if (par >= 0 && par < (int)pm.bones.size()) ConcatTransforms(local, fix(par), acc[i]);
+    else acc[i] = local;
+    state[i] = 2;
+    return acc[i];
+  };
+  for (size_t i = 0; i < pm.bones.size(); i++) {
+    if (pm.bones[i].name.find(tagS + "Finger") == std::string::npos) continue;
+    const matrix3x4_t corr = fix((int)i);
+    matrix3x4_t t; ConcatTransforms(corr, bones[i], t); bones[i] = t;
+  }
+}
+
 void DrawViewModelArm(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm,
                       const std::vector<matrix3x4_t>& pose, const matrix3x4_t& xf, const StudioDrawParams& dp, char side) {
   if (!pm || pose.empty()) return;
@@ -618,7 +688,10 @@ void DrawViewModelArm(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBon
       if (nm.find(std::string(tag) + part) != std::string::npos) { mask[i] = 1; n++; break; }
   }
   if (!n) return;
-  SrcMdl_Draw(*pm, pose, world, dp, 0, &mask);
+  thread_local std::vector<matrix3x4_t> curled;
+  curled = pose;
+  CurlFingers(*pm, curled, side);
+  SrcMdl_Draw(*pm, curled, world, dp, 0, &mask);
 }
 void DrawViewModelArms(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm,
                        const std::vector<matrix3x4_t>& pose, const matrix3x4_t& xf, const StudioDrawParams& dp) {
@@ -706,11 +779,18 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   switch (act) {
     case ACT_VM_DRAW: seq = PickVm(*m, { "ACT_VM_DRAW" }, silenced, 0); stretch = true; break;
     case ACT_VM_PRIMARYATTACK:
-      if (wid == WEAPON_KNIFE) { seq = m->FindSeq((variant & 1) ? "midslash2" : "midslash1"); if (!seq) seq = PickVm(*m, { "ACT_VM_HITCENTER", "ACT_VM_MISSCENTER" }, false, variant); }
+      if (wid == WEAPON_KNIFE) {
+        seq = m->FindSeq((variant & 1) ? "midslash2" : "midslash1");                              // CS:S knife
+        if (!seq) seq = m->FindSeq((variant & 1) ? "light_hit2" : "light_hit1");                  // CS:GO knife
+        if (!seq) seq = PickVm(*m, { "ACT_VM_PRIMARYATTACK", "ACT_VM_HITCENTER", "ACT_VM_MISSCENTER" }, false, variant);
+      }
       else if (wid == WEAPON_C4) seq = PickVm(*m, { "ACT_VM_PRIMARYATTACK" }, false, 0);
       else seq = empty ? PickVm(*m, { "ACT_VM_DRYFIRE", "ACT_VM_PRIMARYATTACK" }, silenced, 0) : PickVm(*m, { "ACT_VM_PRIMARYATTACK" }, silenced, variant);
       break;
-    case ACT_VM_SECONDARYATTACK: seq = wid == WEAPON_KNIFE ? m->FindSeq("stab") : PickVm(*m, { "ACT_VM_SECONDARYATTACK" }, silenced, 0); break;
+    case ACT_VM_SECONDARYATTACK:
+      if (wid == WEAPON_KNIFE) { seq = m->FindSeq("stab"); if (!seq) seq = m->FindSeq("heavy_hit1"); }
+      if (!seq) seq = PickVm(*m, { "ACT_VM_SECONDARYATTACK" }, silenced, 0);
+      break;
     case ACT_VM_RELOAD:
       if (m->FindSeq("insert")) seq = m->FindSeq("insert");   // shotguns: shell after shell
       else { seq = PickVm(*m, { "ACT_VM_RELOAD" }, silenced, 0); stretch = true; }

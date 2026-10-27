@@ -1,5 +1,6 @@
 // mainmenu.cpp - Counter-Strike: Global Offensive (Panorama) style main menu, see mainmenu.hpp
 #include "mainmenu.hpp"
+#include <filesystem>
 #include "gameui.hpp"
 #include "controls.hpp"
 #include "csgo_style.hpp"
@@ -226,7 +227,30 @@ const MapPreview* Preview(const std::string& map) {
   if (it != s_previews.end()) return it->second.tex.id ? &it->second : nullptr;
   MapPreview& p = s_previews[map];
   std::vector<uint8_t> rgba; int w = 0, h = 0; mapoverview::Info ov;
-  if (!mapoverview::Load(map, rgba, w, h, ov) || w <= 0 || h <= 0) return nullptr;
+  // the picker shows the level itself: a top-down render of the map's own geometry, cached on disk after the first
+  // build (a radar image says nothing about how the map actually looks)
+  std::string cache = "content/cache/preview_" + map + ".png";
+  bool have = false;
+  if (FileExists(cache.c_str())) {
+    Image img = LoadImage(cache.c_str());
+    if (img.data) {
+      ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+      w = img.width; h = img.height;
+      rgba.assign((uint8_t*)img.data, (uint8_t*)img.data + (size_t)w * h * 4);
+      UnloadImage(img);
+      have = w > 0 && h > 0;
+    }
+  }
+  if (!have) {
+    have = mapoverview::RenderTopDown(map, rgba, w, h, 640);
+    if (have) {
+      std::error_code ec; std::filesystem::create_directories("content/cache", ec);
+      Image img{ rgba.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+      ExportImage(img, cache.c_str());
+    }
+  }
+  // no geometry (the map is not downloaded yet): the map's own overview radar is the only thing left
+  if (!have && (!mapoverview::Load(map, rgba, w, h, ov) || w <= 0 || h <= 0)) return nullptr;
   int x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
     if (!rgba[((size_t)y * w + x) * 4 + 3]) continue;

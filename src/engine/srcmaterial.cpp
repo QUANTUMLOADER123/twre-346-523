@@ -13,6 +13,8 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <numeric>
+#include <map>
 
 // Every VTF is decoded at its own full resolution: downscaling a map texture made some CS:GO materials
 // (scaled/split ones) line up with the wrong size and the surface came out as garbage.
@@ -310,6 +312,15 @@ const SrcMaterial& SrcMat_Find(const std::string& name, bool) {
   if (key.size() > 4 && key.compare(key.size() - 4, 4, ".vmt") == 0) key.resize(key.size() - 4);
   auto it = s_mats.find(key); if (it != s_mats.end()) return it->second;
   SrcMaterial m = BuildMaterial(key);
+  // a map may keep its own materials in its pakfile under materials/maps/<map>/ (displacement blends, decals,
+  // overlays): the engine looks there first and falls back to the plain path
+  if (!m.ok && !g_SrcBsp.name.empty() && key.rfind("maps/", 0) != 0) {
+    std::string inMap = "maps/" + srcfs::Normalize(g_SrcBsp.name) + "/" + key;
+    if (srcfs::Exists("materials/" + inMap + ".vmt")) {
+      SrcMaterial mm = BuildMaterial(inMap);
+      if (mm.ok) return s_mats[key] = mm;
+    }
+  }
   if (!m.ok) {
     // the displacement blends of the old maps are named "<material>_bottom" / "_top" while the content only
     // has the plain "<material>": the blend layer is lost, but the wall gets its real texture back
@@ -369,6 +380,17 @@ static ConCommand mat_check("mat_check", [](const CCommand& c) {
     int bad = 0;
     for (auto& n : g_SrcBsp.materials) { const SrcMaterial& m = SrcMat_Find(n); if (!m.ok || m.texMissing) { Msg("missing %s\n", n.c_str()); bad++; } }
     Msg("%d / %d map materials unresolved\n", bad, (int)g_SrcBsp.materials.size());
+    return;
+  }
+  if (!std::strcmp(c.Arg(1), "props")) {
+    // which static prop models of the current map the content does not have (the prop names are the shopping list)
+    std::map<std::string, int> missing;
+    for (auto& sp : g_SrcBsp.props) {
+      CSrcModel* md = SrcMdl_Get(sp.model);
+      if (!md || md->meshes.empty()) missing[sp.model]++;
+    }
+    for (auto& [n, cnt] : missing) Msg("missing prop %s (%d)\n", n.c_str(), cnt);
+    Msg("%d prop models missing (%d instances)\n", (int)missing.size(), (int)std::accumulate(missing.begin(), missing.end(), 0, [](int a, const std::pair<const std::string, int>& b) { return a + b.second; }));
     return;
   }
   CSrcModel* md = SrcMdl_Get(c.Arg(1));

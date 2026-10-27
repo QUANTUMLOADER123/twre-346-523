@@ -16,4 +16,7 @@ struct Info {
 bool Load(const std::string& map, std::vector<uint8_t>& rgba, int& w, int& h, Info& info);
 // true when the map has an overview at all (cheap: does not decode the image)
 bool Has(const std::string& map);
+// A top-down picture of the map built from the map's own geometry: the map picker shows the level itself (floors and
+// walls coloured by surface type, higher brushes on top), not a flat radar. `size` is the long edge in pixels.
+bool RenderTopDown(const std::string& map, std::vector<uint8_t>& rgba, int& w, int& h, int size = 512);
 } // namespace mapoverview

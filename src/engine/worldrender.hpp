@@ -18,6 +18,7 @@ public:
   void DrawWorld(const CViewSetup& view);
   LightSample SampleLight(const Vector& pos);          // cached lighting probe (for players, weapons, props)
   Vector ComputeLightAt(const Vector& p, const Vector& n, int aoRays, int sunRays); // full lighting evaluation
+  bool DumpLightmap(const char* path);                  // debug: write the lightmap atlas out as a png
   bool built = false;
   bool bsp = false;                                     // original GoldSrc map (bsprender.cpp)
   bool src = false;                                     // Counter-Strike: Source map (srcbsprender.cpp)

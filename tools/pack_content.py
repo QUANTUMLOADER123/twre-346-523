@@ -159,6 +159,144 @@ def build(name, items, out_dir):
 report = []
 
 
+
+# ------------------------------------------------------------------------------------------------
+# what the map files themselves ask for: brush materials, static prop models, skyboxes. The maps carry a
+# "staticprop_dict" listing the prop models (CS:S-era paths) and a string table with every material name; the CS:S
+# content repository has most of them, so the archive is extended with whatever it really provides.
+ICON_URL = ("https://raw.githubusercontent.com/atiksoftware/csgo_memory_hacking_examples/"
+            "4afd922fd7ae95c8a9b393d423944540182235f8/csgo_weapon_icons/")
+
+
+def bsp_lumps(d):
+    import struct
+    if d[:4] != b"VBSP":
+        return None
+    return [struct.unpack("<iiii", d[8 + i * 16:24 + i * 16]) for i in range(64)]
+
+
+def bsp_map_assets(d):
+    """(material names, static prop model paths, sky name) of a .bsp"""
+    import struct
+    lumps = bsp_lumps(d)
+    if not lumps:
+        return [], [], None
+    _, tlen, _, _ = lumps[44]
+    dataoff, datalen, _, _ = lumps[43]
+    names = []
+    if tlen and datalen:
+        table = d[lumps[44][0]:lumps[44][0] + tlen]
+        blob = d[dataoff:dataoff + datalen]
+        for i in range(0, tlen - 3, 4):
+            off = struct.unpack("<i", table[i:i + 4])[0]
+            if 0 <= off < len(blob):
+                end = blob.find(b"\0", off)
+                if end > off:
+                    names.append(blob[off:end].decode("ascii", "replace").lower())
+    props = []
+    goff, glen, _, _ = lumps[35]
+    if glen >= 4:
+        g = d[goff:goff + glen]
+        ng = struct.unpack("<i", g[0:4])[0]
+        for i in range(ng):
+            h = 4 + i * 16          # game lump header: id, flags/version, fileofs, filelen
+            if h + 16 > len(g):
+                break
+            gid = struct.unpack("<i", g[h:h + 4])[0]
+            ofs, ln = struct.unpack("<ii", g[h + 8:h + 16])
+            if gid != 0x73707270 or ofs <= 0 or ofs + ln > len(d):   # file offsets, not lump offsets
+                continue
+            blob = d[ofs:ofs + ln]
+            try:
+                nd = struct.unpack("<i", blob[0:4])[0]
+                dict_ = [blob[4 + k * 128:4 + (k + 1) * 128].split(b"\0")[0].decode("ascii", "replace").lower().replace("\\", "/")
+                         for k in range(nd)]
+                p = 4 + nd * 128
+                nleaf = struct.unpack("<i", blob[p:p + 4])[0]
+                p += 4 + nleaf * 2
+                np = struct.unpack("<i", blob[p:p + 4])[0]
+                p += 4
+                size = (len(blob) - p) // np if np > 0 else 0
+                if size < 56:
+                    continue
+                for k in range(np):
+                    idx = struct.unpack("<H", blob[p + k * size + 24:p + k * size + 26])[0]
+                    if idx < len(dict_):
+                        props.append(dict_[idx])
+            except (struct.error, IndexError, ZeroDivisionError):
+                pass
+    sky = None
+    eoff, elen, _, _ = lumps[0]
+    ent = d[eoff:eoff + elen].decode("ascii", "replace") if elen else ""
+    m = re.search(r'"skyname"\s+"([^"]+)"', ent)
+    if m:
+        sky = m.group(1).lower()
+    return names, props, sky
+
+
+def css_tree():
+    """every file path of the CS:S content repository"""
+    try:
+        d = fetch("https://api.github.com/repos/bouletmarc/css_content/git/trees/master?recursive=1", headers=auth_headers())
+        import json
+        return {t["path"] for t in json.loads(d)["tree"] if t["type"] == "blob"}
+    except Exception as e:  # noqa: BLE001 - best effort, the pack is still built
+        print(f"  map assets: can't list the CS:S repository ({e})", flush=True)
+        return set()
+
+
+def icon_items():
+    """the buy menu / HUD weapon icons (svg) the engine looks up as svg_normal/<name>.svg"""
+    src = open(os.path.join(ROOT, "src/engine/download.cpp"), encoding="utf-8").read()
+    start = src.index("const char* const s_iconFiles[]")
+    end = src.index("nullptr };", start)
+    out = []
+    for n in re.findall(r'ICON\("([a-z0-9_]+)"\)', src[start:end]):
+        entry = f"svg_normal/{n}.svg"
+        out.append((entry, ICON_URL + entry))
+    return out
+
+
+def map_asset_items(tree):
+    """the materials / prop models / skyboxes the shipped maps reference, as far as the CS:S repository has them"""
+    have = tree
+    out = []
+    for e in map_entries():
+        url = e if e.startswith(("http://", "https://")) else MAP_URL + e
+        try:
+            data = fetch(url)
+        except Exception as ex:  # noqa: BLE001 - a dead mirror is expected
+            print(f"  map assets: {e}: {ex}", flush=True)
+            continue
+        mats, props, sky = bsp_map_assets(data)
+        added = 0
+        for m in mats:
+            for cand in (f"materials/{m}.vmt", f"materials/{m}.vtf"):
+                if cand in have:
+                    out.append((cand, BASE_URL + cand))
+                    added += 1
+        for p in props:
+            folder = p.rsplit("/", 1)[0]
+            for ext in (".mdl", ".vvd", ".dx90.vtx", ".phy"):
+                cand = p[:-4] + ext
+                if cand in have:
+                    out.append((cand, BASE_URL + cand))
+            matdir = "materials/" + folder[len("models/"):].lower() + "/"
+            for cand in have:
+                if cand.startswith(matdir) and cand.endswith((".vmt", ".vtf")):
+                    out.append((cand, BASE_URL + cand))
+        if sky:
+            for suf in ("rt", "bk", "lf", "ft", "up", "dn"):
+                for ext in (".vmt", ".vtf"):
+                    cand = f"materials/skybox/{sky}{suf}{ext}"
+                    if cand in have:
+                        out.append((cand, BASE_URL + cand))
+                        added += 1
+        print(f"  map assets: {e.rsplit('/', 1)[-1]}: {len(mats)} materials, {len(props)} prop models, "
+              f"sky {sky}, {added} files found", flush=True)
+    return out
+
+
 def main():
     """Build ONE archive with all the content: models, materials, maps and sounds.
 
@@ -185,6 +323,13 @@ def main():
     items += [(repo_path(u), u) for u in quoted("src/engine/content_agents.inc")]
     # static props (doors, crates, furniture)
     items += [(repo_path(u), u) for u in quoted("src/engine/content_props.inc")]
+    # the buy menu weapon icons
+    items += icon_items()
+    # materials, prop models and skyboxes of the maps themselves (best effort: whatever the CS:S repo really has)
+    try:
+        items += map_asset_items(css_tree())
+    except Exception as e:  # noqa: BLE001 - content is best effort, the release must still ship
+        print(f"  map assets: skipped ({e})", flush=True)
     # the maps themselves (their own materials ride inside each map's pakfile lump)
     for e in map_entries():
         if e.startswith(("http://", "https://")):

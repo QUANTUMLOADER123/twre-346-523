@@ -332,7 +332,7 @@ static SoundEntry* GetSound(const std::string& name) {
   }
   if (e.variants.empty())
     for (const std::string& f : OriginalFiles(name)) { Sound snd = LoadSound(f.c_str()); if (snd.frameCount > 0) e.variants.push_back(snd); }
-  if (e.variants.empty()) DevMsg("Sound: no file for %s\n", name.c_str());
+  if (e.variants.empty()) { DevMsg("Sound: no file for %s\n", name.c_str()); return nullptr; }
   for (auto& base : e.variants) for (int k = 0; k < 5; k++) e.aliases.push_back(LoadSoundAlias(base));
   if (name.find(".Single") != std::string::npos) e.maxDist = 3200;
   if (name.find("Explode") != std::string::npos || name.find("explode") != std::string::npos) e.maxDist = 4000;
@@ -344,7 +344,7 @@ static SoundEntry* GetSound(const std::string& name) {
 }
 
 static void PlayEntry(SoundEntry* e, float vol, float pan, float pitch) {
-  if (e->aliases.empty()) return;
+  if (!e || e->aliases.empty()) return;
   int per = (int)(e->aliases.size() / e->variants.size());
   int variant = e->variants.size() > 1 ? RandomInt(0, (int)e->variants.size() - 1) : 0;
   // round robin inside the variant's alias group
@@ -362,6 +362,7 @@ void EmitSound(const char* name, const Vector& origin, int entindex, float vol, 
   std::string n = name;
   if (n.rfind("Player.Step", 0) == 0 && !snd_footsteps.GetBool()) return;
   SoundEntry* e = GetSound(n);
+  if (!e) return;
   CCSPlayer* lp = g_pLocalPlayer;
   bool local = lp && entindex == lp->entindex() && lp->IsAlive();
   float v = vol, pan = 0;
@@ -384,6 +385,28 @@ static ConCommand cmd_snd_check("snd_check", [](const CCommand& a) {
   if (files.empty()) Msg("%s: nothing found\n", a.Arg(1));
   for (auto& f : files) Msg("%s -> sound/%s\n", a.Arg(1), f.c_str());
 }, "Report the files a sound name resolves to");
+
+// console: decode every weapon fire sound and report it (audio device not needed) - the fastest way to see which
+// gun would be silent
+static ConCommand cmd_snd_audit("snd_audit", [](const CCommand&) {
+  if (!srcfs::AnyContent()) { Msg("snd_audit: no content\n"); return; }
+  int ok = 0, bad = 0;
+  for (int id = 1; id < WEAPON_MAX; id++) {
+    char name[64]; snprintf(name, sizeof(name), "Weapon_%s.Single", WeaponIdToAlias(id));
+    auto files = CssFiles(name);
+    int decoded = 0; std::string why = files.empty() ? "no file" : "";
+    for (const std::string& f : files) {
+      std::vector<uint8_t> d; if (!srcfs::Read("sound/" + f, d)) { why = "unreadable: " + f; continue; }
+      std::string ext = Lower(f.substr(f.size() - 4));
+      Wave w = LoadWaveFromMemory(ext.c_str(), d.data(), (int)d.size());
+      if (w.frameCount > 0) decoded++;
+      else if (why.empty()) why = "decode failed: " + f;
+      UnloadWave(w);
+    }
+    if (decoded) ok++; else { bad++; Msg("snd_audit: %-28s %s\n", name, why.c_str()); }
+  }
+  Msg("snd_audit: %d weapon fire sounds ok, %d silent\n", ok, bad);
+}, "Decode every weapon fire sound and report the ones that would be silent");
 
 static ConCommand cmd_play("play", [](const CCommand& a) { if (a.ArgC() > 1) EmitSound2D(a.Arg(1)); }, "Play a sound.");
 static void S_FlushSounds() {

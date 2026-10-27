@@ -21,6 +21,8 @@
 
 extern ConVar r_drawworld;
 extern ConVar mat_fullbright;
+extern ConVar r_bsp_lightmaps;
+extern ConVar r_subdivide;
 ConVar r_src_lightscale("r_src_lightscale", "1.15", FCVAR_ARCHIVE, "CS:S lightmap brightness (applied on map load)", true, 0.25f, true, 4.f);
 ConVar r_drawprops("r_drawprops", "1", 0, "Draw static props on CS:S maps");
 ConVar r_propfade("r_propfade", "1", FCVAR_ARCHIVE, "Fade static props at the distance set by the mapper");
@@ -70,6 +72,19 @@ void CWorldRenderer::UnloadSrc() {
   for (auto& t : m_srcSky) t = Texture2D{};   // owned by the material cache
   src = false;
 }
+
+bool CWorldRenderer::DumpLightmap(const char* path) {
+  if (!m_lightmap.id || !path) return false;
+  Image im = LoadImageFromTexture(m_lightmap);
+  bool ok = ExportImage(im, path);
+  UnloadImage(im);
+  return ok;
+}
+
+static ConCommand r_dump_lightmap("r_dump_lightmap", [](const CCommand& c) {
+  const char* p = c.ArgC() > 1 ? c.Arg(1) : "lightmap.png";
+  Msg(g_WorldRender.DumpLightmap(p) ? "wrote %s\n" : "no lightmap\n", p);
+}, "Write the CS:S lightmap atlas to a png (debug)");
 
 void CWorldRenderer::BuildSrc() {
   auto t0 = std::chrono::steady_clock::now();
@@ -158,25 +173,66 @@ void CWorldRenderer::BuildSrc() {
     auto cell = cellOf(center);
     Builder& B = builders[{ pass, f.material, cell.first, cell.second }];
     Builder* B2 = (pass == BSPPASS_OPAQUE && f.disp && m.tex2.id) ? &builders[{ BSPPASS_BLEND2, f.material, cell.first, cell.second }] : nullptr;
-    Builder* L = pass == BSPPASS_OPAQUE ? &builders[{ BSPPASS_LIGHTMAP, -1, cell.first, cell.second }] : nullptr;
     bool lit = f.lightofs >= 0 && slot[fi].x >= 0;
+    // The light of a face is its own lightmap rectangle sampled bilinearly. It used to be a separate "modulate 2x"
+    // pass over the whole level, which the software rasterizer (no GPU) does not implement - there the atlas ended up
+    // drawn as a plain texture, so every wall and floor got slabs of coloured noise. Baking the colour into the
+    // vertices needs no blend mode at all and looks the same on both renderers.
+    const float lscale = r_src_lightscale.GetFloat();
+    auto lightAt = [&](const SrcFaceVert& v) -> Vector {
+      if (!lit || fullbright || m.unlit) return Vector(1, 1, 1);
+      const float lu = v.lu, lv = v.lv;
+      const int x0 = (int)std::floor(lu), y0 = (int)std::floor(lv);
+      const float fx = lu - x0, fy = lv - y0;
+      const Vector c00 = luxel(f, x0, y0), c10 = luxel(f, x0 + 1, y0), c01 = luxel(f, x0, y0 + 1), c11 = luxel(f, x0 + 1, y0 + 1);
+      auto mix = [](const Vector& a, const Vector& b, float t) { return a + (b - a) * t; };
+      Vector l = mix(mix(c00, c10, fx), mix(c01, c11, fx), fy);
+      l = VecMin(l * lscale, Vector(1.f, 1.f, 1.f));
+      return VecMax(l, Vector(0.28f, 0.28f, 0.28f));
+    };
     auto emit = [&](const SrcFaceVert& v) {
       Color c{ 255, 255, 255, alpha };
-      if (pass != BSPPASS_OPAQUE) {
-        Vector l = (lit && !fullbright && !m.unlit) ? luxel(f, (int)(v.lu + 0.5f), (int)(v.lv + 0.5f)) : Vector(1, 1, 1);
+      if (pass == BSPPASS_OPAQUE) {
+        const Vector l = lightAt(v);
+        c = { U8(l.x * m.color.x), U8(l.y * m.color.y), U8(l.z * m.color.z), 255 };
+      } else {
+        Vector l = Vector(1, 1, 1);
         if (pass == BSPPASS_ADDITIVE) l = Vector(1, 1, 1);
+        else if (lit && !fullbright && !m.unlit) {
+          const Vector raw = luxel(f, (int)(v.lu + 0.5f), (int)(v.lv + 0.5f));
+          // only the brightness: the raw HDR luxel turned glass and decals into slabs of rainbow noise
+          const float lum = Clamp(0.2126f * raw.x + 0.7152f * raw.y + 0.0722f * raw.z, 0.35f, 1.f);
+          l = Vector(lum, lum, lum);
+        }
         c = { U8(l.x * m.color.x), U8(l.y * m.color.y), U8(l.z * m.color.z), alpha };
       }
       B.Add(v.pos, v.u, v.v, c, pass != BSPPASS_OPAQUE);
       if (B2) B2->Add(v.pos, v.u, v.v, Color{ 255, 255, 255, U8(v.alpha) }, true);
-      if (L) {
-        float lu = 1.5f / AW, lv = 1.5f / AH;
-        if (lit) { lu = (slot[fi].x + 1.5f + v.lu) / AW; lv = (slot[fi].y + 1.5f + v.lv) / AH; }
-        L->Add(v.pos, lu, lv, Color{ 255, 255, 255, 255 }, false);
-      }
     };
+    // opaque faces are subdivided so the baked light has a vertex to sit on (a 512 unit wall with 4 corners would
+    // otherwise be lit by one flat colour); every field of a vertex interpolates linearly
+    auto mixVert = [](const SrcFaceVert& a, const SrcFaceVert& b, float t) {
+      SrcFaceVert r = a;
+      r.pos = a.pos + (b.pos - a.pos) * t; r.u = FLerp(a.u, b.u, t); r.v = FLerp(a.v, b.v, t);
+      r.lu = FLerp(a.lu, b.lu, t); r.lv = FLerp(a.lv, b.lv, t); r.alpha = FLerp(a.alpha, b.alpha, t);
+      return r;
+    };
+    const float step = std::max(16.f, (float)r_subdivide.GetInt() * 3.f);
+    std::function<void(const SrcFaceVert&, const SrcFaceVert&, const SrcFaceVert&, int)> emitTri =
+      [&](const SrcFaceVert& a, const SrcFaceVert& b, const SrcFaceVert& c, int depth) {
+        if (pass == BSPPASS_OPAQUE && depth < 4) {
+          const float e0 = (b.pos - a.pos).Length(), e1 = (c.pos - b.pos).Length(), e2 = (a.pos - c.pos).Length();
+          if (std::max(e0, std::max(e1, e2)) > step) {
+            const SrcFaceVert ab = mixVert(a, b, 0.5f), bc = mixVert(b, c, 0.5f), ca = mixVert(c, a, 0.5f);
+            emitTri(a, ab, ca, depth + 1); emitTri(ab, b, bc, depth + 1);
+            emitTri(ca, bc, c, depth + 1); emitTri(ab, bc, ca, depth + 1);
+            return;
+          }
+        }
+        emit(a); emit(b); emit(c); tris++;
+      };
     // stored clockwise (front) -> emit counter-clockwise
-    for (size_t k = 0; k + 2 < f.verts.size(); k += 3) { emit(f.verts[k]); emit(f.verts[k + 2]); emit(f.verts[k + 1]); tris++; }
+    for (size_t k = 0; k + 2 < f.verts.size(); k += 3) emitTri(f.verts[k], f.verts[k + 2], f.verts[k + 1], 0);
   }
   for (auto& [key, B] : builders) {
     if (B.v.empty()) continue;
@@ -275,7 +331,8 @@ void CWorldRenderer::DrawSrc(const CViewSetup& v) {
   rlDrawRenderBatchActive(); rlEnableDepthMask();
   // 3. lightmaps
   SetBlend(BK_MODULATE2X); rlDisableDepthMask();
-  for (auto& c : m_bspChunks) if (c.pass == BSPPASS_LIGHTMAP && !fr.CullBox(c.mins, c.maxs)) { DrawMesh(c.mesh, c.material, MatrixIdentity()); drawnChunks++; }
+  // (the lightmap is baked into the vertex colours at build time, see the geometry pass: a separate modulate pass
+  // is not supported by the software rasterizer)
   SetBlend(BK_ALPHA); rlEnableDepthMask();
   // 4. static props
   struct Deferred { const SrcPropInst* p; const SrcMdlMesh* m; Texture2D t; float d; };
@@ -330,9 +387,12 @@ LightSample CWorldRenderer::SampleLightSrc(const Vector& pos) {
   if (m_probeCache.size() > 200000) m_probeCache.clear();
   Vector c(0.6f, 0.6f, 0.6f), lin;
   if (g_SrcBsp.LightPoint(pos + Vector(0, 0, 4), lin)) c = Gamma(lin);
+  // the HDR lightmaps of the CS:GO era maps are black in places the real engine lights up with ambient: with no
+  // floor the players, view model arms and props standing there came out as black silhouettes
+  c = VecMax(c, Vector(0.34f, 0.34f, 0.34f));
   if (mat_fullbright.GetBool()) c = Vector(1, 1, 1);
   LightSample s;
-  s.ambient = c * 0.62f + Vector(0.05f, 0.05f, 0.05f);
+  s.ambient = c * 0.62f + Vector(0.16f, 0.16f, 0.16f);
   s.direct = c * 0.5f;
   s.dir = g_SrcBsp.sunDir;
   m_probeCache[key] = s;
