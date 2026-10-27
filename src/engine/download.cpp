@@ -155,7 +155,7 @@ constexpr int kPacks = 1;
 // ONE archive for everything: every model, texture, map and sound the game needs. It is far smaller than the sum of
 // the per-asset archives (the deflate window sees all the textures at once) and the player downloads it once.
 Pack s_packs[kPacks] = {
-  { "all", "All game content (models, maps, textures, sounds)", nullptr, 0, nullptr, "content/extras/all", true, nullptr, "cshvh-content-all.zip" },
+  { "all", "Game content", nullptr, 900, nullptr, "content/extras/all", true, nullptr, "cshvh-content-all.zip" },
 };
 bool s_needCore = true;   // decided on the main thread in Start()
 bool s_haveCsgo = false;  // a local CS:GO install (pak01) - decided on the main thread, read by the worker
@@ -273,6 +273,10 @@ private:
 // HTTP GET streaming: sink returns false to stop
 using Sink = std::function<bool(const uint8_t*, size_t)>;
 
+// total size of the body being streamed (Content-Length), -1 when the server does not say. The loading screen
+// needs it for a real progress bar instead of a guess: the content archive has no size in its url.
+static std::atomic<double> s_httpTotal{ -1 };
+
 #if defined(PLATFORM_ANDROID)
 std::string JavaError(JNIEnv* env) {
   jthrowable ex = env->ExceptionOccurred(); env->ExceptionClear();
@@ -285,6 +289,7 @@ std::string JavaError(JNIEnv* env) {
   return r;
 }
 bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const char* accept = nullptr) {
+  s_httpTotal.store(-1.0);
   android_app* app = GetAndroidApp();
   if (!app || !app->activity) { err = "no activity"; return false; }
   JavaVM* vm = app->activity->vm; JNIEnv* env = nullptr;
@@ -306,6 +311,9 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
     jint code = env->CallIntMethod(conn, env->GetMethodID(hc, "getResponseCode", "()I"));
     if (env->ExceptionCheck()) { err = JavaError(env); env->PopLocalFrame(nullptr); break; }
     if (code != 200) { err = "HTTP " + std::to_string(code); env->PopLocalFrame(nullptr); break; }
+    jint total = env->CallIntMethod(conn, env->GetMethodID(hc, "getContentLength", "()I"));
+    if (env->ExceptionCheck()) { env->ExceptionClear(); total = -1; }
+    s_httpTotal.store(total > 0 ? (double)total : -1.0);
     jobject is = env->CallObjectMethod(conn, env->GetMethodID(hc, "getInputStream", "()Ljava/io/InputStream;"));
     if (env->ExceptionCheck()) { err = JavaError(env); env->PopLocalFrame(nullptr); break; }
     jclass isc = env->FindClass("java/io/InputStream");
@@ -333,6 +341,7 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
 }
 #elif defined(_WIN32)
 bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const char* accept = nullptr) {
+  s_httpTotal.store(-1.0);
   std::wstring w(url.begin(), url.end());
   URL_COMPONENTS uc{}; uc.dwStructSize = sizeof(uc);
   wchar_t host[256] = {}, path[2048] = {};
@@ -353,6 +362,10 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
     WinHttpQueryHeaders(r, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &code, &len, WINHTTP_NO_HEADER_INDEX);
     if (code != 200) err = "HTTP " + std::to_string(code);
     else {
+      DWORD total = 0, tlen = sizeof(total);
+      if (WinHttpQueryHeaders(r, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+                              &total, &tlen, WINHTTP_NO_HEADER_INDEX) && total > 0)
+        s_httpTotal.store((double)total);
       ok = true;
       std::vector<uint8_t> buf(256 * 1024);
       for (;;) {
@@ -370,6 +383,7 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
 }
 #else
 bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const char* accept = nullptr) {
+  s_httpTotal.store(-1.0);
   std::string cmd = "curl -fsSL --connect-timeout 10 --retry 2 --speed-limit 4096 --speed-time 60 " + (accept ? std::string("-H 'Accept: ") + accept + "' " : std::string()) + "'" + url + "'";
   FILE* f = popen(cmd.c_str(), "r");
   if (!f) { err = "curl not found"; return false; }
@@ -545,6 +559,8 @@ bool DownloadZipPack(const Pack& p, const std::string& url, double doneMB, std::
     if (s_cancel) return false;
     bytes += n;
     auto now = std::chrono::steady_clock::now();
+    double body = s_httpTotal.load();
+    if (body > 0) { std::lock_guard<std::mutex> l(s_mtx); s_prog.packTotalMB = body / 1048576.0; s_prog.totalExpectedMB = doneMB + s_prog.packTotalMB; }
     if (std::chrono::duration<double>(now - tl).count() >= 0.25) {
       tl = now;
       std::lock_guard<std::mutex> l(s_mtx);

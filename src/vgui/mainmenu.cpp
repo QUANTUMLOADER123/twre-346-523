@@ -407,7 +407,7 @@ void PaintHome(bool ingame) {
       DrawRectangleRec({ x, y, cw, chh }, csgo::Alpha(csgo::Panel, 0.92f));
       DrawRectangleRec({ x, y, 3, chh }, csgo::Accent);
       S()->DrawText(FONT_GO_BOLD, "WHAT'S NEW", x + 16, y + 14, csgo::Accent);
-      const char* lines[] = { "- Real CS:GO maps, agents and weapons (content_download / csgo_download)", "- Hitboxes from the CS:S player models", "- Radial buy menu, CS:GO style menus",
+      const char* lines[] = { "- New vertigo / inferno / mirage with their own props and materials", "- Hitboxes from the CS:S player models", "- Radial buy menu, CS:GO style menus",
                               "- Phones: content download, bind circles", "- Press INSERT (or AW) in game for aimwhere" };
       float ly = y + 42;
       for (const char* l : lines) { if (ly > y + chh - 20) break; S()->DrawText(FONT_GO, l, x + 16, ly, csgo::Text); ly += 24; }
@@ -1044,19 +1044,20 @@ void SettingsTab(int tab) {
     Header("CS:GO CONTENT");
     RowInfo("CS:GO", srcfs::CsgoAvailable() ? "installed" : "missing");
     std::string go = srcfs::CsgoRoot(); if (go.size() > 44) go = "..." + go.substr(go.size() - 41);
-    RowInfo("Folder", go.empty() ? "-  (run csgo_download or set csgo_gamedir)" : go.c_str());
+    RowInfo("Folder", go.empty() ? "-  (not found)" : go.c_str());
     RowInfo("Maps found", TextFormat("%d", (int)Maps().size()));
     download::Progress pr = download::Get();
     if (download::Busy()) {
       int pc = 0; const download::Pack* packs = download::Packs(pc);
-      RowInfo("Downloading", TextFormat("%s  %.0f / %.0f MB  (%.1f MB/s)", pr.pack < pc ? packs[pr.pack].title : "", pr.totalMB, pr.totalExpectedMB, pr.speedMBs));
+      RowInfo("Downloading", TextFormat("%.0f / %.0f MB  (%.1f MB/s)  %.0f%%", pr.totalMB, pr.totalExpectedMB, pr.speedMBs,
+                                         pr.totalExpectedMB > 0 ? 100.0 * pr.totalMB / pr.totalExpectedMB : 0.0));
       RowButton("", "CANCEL", [] { download::Cancel(); });
     } else {
       if (pr.state == download::FAILED) RowInfo("Last download", pr.error.c_str());
       if (pr.state == download::DONE) RowInfo("Last download", "finished - restart the game");
       RowButton("Download / repair content", "DOWNLOAD", [] { download::Start(); });
     }
-    RowButton("Download real CS:GO content (SteamCMD, ~2 GB)", "CSGO_DOWNLOAD", [] { Cbuf_AddText("csgo_download\n"); });
+    RowButton("Download real CS:GO content (~2 GB)", "CSGO_DOWNLOAD", [] { Cbuf_AddText("csgo_download\n"); });
     RowInfo("Source", "public CS:GO map mirrors on GitHub + your own CS:GO / CS:GO Dedicated Server");
     break;
   }
