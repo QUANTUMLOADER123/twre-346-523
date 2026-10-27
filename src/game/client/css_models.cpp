@@ -862,10 +862,12 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   if (!csgo && !r8) org += view.right * cl_css_vm_x.GetFloat() - view.up * cl_css_vm_y.GetFloat() + view.forward * cl_css_vm_z.GetFloat();
   org += view.forward * (std::sin(bt) * 0.4f * bob) - view.up * (landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * bob);
   matrix3x4_t xf; AngleMatrix(ang, org, xf);
-  // CS:S v_ models are built left-handed (the game mirrors them for cl_righthand 1), the CS:GO R8 is right-handed
+  // CS:S v_ models are built left-handed (the game mirrors them for cl_righthand 1), the CS:GO R8 is right-handed,
+  // and the CS:S knife is right-handed as well - mirroring it put the blade in the wrong hand
   static ConVar* righthand = FindConVar("cl_righthand");
   const bool wantRight = !righthand || righthand->GetBool();
-  if (wantRight != (r8 || csgo)) for (int i = 0; i < 3; i++) xf[i][1] = -xf[i][1];   // mirror along the view's right axis
+  const bool rightHandedModel = (r8 || csgo) || wid == WEAPON_KNIFE;
+  if (wantRight != rightHandedModel) for (int i = 0; i < 3; i++) xf[i][1] = -xf[i][1];   // mirror along the view's right axis
 
   StudioLight L;
   if (g_WorldRender.built) { LightSample s = g_WorldRender.SampleLight(view.origin); L.ambient = s.ambient * 1.15f; L.direct = s.direct * 0.8f; L.dir = s.dir; }
