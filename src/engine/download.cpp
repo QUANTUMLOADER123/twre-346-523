@@ -474,6 +474,14 @@ std::string JsDelivrUrl(const std::string& rawUrl) {
 }
 
 // single-file pack: every file from <url><file>, falling back to the API template
+// s_weaponFiles holds two families: the CS:GO models / sounds of the ARC9 port and the CS:S view models (the ones
+// that are drawn with hands) that live in the CS:S content repository
+bool IsCsgoWeaponAsset(const char* f) {
+  for (const char* pre : { "models/weapons/csgo/", "materials/models/csgo/", "materials/models/weapons/v_models/csgo/", "sound/weapons/csgo/" })
+    if (std::strncmp(f, pre, std::strlen(pre)) == 0) return true;
+  return false;
+}
+
 bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& err) {
   size_t bytes = 0; int files = 0, failed = 0, failStreak = 0;
   for (const char* const* f = p.files; *f; f++) {
@@ -513,7 +521,8 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
           apiUrl = "https://api.github.com/repos/" + rest.substr(0, s2) + "/contents/" + rest.substr(s3 + 1) + "?ref=HEAD";
       }
     }
-    const std::string rawUrl = absolute ? std::string(*f) : std::string(p.url) + *f;
+    const bool cssAsset = p.files == s_weaponFiles && !IsCsgoWeaponAsset(*f);
+    const std::string rawUrl = absolute ? std::string(*f) : (cssAsset ? cl_content_url_base.GetString() : std::string(p.url)) + *f;
     // mirrors, in order: the jsDelivr CDN (no rate limit and reachable where raw.githubusercontent.com is blocked),
     // raw.githubusercontent.com, then the GitHub contents API
     std::vector<std::string> cands;

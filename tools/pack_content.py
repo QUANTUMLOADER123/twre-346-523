@@ -374,8 +374,15 @@ def main():
 
     # CS:S player models + their materials, the stock textures, sounds and sound scripts
     items += [(p, BASE_URL + p) for p in quoted("src/engine/content_base.inc")]
-    # CS:GO weapon models, their materials and the weapon sound samples
-    items += [(p, WEAPON_URL + p) for p in quoted("src/engine/content_weapons.inc")]
+    # CS:GO weapon models, their materials and the weapon sound samples; the CS:S view models of the same file come
+    # from the CS:S content repository (they are the ones drawn with hands)
+    def weapon_base(path):
+        for pre in ("models/weapons/csgo/", "materials/models/csgo/", "materials/models/weapons/v_models/csgo/",
+                    "sound/weapons/csgo/"):
+            if path.startswith(pre):
+                return WEAPON_URL
+        return BASE_URL
+    items += [(p, weapon_base(p) + p) for p in quoted("src/engine/content_weapons.inc")]
     # the CS:S era textures our maps reference
     items += [(repo_path(u), u) for u in quoted("src/engine/content_maps_textures.inc")]
     # the CS:S player models (4 CT + 4 T) with their animations and materials
