@@ -860,6 +860,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   // are already built around the eye, so the offset only applies to the CS:S ones
   Vector org = view.origin;
   if (!csgo && !r8) org += view.right * cl_css_vm_x.GetFloat() - view.up * cl_css_vm_y.GetFloat() + view.forward * cl_css_vm_z.GetFloat();
+  else if (r8) org += view.right * 1.6f - view.up * 0.4f;   // the R8 addon model is built a touch left of the eye
   org += view.forward * (std::sin(bt) * 0.4f * bob) - view.up * (landKick * 1.f + std::fabs(std::sin(bt * 0.5f)) * 0.4f * bob);
   matrix3x4_t xf; AngleMatrix(ang, org, xf);
   // CS:S v_ models are built left-handed (the game mirrors them for cl_righthand 1), the CS:GO R8 is right-handed,
