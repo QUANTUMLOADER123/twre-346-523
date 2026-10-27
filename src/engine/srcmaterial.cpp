@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <map>
 #include <cstring>
+#include <cctype>
 #include <cmath>
 #include <algorithm>
 #include <numeric>
@@ -319,6 +320,26 @@ const SrcMaterial& SrcMat_Find(const std::string& name, bool) {
     if (srcfs::Exists("materials/" + inMap + ".vmt")) {
       SrcMaterial mm = BuildMaterial(inMap);
       if (mm.ok) return s_mats[key] = mm;
+    }
+  }
+  if (!m.ok) {
+    // CS:GO-era maps bake a per-face copy of a material as "maps/<map>/<tex>_<x>_<y>_<z>" (the compiler bakes the
+    // face's UV/lightmap scale into a throwaway vmt): the baked name is never part of any content pack, the base
+    // texture is - so a wall shows its real texture instead of the placeholder grey
+    std::string base = key;
+    if (base.rfind("maps/", 0) == 0) { size_t slash = base.find('/', 5); if (slash != std::string::npos) base = base.substr(slash + 1); }
+    if (base.size() > 10 && base.compare(base.size() - 10, 10, "_wvt_patch") == 0) base.resize(base.size() - 10);
+    for (int k = 0; k < 3; k++) {   // "_<x>_<y>_<z>"
+      size_t us = base.find_last_of('_');
+      if (us == std::string::npos || us + 1 >= base.size()) break;
+      bool digits = true;
+      for (size_t i = us + 1; i < base.size(); i++) if (!std::isdigit((unsigned char)base[i]) && base[i] != '-') { digits = false; break; }
+      if (!digits) break;
+      base.resize(us);
+    }
+    if (base != key && !base.empty()) {
+      const SrcMaterial& b = SrcMat_Find(base);
+      if (b.ok) m = b;
     }
   }
   if (!m.ok) {

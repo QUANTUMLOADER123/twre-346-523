@@ -35,10 +35,10 @@ def quoted(path):
         return re.findall(r'"([^"]+)"', f.read())
 
 
-def map_entries():
-    """the s_csgoMapFiles[] array: bare paths (mirror + path) or full urls (any mirror)"""
+def map_entries(array="s_csgoMapFiles"):
+    """the s_csgoMapFiles[] / s_portMapFiles[] arrays: bare paths (mirror + path) or full urls (any mirror)"""
     src = open(os.path.join(ROOT, "src/engine/download.cpp"), encoding="utf-8").read()
-    start = src.index("const char* const s_csgoMapFiles[]")
+    start = src.index(f"const char* const {array}[]")
     end = src.index("nullptr };", start)
     out = []
     for line in src[start:end].splitlines():
@@ -106,6 +106,8 @@ def download(items, label, workers=8):
 
     def one(it):
         entry, url = it
+        if entry in PORT_CACHE:
+            return entry, PORT_CACHE[entry]
         first, second = (api_try, raw_try) if PREFER_API[0] else (raw_try, api_try)
         res = first(entry, url)
         if res is not None:
@@ -149,7 +151,7 @@ def build(name, items, out_dir):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for entry in sorted(data):
             info = zipfile.ZipInfo(entry, date_time=(2024, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_DEFLATED
+            info.compress_type = zipfile.ZIP_STORED if entry.endswith(".bsp") else zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
             z.writestr(info, data[entry])
     print(f"  {name}: {len(data)} files, {os.path.getsize(path) / 1048576:.1f} MB "
@@ -257,14 +259,56 @@ def icon_items():
     return out
 
 
-def map_asset_items(tree):
+PORT_CACHE = {}   # zip entry -> bytes of a map that is downloaded packed and shipped unpacked
+
+
+def port_map_items():
+    """the s_portMapFiles[] maps (CS:GO -> CS:S ports on a fastdl mirror, .bz2): unpack into maps/<name>.bsp.
+
+    A port has its own materials and props inside the pakfile, so all it needs is to be on disk; the runtime map
+    downloader only speaks plain http files, hence the unpacking happens here.
+    """
+    import bz2
+    out = []
+    for url in map_entries("s_portMapFiles"):
+        name = url.rsplit("/", 1)[-1]
+        if name.endswith(".bz2"):
+            name = name[:-4]
+        entry = "maps/" + name
+        try:
+            # raw first, the contents API as the fallback (raw is unreachable from some CI networks)
+            try:
+                data = fetch(url, tries=2)
+            except Exception:  # noqa: BLE001
+                alt = api_of(url)
+                if not alt:
+                    raise
+                data = fetch(alt, headers=auth_headers({"Accept": "application/vnd.github.raw"}), tries=6)
+            if url.endswith(".bz2"):
+                data = bz2.decompress(data)
+            if not data.startswith(b"VBSP"):
+                raise ValueError("not a bsp")
+        except Exception as e:  # noqa: BLE001 - a dead mirror must not kill the release
+            print(f"  ported map {name}: {e}", flush=True)
+            continue
+        PORT_CACHE[entry] = data
+        PORT_CACHE[url] = data      # map_asset_items() looks the payload up by its source url
+        out.append((entry, url))
+        print(f"  ported map {name}: {len(data) / 1048576:.1f} MB", flush=True)
+    return out
+
+
+def map_asset_items(tree, entries=None):
     """the materials / prop models / skyboxes the shipped maps reference, as far as the CS:S repository has them"""
     have = tree
     out = []
-    for e in map_entries():
+    for e in (entries if entries is not None else map_entries()):
         url = e if e.startswith(("http://", "https://")) else MAP_URL + e
         try:
-            data = fetch(url)
+            if e in PORT_CACHE:
+                data = PORT_CACHE[e]
+            else:
+                data = fetch(url)
         except Exception as ex:  # noqa: BLE001 - a dead mirror is expected
             print(f"  map assets: {e}: {ex}", flush=True)
             continue
@@ -325,8 +369,13 @@ def main():
     items += [(repo_path(u), u) for u in quoted("src/engine/content_props.inc")]
     # the buy menu weapon icons
     items += icon_items()
+    # the CS:GO -> CS:S ports: unpacked here (the game has no bz2 decoder) and shipped as maps/<name>.bsp
+    ports = port_map_items()
+    items += ports
     # materials, prop models and skyboxes of the maps themselves (best effort: whatever the CS:S repo really has)
     try:
+        # the plain .bsp dumps reference textures that live in the CS:GO vpk, the ports carry their own inside the
+        # pakfile: only the plain ones need the CS:S library pulled in
         items += map_asset_items(css_tree())
     except Exception as e:  # noqa: BLE001 - content is best effort, the release must still ship
         print(f"  map assets: skipped ({e})", flush=True)

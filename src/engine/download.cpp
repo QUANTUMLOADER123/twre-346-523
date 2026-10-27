@@ -72,16 +72,26 @@ const char* kExtras = "content/extras";
 // Every one of these .bsp carries its own materials in the pakfile lump; the ones that reference the shared
 // CS:S era textures are covered by content_maps_textures.inc (packed into the same archive).
 const char* const s_csgoMapFiles[] = {
-  // dust2 (both the classic CS:GO "old" one and the CS 1.6 style remake), mirage, inferno, nuke, train, aztec
+  // dust2 (the classic CS:GO "old" one), nuke, train, aztec, seaside, the classics: plain .bsp files, downloaded at
+  // the first start
   "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/de_dust2_old.bsp",
-  "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp",
+  "maps/de_nuke_ve.bsp",
   "https://raw.githubusercontent.com/Roblox90864/CSGOMapArchive/HEAD/maps/de_train2014.bsp",
-  // the CS:GO "old" vertigo (the ladder one), ported
-  "https://raw.githubusercontent.com/Roblox90864/CSGOMapArchive/HEAD/maps/de_vertigo.bsp",
   "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp",
   // the classics
   "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_dust/de_dust.bsp",
   "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
+  nullptr };
+
+// The CS:GO maps that were ported to CS:S and therefore carry their own materials AND static props inside the pakfile
+// lump - they look complete on their own, unlike the plain .bsp dumps that reference the CS:GO vpk. They sit on the
+// mirror as .bz2, so they cannot be downloaded file-by-file at runtime: tools/pack_content.py unpacks them into
+// maps/<name>.bsp inside cshvh-content-all.zip, and the archive puts them on disk on the first start.
+const char* const s_portMapFiles[] = {
+  // vertigo (the CS:GO remake - the construction-site one), inferno and mirage
+  "https://raw.githubusercontent.com/GOD10/Source_FastDL/HEAD/cstrike/maps/de_vertigo_csgo_new.bsp.bz2",
+  "https://raw.githubusercontent.com/GOD10/Source_FastDL/HEAD/cstrike/maps/de_inferno_csgo_new.bsp.bz2",
+  "https://raw.githubusercontent.com/GOD10/Source_FastDL/HEAD/cstrike/maps/de_mirage_csgo_new.bsp.bz2",
   nullptr };
 
 const char* const s_r8Files[] = {
@@ -374,8 +384,18 @@ bool HttpGet(const std::string& url, const Sink& sink, std::string& err, const c
 #endif
 
 // the archive packs unpack into their own destination folder, so their marker lives there too
+// bump this whenever the content of the archive changes: an install that already unpacked an older archive would
+// otherwise never see the new files (the marker says "done")
+constexpr int kContentVersion = 2;
 fs::path PackMarker(const Pack& p) { return fs::path(p.zipAsset || !p.files ? (p.dest ? p.dest : kDest) : kExtras) / (std::string(".pack_") + p.id); }
-bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(p), ec); }
+bool PackDone(const Pack& p) {
+  std::error_code ec;
+  std::ifstream f(PackMarker(p));
+  if (!f) return false;
+  int version = 0;
+  if (!(f >> version)) return false;                 // an older marker ("ok") - the archive has changed since
+  return version == kContentVersion;
+}
 bool PackWanted(const Pack& p) {
   if (PackDone(p)) return false;
   // a local CS:GO / CS:S install already ships every model, map, sound and texture this archive carries
@@ -398,11 +418,14 @@ void PruneMapsIn(const char* path) {
   if (!fs::is_directory(dir, ec)) return;
   auto lower = [](std::string v) { for (char& c : v) c = (char)std::tolower((unsigned char)c); return v; };
   std::vector<std::string> want;
-  for (const char* const* f = s_csgoMapFiles; *f; f++) {
-    std::string n = *f; size_t slash = n.find_last_of('/');
-    std::string stem = slash == std::string::npos ? n : n.substr(slash + 1);
-    if (stem.size() > 4) stem.resize(stem.size() - 4);   // ".bsp"
-    want.push_back(lower(stem));
+  for (const char* const* list : { s_csgoMapFiles, s_portMapFiles }) {
+    for (const char* const* f = list; *f; f++) {
+      std::string n = *f; size_t slash = n.find_last_of('/');
+      std::string stem = slash == std::string::npos ? n : n.substr(slash + 1);
+      if (stem.size() > 8 && stem.compare(stem.size() - 8, 8, ".bsp.bz2") == 0) stem.resize(stem.size() - 8);
+      else if (stem.size() > 4) stem.resize(stem.size() - 4);                   // ".bsp"
+      want.push_back(lower(stem));
+    }
   }
   for (auto it = fs::directory_iterator(dir, ec); it != fs::directory_iterator(); it.increment(ec)) {
     if (ec) break;
@@ -573,7 +596,7 @@ void Worker() {
       const std::string zipUrl = std::string(cl_content_url_packs.GetString()) + p.zipAsset;
       if (DownloadZipPack(p, zipUrl, doneMB, zerr)) {
         fs::create_directories(kExtras, ec);
-        std::ofstream(PackMarker(p)) << "ok\n";
+        std::ofstream(PackMarker(p)) << kContentVersion << "\n";
         { std::lock_guard<std::mutex> l(s_mtx); doneMB += s_prog.packMB; }
         continue;
       }
@@ -592,7 +615,7 @@ void Worker() {
         continue;                      // no marker: the missing files are retried next time, the rest continues
       }
       fs::create_directories(kExtras, ec);
-      std::ofstream(PackMarker(p)) << "ok\n";
+      std::ofstream(PackMarker(p)) << kContentVersion << "\n";
       { std::lock_guard<std::mutex> l(s_mtx); doneMB += s_prog.packMB; }
       continue;
     }
@@ -618,7 +641,7 @@ void Worker() {
     if (!zip.Error().empty()) { SetError(zip.Error()); ok = false; break; }
     if (!got) { SetError(err.empty() ? "download failed" : err); ok = false; break; }
     if (zip.files == 0) { SetError("the archive was empty"); ok = false; break; }
-    std::ofstream(PackMarker(p)) << zip.files << "\n";
+    std::ofstream(PackMarker(p)) << kContentVersion << "\n";
     doneMB += bytes / 1048576.0;
   }
   {

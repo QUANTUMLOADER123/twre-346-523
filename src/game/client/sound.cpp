@@ -362,6 +362,8 @@ void EmitSound(const char* name, const Vector& origin, int entindex, float vol, 
   std::string n = name;
   if (n.rfind("Player.Step", 0) == 0 && !snd_footsteps.GetBool()) return;
   SoundEntry* e = GetSound(n);
+  // a weapon that has no silenced sample (only the unsilenced one is in the pack) must still make a sound
+  if (!e && n.size() > 9 && n.compare(n.size() - 9, 9, ".Silenced") == 0) e = GetSound(n.substr(0, n.size() - 9) + ".Single");
   if (!e) return;
   CCSPlayer* lp = g_pLocalPlayer;
   bool local = lp && entindex == lp->entindex() && lp->IsAlive();
