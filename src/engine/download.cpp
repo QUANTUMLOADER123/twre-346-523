@@ -67,15 +67,22 @@ const char* kExtras = "content/extras";
 
 // curated CS:GO map set for HvH / deathmatch. Relative entries come from cl_content_url_maps, absolute ones from
 // other public CS:GO FastDL mirrors (a map is a single .bsp file, so every map can live on its own repo).
-// The map list is exactly the requested set, old versions only:
-//   dust2, inferno, mirage, nuke, vertigo, train (2014), shorttrain
-// No arenas, no aim/awp/fy/surf maps. Every map can live on its own mirror (full urls).
+// The map list: the popular maps people actually play, old (classic) versions, nothing else - no 1v1 arenas,
+// no lego/minecraft maps. A bare path is fetched from cl_content_url_maps_go, a full url from its own mirror.
+// Every one of these .bsp carries its own materials in the pakfile lump; the ones that reference the shared
+// CS:S era textures are covered by content_maps_textures.inc (packed into the same archive).
 const char* const s_csgoMapFiles[] = {
-  "maps/de_inferno_old.bsp", "maps/de_mirage_ce.bsp", "maps/de_nuke_ve.bsp",
+  // dust2 (both the classic CS:GO "old" one and the CS 1.6 style remake), mirage, inferno, nuke, train, aztec
   "https://raw.githubusercontent.com/M1namia/CSGOServerFastdl/HEAD/maps/de_dust2_old.bsp",
-  "https://raw.githubusercontent.com/Roblox90864/CSGOMapArchive/HEAD/maps/de_vertigo.bsp",
+  "maps/de_dust2_16toGO.bsp", "maps/de_mirage_ce.bsp", "maps/de_inferno_old.bsp", "maps/de_nuke_ve.bsp",
   "https://raw.githubusercontent.com/Roblox90864/CSGOMapArchive/HEAD/maps/de_train2014.bsp",
-  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_shorttrain/de_shorttrain.bsp",
+  "maps/de_aztec_proper.bsp", "maps/de_seaside_b2.bsp",
+  // the classics
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/de_dust/de_dust.bsp",
+  "https://raw.githubusercontent.com/Lesona-Systems/csgo-achievement-maps/HEAD/cs_office/cs_office.bsp",
+  "maps/de_rats_1337.bsp", "maps/fy_pool_day.bsp", "maps/surf_ski_2_GO.bsp",
+  // small warm-up maps (a few hundred KB each, the ones the aim/1x1 crowd actually plays)
+  "maps/aim_redline.bsp", "maps/6v6_ak_m4a1.bsp",
   nullptr };
 
 const char* const s_r8Files[] = {
@@ -114,6 +121,7 @@ const char* const s_csgoFiles[] = {
   nullptr };
 #include "content_base.inc"
 #include "content_weapons.inc"
+#include "content_maps_textures.inc"
 
 #define ICON(n) "svg_normal/" n ".svg"
 const char* const s_iconFiles[] = {
@@ -135,7 +143,7 @@ std::thread s_thread;
 
 constexpr int kPacks = 6;
 Pack s_packs[kPacks] = {
-  { "maps_go3", "CS:GO maps (old versions)", nullptr, 215, s_csgoMapFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maps.zip" },
+  { "maps_go4", "CS:GO maps (classic versions)", nullptr, 340, s_csgoMapFiles, "content/extras/csgo_maps", false, nullptr, "cshvh-content-maps.zip" },
   // agents (4 CT + 4 T), sound effects, sound scripts and the stock Source map textures our CS:GO maps are
   // missing (only the materials they actually reference are listed)
   { "base3", "Agents, sounds and map textures", nullptr, 86, s_baseFiles, "content/css/cstrike", false, nullptr, "cshvh-content-base.zip" },
@@ -145,6 +153,17 @@ Pack s_packs[kPacks] = {
   { "csgo", "CS:GO SCAR-20, SSG 08, molotov", nullptr, 22, s_csgoFiles, "content/extras/csgo_gsr", false },
   { "icons", "CS:GO weapon icons", nullptr, 0.2, s_iconFiles, "content/extras/csgo_icons", false },
 };
+// the map pack is one archive: the .bsp files plus the shared textures they reference
+const char* const* MapPackFiles() {
+  static std::vector<const char*> v;
+  if (v.empty()) {
+    for (const char* const* f = s_csgoMapFiles; *f; f++) v.push_back(*f);
+    for (const char* const* f = s_mapTextureFiles; *f; f++) v.push_back(*f);
+    v.push_back(nullptr);
+  }
+  return v.data();
+}
+
 bool s_needCore = true;   // decided on the main thread in Start()
 bool s_haveCsgo = false;  // a local CS:GO install (pak01) - decided on the main thread, read by the worker
 
@@ -376,7 +395,7 @@ bool PackDone(const Pack& p) { std::error_code ec; return fs::exists(PackMarker(
 bool PackWanted(const Pack& p) {
   if (PackDone(p)) return false;
   // a local CS:GO install already has every stock map and every texture, so both packs are not needed then
-  if (!p.core && p.files == s_csgoMapFiles && s_haveCsgo) return false;
+  if (p.files == MapPackFiles() && s_haveCsgo) return false;
   if (p.files == s_baseFiles && s_haveCsgo) return false;   // a CS:GO install brings its own agents, weapons and sounds
   if (p.files == s_weaponFiles && s_haveCsgo) return false; // ... and its own CS:GO view models
   return !p.core || s_needCore;
@@ -433,7 +452,16 @@ bool DownloadFiles(const Pack& p, double doneMB, int filesBefore, std::string& e
     if (s_cancel) return false;
     const bool absolute = std::strncmp(*f, "http://", 7) == 0 || std::strncmp(*f, "https://", 8) == 0;
     std::string name = *f;
-    if (absolute) { size_t slash = name.rfind('/'); name = "maps/" + name.substr(slash + 1); }   // keep the file name
+    if (absolute) {
+      // https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path> -> <path>
+      const std::string kRaw = "https://raw.githubusercontent.com/";
+      name = name.rfind(kRaw, 0) == 0 ? name.substr(kRaw.size()) : name;
+      size_t a = name.find('/'), b = a == std::string::npos ? a : name.find('/', a + 1);
+      size_t c = b == std::string::npos ? b : name.find('/', b + 1);
+      if (c != std::string::npos) name = name.substr(c + 1); else name = name.substr(name.rfind('/') + 1);
+      bool bsp = name.size() > 4 && name.compare(name.size() - 4, 4, ".bsp") == 0;
+      if (bsp && name.rfind("maps/", 0) != 0) name = "maps/" + name.substr(name.rfind('/') + 1);
+    }
     fs::path dst = fs::path(p.dest) / name;
     std::error_code ec;
     if (fs::exists(dst, ec) && fs::file_size(dst, ec) > 0) { files++; continue; }   // an earlier interrupted run
@@ -612,6 +640,7 @@ void DismissCoreHint() { std::error_code ec; fs::create_directories("content", e
 
 void Start() {
   if (s_busy) return;
+  s_packs[0].files = MapPackFiles();
   if (s_thread.joinable()) s_thread.join();
   s_haveCsgo = srcfs::CsgoAvailable();
   s_needCore = CoreContentMissing();

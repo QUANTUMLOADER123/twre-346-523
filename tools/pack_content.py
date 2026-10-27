@@ -168,13 +168,24 @@ def main():
         # CS:GO weapon models + their materials (content/extras/csgo_weapons)
         return [(p, WEAPON_URL + p) for p in quoted("src/engine/content_weapons.inc")]
 
+    def repo_path(url):
+        """https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path> -> <path>"""
+        rest = url.split("raw.githubusercontent.com/", 1)[1]
+        return rest.split("/", 3)[3]
+
     def map_pack():
+        # the maps and the shared textures they reference, in one archive
         out = []
         for e in map_entries():
-            if e.startswith("http://") or e.startswith("https://"):
-                out.append(("maps/" + e.rsplit("/", 1)[-1], e))
+            if e.startswith(("http://", "https://")):
+                path = repo_path(e)
+                if path.endswith(".bsp") and not path.startswith("maps/"):
+                    path = "maps/" + path.rsplit("/", 1)[-1]
+                out.append((path, e))
             else:
                 out.append((e, MAP_URL + e))
+        for u in quoted("src/engine/content_maps_textures.inc"):
+            out.append((repo_path(u), u))
         return out
 
     packs["cshvh-content-base.zip"] = base_pack
