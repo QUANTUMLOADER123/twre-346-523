@@ -327,8 +327,11 @@ void CSrcModel::SampleAnim(int anim, float frame, std::vector<Vector>& pos, std:
 
 void CSrcModel::BuildBones(const std::vector<Vector>& pos, const std::vector<Quat>& q, std::vector<matrix3x4_t>& out) const {
   out.resize(bones.size());
+  // a sequence of an $includemodel only covers that library's bones (the CS:GO animsets have two fewer than the
+  // agent itself): the bones it does not touch keep their reference transform
   for (size_t i = 0; i < bones.size(); i++) {
-    matrix3x4_t local; QuaternionMatrix(q[i], pos[i], Vector(1, 1, 1), local);
+    matrix3x4_t local;
+    QuaternionMatrix(i < q.size() ? q[i] : bones[i].quat, i < pos.size() ? pos[i] : bones[i].pos, Vector(1, 1, 1), local);
     int p = bones[i].parent;
     if (p >= 0 && p < (int)i) ConcatTransforms(out[p], local, out[i]); else out[i] = local;
   }

@@ -18,8 +18,7 @@ ConVar cl_real_viewmodels("cl_real_viewmodels", "1", FCVAR_ARCHIVE, "Use the Cou
 ConVar cl_css_anim_layers("cl_css_anim_layers", "255", FCVAR_CHEAT, "debug: 1 jump 2 upper 4 reload 8 aim 16 shoot");
 ConVar cl_r8_model("cl_r8_model", "1", FCVAR_ARCHIVE, "Use the CS:GO R8 Revolver model (downloaded with the game content) instead of the Desert Eagle");
 ConVar cl_csgo_models("cl_csgo_models", "1", FCVAR_ARCHIVE, "Use the downloaded CS:GO models (SCAR-20, SSG 08, molotov, incendiary) instead of the CS:S stand-ins");
-ConVar cl_csgo_viewmodel_fov("cl_csgo_viewmodel_fov", "56", FCVAR_ARCHIVE, "Field of view of the CS:GO SCAR-20 / SSG 08 / molotov view models", true, 40, true, 90);
-ConVar cl_r8_viewmodel_fov("cl_r8_viewmodel_fov", "68", FCVAR_ARCHIVE, "Field of view of the CS:GO R8 view model (CS:GO viewmodel_fov)", true, 40, true, 90);
+ConVar cl_csgo_viewmodel_fov("cl_csgo_viewmodel_fov", "68", FCVAR_ARCHIVE, "Field of view of the CS:GO (c_) view models - CS:GO's viewmodel_fov", true, 40, true, 90);
 ConVar cl_real_viewmodel_fov("cl_real_viewmodel_fov", "54", FCVAR_ARCHIVE, "Field of view of the CS:S view models", true, 40, true, 90);
 
 ConVar cl_agent_ct("cl_agent_ct", "0", FCVAR_ARCHIVE, "Your CT agent: 0 SEAL Team 6, 1 GSG-9, 2 SAS, 3 GIGN", true, 0, true, 3);
@@ -309,6 +308,7 @@ void BuildCsgoBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector<m
   if (!base) base = aim;                      // idle: the aim pose is the whole body
   if (!base) base = Seq(m, "move");
   float cycle = moving ? in.moveCycle : 0.f;
+  m.SampleSeq(base, cycle, pv, pos, q);        // the full body pose the layers below are blended onto
   // upper body: the aim grid (its weights only cover the spine / arms, the legs keep walking)
   if (moving && aim) { m.SampleSeq(aim, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
   if (in.reloadCycle >= 0) {
@@ -473,11 +473,37 @@ void FallbackHitboxes(const PlayerPoseInput& in, HitboxSet& out) {
   }
 }
 
+// CS:GO agents name their bones "arm_lower_R" / "hand_L" / "finger_index_1_R" where the CS:S models (and every CS:S
+// weapon / view model, including the CS:GO ports) say "ValveBiped.Bip01_R_Forearm" / "..._R_Hand" / "..._R_Finger11".
+// Same skeleton, two naming schemes - the view model's arms are found through this.
+std::string ValveBoneForAgent(const std::string& n) {
+  static const char* const kFinger[5] = { "thumb", "index", "middle", "ring", "pinky" };
+  auto side = [](const std::string& v) -> const char* { return v == "L" ? "L" : v == "R" ? "R" : nullptr; };
+  if (n.size() > 13 && n.compare(n.size() - 2, 1, "_") == 0) {
+    const char* sd = side(n.substr(n.size() - 1));
+    if (!sd) return std::string();
+    const std::string base = n.substr(0, n.size() - 2), sfx = std::string("_") + sd;
+    if (base == "arm_upper") return std::string("ValveBiped.Bip01") + sfx + "_UpperArm";
+    if (base == "arm_lower") return std::string("ValveBiped.Bip01") + sfx + "_Forearm";
+    if (base == "hand") return std::string("ValveBiped.Bip01") + sfx + "_Hand";
+    for (int d = 0; d < 5; d++) {   // finger_<name>_<meta|0|1|2>
+      const std::string pre = std::string("finger_") + kFinger[d] + "_";
+      if (base.compare(0, pre.size(), pre) != 0) continue;
+      const std::string j = base.substr(pre.size());
+      std::string num = std::to_string(d);
+      if (j == "1") num += "1"; else if (j == "2") num += "2";   // meta / 0 are the base bone "Finger0".."Finger4"
+      return std::string("ValveBiped.Bip01") + sfx + "_Finger" + num;
+    }
+  }
+  return std::string();
+}
+
 // weapon bone merge: bones with the same name as a player bone follow the player
 void BoneMerge(const CSrcModel& w, const CSrcModel& parent, const std::vector<matrix3x4_t>& pb, std::vector<matrix3x4_t>& out) {
   out.resize(w.bones.size());
   for (size_t i = 0; i < w.bones.size(); i++) {
     int j = parent.FindBone(w.bones[i].name);
+    if (j < 0) { const std::string alias = ValveBoneForAgent(w.bones[i].name); if (!alias.empty()) j = parent.FindBone(alias); }
     if (j >= 0 && j < (int)pb.size()) { out[i] = pb[j]; continue; }
     matrix3x4_t local; QuaternionMatrix(w.bones[i].quat, w.bones[i].pos, Vector(1, 1, 1), local);
     int p = w.bones[i].parent;
@@ -613,20 +639,28 @@ bool CSS_DrawWorldWeapon(int weaponId, const matrix3x4_t& xf, const StudioDrawPa
 namespace {
 // c_arms (Garry's Mod style): the CS:GO R8 view model has no hands, only ValveBiped.* arm bones - the arms of the
 // player's own agent model are bone merged onto them and only the forearm / hand / finger triangles are drawn
-void DrawViewModelArms(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm, const matrix3x4_t& xf, const StudioDrawParams& dp) {
-  if (!pm || pm->meshes.empty()) return;
-  thread_local std::vector<matrix3x4_t> armBones; thread_local std::vector<uint8_t> mask;
-  BoneMerge(*pm, vm, vmBones, armBones);
+void DrawViewModelArms(const CSrcModel& vm, const std::vector<matrix3x4_t>& vmBones, const CSrcModel* pm, const std::vector<matrix3x4_t>& pose, const matrix3x4_t& xf, const StudioDrawParams& dp) {
+  if (!pm || pm->meshes.empty() || pose.empty()) return;
+  // CS:GO view models ship without hands: the agent's own right arm is used, moved rigidly so that its hand lands on
+  // the view model's hand bone. A model's final bone matrix is modelToWorld * axisFix * bone (CSrcModel::SkinMatrices),
+  // so the arm transform W has to satisfy  W * agentAxis * agentHand = vmAxis * gunHand  (xf applies to both).
+  const int agentHand = pm->FindBone("hand_R"), gunHand = vm.FindBone("ValveBiped.Bip01_R_Hand");
+  if (agentHand < 0 || gunHand < 0 || agentHand >= (int)pose.size() || gunHand >= (int)vmBones.size()) return;
+  matrix3x4_t handInv, axisInv, delta, gunFinal, world;
+  MatrixInvert(pose[agentHand], handInv);
+  MatrixInvert(pm->axisFix, axisInv);
+  ConcatTransforms(vm.axisFix, vmBones[gunHand], gunFinal);
+  ConcatTransforms(gunFinal, handInv, delta);
+  ConcatTransforms(delta, axisInv, delta);
+  ConcatTransforms(xf, delta, world);
+  thread_local std::vector<uint8_t> mask;
   mask.assign(pm->bones.size(), 0);
   for (size_t i = 0; i < pm->bones.size(); i++) {
     const std::string& n = pm->bones[i].name;
-    bool arm = n.find("Forearm") != std::string::npos || n.find("ForeTwist") != std::string::npos || n.find("_Hand") != std::string::npos ||
-               n.find("Finger") != std::string::npos || n.find("Wrist") != std::string::npos || n.find("Ulna") != std::string::npos;
-    if (!arm) continue;
-    int par = pm->bones[i].parent;
-    if (vm.FindBone(n) >= 0 || (par >= 0 && par < (int)i && mask[par])) mask[i] = 1;   // merged, or hangs off a merged arm bone
+    const bool right = n.size() > 2 && n.compare(n.size() - 2, 2, "_R") == 0;
+    if (right && (n.rfind("arm_lower", 0) == 0 || n.rfind("hand_", 0) == 0 || n.rfind("finger_", 0) == 0)) mask[i] = 1;
   }
-  SrcMdl_Draw(*pm, armBones, xf, dp, 0, &mask);
+  SrcMdl_Draw(*pm, pose, world, dp, 0, &mask);
 }
 // the CS:GO models of the ARC9 port have no ACT_* activities - their sequences are named by hand ("idle", "shoot1",
 // "reload", "draw", ...), so an activity is mapped to the matching label when the activity search finds nothing
@@ -764,14 +798,20 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   if (cl.nightvision) L.ambient = Vector(0.9f, 1.2f, 0.9f);
   StudioDrawParams dp; dp.light = L; dp.eye = view.origin;
 
-  Matrix proj = BuildProjection(view.VerticalFov((r8 ? cl_r8_viewmodel_fov : csgo ? cl_csgo_viewmodel_fov : cl_real_viewmodel_fov).GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
+  Matrix proj = BuildProjection(view.VerticalFov((r8 || csgo ? cl_csgo_viewmodel_fov : cl_real_viewmodel_fov).GetFloat()), (float)view.width / std::max(1, view.height), 1.f, 600.f);
   Render_ClearDepth();
   Render_Begin3D(view.view, proj);
   SrcMdl_Draw(*m, bones, xf, dp);
   if (csgo) DrawCsgoScope(*m, bones, xf, dp);
-  // CS:GO view models ship without hands: the agent's own arms are bone merged onto the gun
+  // CS:GO view models ship without hands: the agent's own arms are attached to the gun's hand bone
   const CSrcModel* armsFrom = PlayerModel(p);
-  if (armsFrom) DrawViewModelArms(*m, bones, armsFrom, xf, dp);
+  if (armsFrom) {
+    thread_local PlayerPoseOutput armPose;
+    PlayerPoseInput ain;
+    if (p) { ain.origin = p->GetAbsOrigin(); ain.footYaw = p->m_PlayerAnimState.m_flFootYaw; ain.eyeAngles = view.angles; }
+    BuildPlayerPose(p, ain, armPose, false);
+    if (armPose.css == armsFrom) DrawViewModelArms(*m, bones, armsFrom, armPose.cssBones, xf, dp);
+  }
   Render_End3D();
   muzzleOut = m->attachments.empty() ? view.origin + view.forward * 20.f - view.up * 4.f : m->AttachmentPos(0, bones, xf);
   return true;

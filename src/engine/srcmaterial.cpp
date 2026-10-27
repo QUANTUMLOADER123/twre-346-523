@@ -326,7 +326,9 @@ const SrcMaterial& SrcMat_FindInDirs(const std::string& name, const std::vector<
     if (s_mats.count(p) && s_mats[p].ok) return s_mats[p];
     if (srcfs::Exists("materials/" + p + ".vmt")) return SrcMat_Find(p);
   }
-  return SrcMat_Find(dirs.empty() ? name : srcfs::Normalize(dirs[0] + "/" + name));
+  // CS:GO model textures already carry their folder ("models/player/ct_gign/ctm_gign_upperbody" with
+  // cdmaterials "models/player/custom_player/legacy/"): prefixing the dir again would miss them
+  return SrcMat_Find(name);
 }
 
 static int s_matGeneration = 1;

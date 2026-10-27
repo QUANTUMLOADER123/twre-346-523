@@ -34,9 +34,11 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
       const size_t vc = me.pos.size() / 3;
       wp.resize(vc); wc.resize(vc);
       if (boneMask) {
-        vok.assign(vc, 1);
+        // a vertex belongs to the masked part if any of its influences is in the mask (arm vertices blend into the
+        // shoulder, so requiring all three would cut the whole arm away)
+        vok.assign(vc, 0);
         for (size_t v = 0; v < vc; v++)
-          for (int k = 0; k < 3; k++) { int b = me.bone[v * 3 + k]; if (me.weight[v * 3 + k] > 0 && (b >= (int)boneMask->size() || !(*boneMask)[b])) { vok[v] = 0; break; } }
+          for (int k = 0; k < 3; k++) { int b = me.bone[v * 3 + k]; if (me.weight[v * 3 + k] > 0 && b >= 0 && b < (int)boneMask->size() && (*boneMask)[b]) { vok[v] = 1; break; } }
       }
       for (size_t v = 0; v < vc; v++) {
         Vector P(me.pos[v * 3], me.pos[v * 3 + 1], me.pos[v * 3 + 2]), N(me.normal[v * 3], me.normal[v * 3 + 1], me.normal[v * 3 + 2]);
