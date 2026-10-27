@@ -55,6 +55,10 @@ struct SrcSeqRef {                       // a sequence of this model or of one o
 };
 struct SrcPoseValues {                   // pose parameter values by name (degrees / -1..1, as in the model)
   float move_x = 0, move_y = 0, move_yaw = 0, body_yaw = 0, body_pitch = 0;
+  float stand = 1, speed = 0;            // CS:GO animset: 1 = standing, 0 = crouched / 0..1 ground speed
+  // every other CS:GO pose parameter (move_blend_crouch, strafe_yaw, lean_yaw, ...) by name
+  std::vector<std::pair<std::string, float>> extra;
+  void Set(const std::string& n, float v) { extra.emplace_back(n, v); }
   float Get(const std::string& n) const;
 };
 

@@ -374,6 +374,8 @@ float SrcPoseValues::Get(const std::string& n) const {
   std::string l = srcfs::Normalize(n);
   if (l == "move_x") return move_x; if (l == "move_y") return move_y; if (l == "move_yaw") return move_yaw;
   if (l == "body_yaw" || l == "aim_yaw") return body_yaw; if (l == "body_pitch" || l == "aim_pitch") return body_pitch;
+  if (l == "stand") return stand; if (l == "speed") return speed;
+  for (auto& [k, v] : extra) if (l == k) return v;
   return 0;
 }
 

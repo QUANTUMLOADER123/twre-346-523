@@ -264,7 +264,9 @@ std::string Normalize(const std::string& rel) {
 
 bool Available() { Scan(); return !S().root.empty(); }
 bool CsgoAvailable() { Scan(); return !S().goRoot.empty(); }
-bool AnyContent() { Scan(); return !S().goRoot.empty() || !S().root.empty(); }
+// downloaded extras (maps, agents, weapons) count as content too: a player without any Steam install still
+// has real models and textures on disk
+bool AnyContent() { Scan(); const State& s = S(); return !s.goRoot.empty() || !s.root.empty() || !s.loose.empty(); }
 const std::string& CsgoRoot() { Scan(); return S().goRoot; }
 const std::string& Root() { Scan(); return S().root; }
 void Invalidate() { S().scanned = false; }

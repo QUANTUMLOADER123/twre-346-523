@@ -242,8 +242,98 @@ SrcSeqRef Seq(const CSrcModel& m, const std::string& name) {
   SrcSeqRef r = m.FindSeq(name); c[name] = r; return r;
 }
 
+// CS:GO agent models carry a completely different animation set (the animset_ct/t/o libraries): a 9-way
+// "move_c" locomotion grid, the parametric "<weapon>_aim_*" upper body grids and short one-shot layers for
+// firing / reloading / deploying. None of the CS:S sequence names exist there, so they get their own builder.
+const char* CsgoWeaponClass(int wid) {
+  switch (wid) {
+    case WEAPON_KNIFE: return "knife";
+    case WEAPON_C4: return "c4";
+    case WEAPON_GLOCK: case WEAPON_USP_SILENCER: case WEAPON_P250: case WEAPON_DEAGLE: case WEAPON_REVOLVER:
+    case WEAPON_ELITE: case WEAPON_FIVESEVEN: case WEAPON_TEC9: case WEAPON_CZ75A: case WEAPON_HKP2000: return "pistol";
+    case WEAPON_MAC10: case WEAPON_MP9: case WEAPON_MP7: case WEAPON_MP5SD: case WEAPON_UMP45: case WEAPON_P90:
+    case WEAPON_BIZON: return "smg";
+    case WEAPON_NOVA: case WEAPON_XM1014: case WEAPON_MAG7: case WEAPON_SAWEDOFF: return "shotgun";
+    case WEAPON_M249: case WEAPON_NEGEV: return "heavy";
+    default: break;
+  }
+  if (IsGrenade(wid)) return "grenade";
+  if (IsSniper(wid)) return "sniper";
+  return "rifle";
+}
+
+bool IsCsgoAnimset(const CSrcModel& m) { return Seq(m, "rifle_aim_idle") || Seq(m, "move_c"); }
+
+void BuildCsgoBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector<matrix3x4_t>& bones) {
+  const float now = in.animTime >= 0 ? in.animTime : (float)gpGlobals->curtime;
+  thread_local std::vector<Vector> pos, lp; thread_local std::vector<Quat> q, lq; thread_local std::vector<float> w;
+  SrcPoseValues pv;
+  if (in.deathCycle >= 0) {
+    // CS:GO animset: a real death animation (low violence = the one every build ships), the static
+    // "death_pose_body" grid as the fallback
+    SrcSeqRef d = Seq(m, "deathpose_lowviolence");
+    if (!d) d = Seq(m, "death_pose_body");
+    if (!d) d = Seq(m, "Death1");
+    if (!d) d = Seq(m, "die");
+    float dur = std::max(0.1f, m.SeqDuration(d));
+    m.SampleSeq(d, Clamp(in.deathTime / dur, 0.f, 1.f), pv, pos, q);
+    m.BuildBones(pos, q, bones);
+    return;
+  }
+  const std::string wc = CsgoWeaponClass(in.weaponId);
+  const float speed = in.moveSpeed * 250.f;
+  const bool moving = speed > 12.f, run = speed > 150.f, crouch = in.duckAmount > 0.5f;
+  // the CS:GO animset drives everything from pose parameters: where the legs go (move_yaw) and how the
+  // upper body aims (body_yaw / body_pitch), plus the crouch / walk / run blend weights
+  pv.move_yaw = Clamp(AngleDiff(in.moveYaw, in.footYaw), -180.f, 180.f);
+  pv.body_yaw = Clamp(AngleDiff(in.eyeAngles.y, in.footYaw), -60.f, 60.f);
+  float pitch = in.eyeAngles.x; if (pitch > 180.f) pitch -= 360.f;
+  pv.body_pitch = Clamp(pitch, -90.f, 90.f);
+  pv.stand = crouch ? 0.f : 1.f;
+  pv.speed = Clamp(speed / 250.f, 0.f, 1.f);
+  pv.Set("move_blend_crouch", crouch ? 1.f : 0.f);
+  pv.Set("move_blend_walk", (!crouch && moving && !run) ? 1.f : 0.f);
+  pv.Set("move_blend_run", (!crouch && run) ? 1.f : 0.f);
+  // locomotion: the 9-way grid (per weapon family, so the arms hold the gun the right way)
+  std::string moveSeq = "move_c";
+  if (wc == "knife" && Seq(m, "move_knife_c")) moveSeq = "move_knife_c";
+  else if (wc == "grenade" && Seq(m, "move_grenade_c")) moveSeq = "move_grenade_c";
+  else if (wc == "c4" && Seq(m, "move_c4_c")) moveSeq = "move_c4_c";
+  SrcSeqRef base = Seq(m, moveSeq);
+  if (!base) base = Seq(m, "move");
+  float cycle = moving ? in.moveCycle : std::fmod(now / std::max(0.1f, m.SeqDuration(base)), 1.f);
+  m.SampleSeq(base, cycle, pv, pos, q);
+  if (crouch) { SrcSeqRef rc = Seq(m, "recrouch_generic"); if (rc) { m.SampleSeq(rc, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); } }
+  if (!in.onGround) {
+    SrcSeqRef j = moving ? Seq(m, "jump_moving") : Seq(m, "jump");
+    if (!j) j = Seq(m, "fall");
+    if (j) { m.SampleSeq(j, 0.35f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  }
+  // upper body: aim grid (the sequences only weight the spine / arms, the legs keep walking)
+  const std::string st = crouch ? (moving ? "crouch_moving" : "crouch_idle") : (run ? "run" : moving ? "walk" : "idle");
+  SrcSeqRef aim = Seq(m, wc + "_aim_" + st);
+  if (!aim) aim = Seq(m, wc + "_aim_idle");
+  if (aim) { m.SampleSeq(aim, 0.f, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  if (in.reloadCycle >= 0) {
+    SrcSeqRef r = Seq(m, wc + "_reload" + (crouch ? "_crouch" : moving ? "_moving" : ""));
+    if (!r) r = Seq(m, wc + "_reload");
+    if (r) { m.SampleSeq(r, in.reloadCycle, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  }
+  if (in.planting && in.weaponId == WEAPON_C4) {
+    SrcSeqRef r = Seq(m, "c4_fire");
+    if (r) { m.SampleSeq(r, std::fmod(now / std::max(0.1f, m.SeqDuration(r)), 1.f), pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  }
+  if (in.fireAmount > 0 && in.weaponId != WEAPON_C4) {
+    SrcSeqRef s = Seq(m, wc + "_fire" + (crouch ? "_crouch" : ""));
+    if (!s) s = Seq(m, wc + "_fire");
+    if (s) { m.SampleSeq(s, 1.f - in.fireAmount, pv, lp, lq, &w); LayerFull(pos, q, lp, lq, w, 1.f); }
+  }
+  m.BuildBones(pos, q, bones);
+}
+
 void BuildPlayerBones(const CSrcModel& m, const PlayerPoseInput& in, std::vector<matrix3x4_t>& bones) {
   const float now = in.animTime >= 0 ? in.animTime : (float)gpGlobals->curtime;
+  if (IsCsgoAnimset(m)) { BuildCsgoBones(m, in, bones); return; }
   thread_local std::vector<Vector> pos, lp; thread_local std::vector<Quat> q, lq; thread_local std::vector<float> w;
   SrcPoseValues pv;
   // death
