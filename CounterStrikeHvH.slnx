@@ -1,0 +1,17 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="msvc/cshvh.vcxproj" />
+  <Folder Name="/third_party/">
+    <Project Path="msvc/raylib.vcxproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+    <File Path="CREDITS.md" />
+    <File Path="build.sh" />
+    <File Path="CMakeLists.txt" />
+  </Folder>
+</Solution>

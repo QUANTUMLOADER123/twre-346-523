@@ -1,0 +1,26 @@
+build/
+out/
+bin/
+*.o
+*.exe
+!dist/.keep
+screenshots/
+cfg/config.cfg
+cfg/hvhsense_*.cfg
+cfg/aimwhere_*.cfg
+/cstrike/
+/cstrike_downloads/
+/valve/
+/cshvh
+third_party/raylib-*/
+*.pdb
+/sound/
+/content/
+
+# documentation screenshots are tracked
+!docs/screenshots/
+!docs/screenshots/*.png
+
+# python bytecode from the content builder
+__pycache__/
+*.pyc

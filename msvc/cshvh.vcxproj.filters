@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{1E84A498-AAD8-5159-B02D-200E466D3FF6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\cheat">
+      <UniqueIdentifier>{B9CD22C6-FEFD-5228-984A-427D3D0D683E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\engine">
+      <UniqueIdentifier>{6E7A3221-7000-5794-8DE2-89CE2E6243E8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\game">
+      <UniqueIdentifier>{1AD35E6E-F1D9-5F13-AA25-A763A2C239D1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\game\client">
+      <UniqueIdentifier>{18DA43A4-08C2-5F18-BF70-71CEB367A558}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\game\server">
+      <UniqueIdentifier>{A79FABE0-E1E6-5B0E-B438-3428DA79BCFB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\game\shared">
+      <UniqueIdentifier>{971AD418-42AD-59A6-807B-B954E317BF75}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\vgui">
+      <UniqueIdentifier>{5FD20994-B276-57CA-AA8A-8DB0FE3D35A1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\cheat\antiaim.cpp">
+      <Filter>src\cheat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cheat\cheat.cpp">
+      <Filter>src\cheat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cheat\menu.cpp">
+      <Filter>src\cheat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cheat\misc.cpp">
+      <Filter>src\cheat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cheat\ragebot.cpp">
+      <Filter>src\cheat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cheat\visuals.cpp">
+      <Filter>src\cheat</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\bsp.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\bsprender.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\convar.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\download.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\enginetrace.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\hlfs.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\host.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\keyvalues.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\materialsystem.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\mdl.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\platform.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcbsp.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcbsprender.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcfs.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcmaterial.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcmdl.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\srcmdlrender.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\studio.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\view.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\worldrender.cpp">
+      <Filter>src\engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\cl_render.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\css_models.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\effects.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\hud.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\hud_menus.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\input.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\sound.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\touch.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\client\viewmodel.cpp">
+      <Filter>src\game\client</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\server\cs_bot.cpp">
+      <Filter>src\game\server</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\server\nav_mesh.cpp">
+      <Filter>src\game\server</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\server\sv_transmit.cpp">
+      <Filter>src\game\server</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\baseentity.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\cs_gamerules.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\cs_loadout.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\cs_player.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\cs_player_shared.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\cs_playeranimstate.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\cs_projectiles.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\gamemovement.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\lagcompensation.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\mapinfo.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\weapon_csbase.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\game\shared\weapon_parse.cpp">
+      <Filter>src\game\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vgui\contentscreen.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vgui\controls.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vgui\gameui.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vgui\mainmenu.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vgui\surface.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\vgui\vgui_images.cpp">
+      <Filter>src\vgui</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\cheat\cheat.hpp">
+      <Filter>src\cheat</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cheat\cheat_internal.hpp">
+      <Filter>src\cheat</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\bsp.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\convar.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\download.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\enginetrace.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\globals.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\hlfs.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\host.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\keyvalues.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\materialsystem.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\mathlib.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\mdl.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\platform.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\random.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\srcbsp.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\srcfs.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\srcmaterial.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\srcmdl.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\studio.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\view.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\worldrender.hpp">
+      <Filter>src\engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\client\cl_main.hpp">
+      <Filter>src\game\client</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\client\css_models.hpp">
+      <Filter>src\game\client</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\client\hud_menus.hpp">
+      <Filter>src\game\client</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\client\touch.hpp">
+      <Filter>src\game\client</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\server\cs_bot.hpp">
+      <Filter>src\game\server</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\server\nav_mesh.hpp">
+      <Filter>src\game\server</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\server\sv_transmit.hpp">
+      <Filter>src\game\server</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\baseentity.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\cs_gamerules.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\cs_loadout.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\cs_player.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\cs_playeranimstate.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\cs_projectiles.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\gameevents.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\gamemovement.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\lagcompensation.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\mapinfo.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\soundemitter.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\weapon_csbase.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\game\shared\weapon_parse.hpp">
+      <Filter>src\game\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\contentscreen.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\controls.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\csgo_style.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\gameui.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\mainmenu.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\surface.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\vgui\vgui_images.hpp">
+      <Filter>src\vgui</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

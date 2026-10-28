@@ -1,0 +1,141 @@
+# Builds Counter-Strike: HvH for Windows (.exe, cross-compiled with zig) and Android (.apk) and publishes a GitHub release.
+name: Release
+on:
+  push:
+    branches: [ "arena/01a0f92c-twre-346-523", "arena/fb0ed122-twre-346-523", "main" ]
+    paths-ignore: [ "**.md" ]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install zig
+        run: pip install ziglang
+      - name: Build cshvh.exe
+        run: JOBS=4 ./build.sh windows
+      - name: Package
+        run: |
+          mkdir -p dist/CounterStrikeHvH/bin
+          cp bin/cshvh.exe dist/CounterStrikeHvH/bin/
+          cp -r assets tools README.md CREDITS.md dist/CounterStrikeHvH/
+          cp bin/cshvh.exe dist/CounterStrikeHvH/
+          (cd dist && zip -q -r CounterStrikeHvH-windows.zip CounterStrikeHvH)
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/CounterStrikeHvH-windows.zip
+            bin/cshvh.exe
+
+  android:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build cshvh.apk
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: |
+          set -o pipefail
+          VERSION_CODE=$((100 + ${{ github.run_number }})) VERSION_NAME=1.2.${{ github.run_number }} JOBS=4 android/build_apk.sh 2>&1 | tee build.log
+      - name: Report failure
+        if: failure()
+        run: android/annotate.sh "build log" build.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: bin/cshvh.apk
+
+  android-test:
+    needs: [ android ]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+          pip install pillow
+      - name: Smoke test on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: android/emulator_test.sh apk/cshvh.apk
+
+  # the first-start content packs: one zip per pack instead of a few thousand single-file downloads
+  content:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # best effort: if a mirror is down the game falls back to the single-file list, the release must still ship
+      - name: Build the content packs
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/pack_content.py dist
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: content
+          path: dist
+          compression-level: 0
+          if-no-files-found: warn
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: content-report
+          path: dist/pack-report.txt
+          if-no-files-found: warn
+          retention-days: 1
+
+  release:
+    needs: [ windows, android, content ]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: find artifacts -type f | xargs ls -la
+      # the artifact layout differs by upload style - collect the packs in one place for the release step
+      - name: Collect the content packs
+        run: |
+          mkdir -p artifacts/content/dist
+          find artifacts/content -name 'cshvh-content-*.zip' -exec cp {} artifacts/content/dist/ \; 2>/dev/null || true
+          ls -la artifacts/content/dist
+      - name: Extract latest release notes
+        run: |
+          VERSION="1.2.${{ github.run_number }}" python3 tools/extract_notes.py
+        env:
+          VERSION: "1.2.${{ github.run_number }}"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.2.${{ github.run_number }}
+          name: Counter-Strike HvH 1.2.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          body_path: /tmp/release_notes.txt
+          make_latest: true
+          files: |
+            artifacts/windows/dist/CounterStrikeHvH-windows.zip
+            artifacts/windows/bin/cshvh.exe
+            artifacts/android/cshvh.apk
+            artifacts/content/dist/cshvh-content-*.zip
