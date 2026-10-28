@@ -516,15 +516,12 @@ static void DrawWatermark(CCSPlayer* lp) {
 }
 
 // list boxes are windows too: the title bar can be dragged around (the position is remembered per title)
-static void ListBoxPos(const char* title, float& x, float& y) {
-  static std::vector<std::pair<std::string, Vector2>> pos;
-  for (auto& p : pos) if (p.first == title) { x = p.second.x; y = p.second.y; break; }
-}
+// one table for every list box: the dragged position has to survive the next frame (the caller passes the default spot)
+static std::vector<std::pair<std::string, Vector2>> s_listBoxPos;
 static void ListBoxDrag(const char* title, float& x, float& y, float w) {
   static std::string dragTitle; static Vector2 off;
-  static std::vector<std::pair<std::string, Vector2>> pos;
-  auto store = [&](Vector2 v) { for (auto& p : pos) if (p.first == title) { p.second = v; return; } pos.push_back({ title, v }); };
-  ListBoxPos(title, x, y);
+  auto store = [&](Vector2 v) { for (auto& p : s_listBoxPos) if (p.first == title) { p.second = v; return; } s_listBoxPos.push_back({ title, v }); };
+  for (auto& p : s_listBoxPos) if (p.first == title) { x = p.second.x; y = p.second.y; break; }
   const Vector2 m = GetMousePosition();
   const bool down = IsMouseButtonDown(MOUSE_BUTTON_LEFT), pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
   if (pressed && g.menuOpen && m.x >= x && m.x < x + w && m.y >= y && m.y < y + 18) { dragTitle = title; off = { m.x - x, m.y - y }; }

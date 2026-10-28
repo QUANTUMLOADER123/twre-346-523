@@ -555,6 +555,18 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
       // run IK): put the gun into the right hand instead - weapon_bone_RHand is where the hand grips the weapon
       int hand = m->FindBone("ValveBiped.Bip01_R_Hand"), grip = m->FindBone("ValveBiped.weapon_bone_RHand");
       const bool handRooted = wm->FindBone("ValveBiped.weapon_bone") < 0 && wm->FindBone("ValveBiped.Bip01_R_Hand") >= 0;   // CS:GO w_eq_* ports
+      if (handRooted && hand >= 0 && hand < (int)out.cssBones.size()) {
+        // the model is built around a hand bone of its own (the CS:S knife): hang the whole thing onto the player's
+        // right hand rigidly. BoneMerge alone left it floating next to the player, the knife's root bone is "ValveBiped"
+        const int kh = wm->FindBone("ValveBiped.Bip01_R_Hand");
+        matrix3x4_t bindHand; QuaternionMatrix(wm->bones[kh].quat, wm->bones[kh].pos, Vector(1, 1, 1), bindHand);
+        matrix3x4_t inv, fix; MatrixInvert(bindHand, inv); ConcatTransforms(out.cssBones[hand], inv, fix);
+        out.cssWeaponBones.resize(wm->bones.size());
+        for (size_t i = 0; i < wm->bones.size(); i++) {
+          matrix3x4_t local; QuaternionMatrix(wm->bones[i].quat, wm->bones[i].pos, Vector(1, 1, 1), local);
+          ConcatTransforms(fix, local, out.cssWeaponBones[i]);
+        }
+      }
       if (!handRooted && hand >= 0 && grip >= 0 && hand < (int)out.cssBones.size() && grip < (int)out.cssBones.size()) {
         matrix3x4_t gripInv, fix; MatrixInvert(out.cssBones[grip], gripInv);
         ConcatTransforms(out.cssBones[hand], gripInv, fix);
@@ -892,7 +904,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     // the gun sits in the gloved hands drawn right after it: a bit left of the eye, below it and out in front
     const Vector pos = view.origin - r * 2.2f - u * 7.0f + f * 12.0f;
     // the barrel is not aimed straight at the screen but turned a bit to the left, so the gun reads as a gun
-    const float yaw = -0.42f;
+    const float yaw = -1.2f;
     f = f * std::cos(yaw) + side * std::sin(yaw);
     for (int i = 0; i < 3; i++) for (int c = 0; c < 3; c++) gunXf[i][c] = 0.f;
     // model axes: +x is the barrel, +z the top of the frame -> barrel into the screen, frame upright

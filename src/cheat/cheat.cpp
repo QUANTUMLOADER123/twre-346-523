@@ -68,7 +68,8 @@ static void RecordHistory(const Vector& pos, const QAngle& ang) {
 // the position the server still sees us at: FakeTrailSeconds() ago, in defensive DT. Nothing is returned until the
 // buffer really covers the whole window, so a freshly (re)charged DT never shows a ghost at a stale position.
 bool DefensiveFakeOrigin(Vector& out) {
-  if (v.rage.doubletapMode != 1 || !g.doubletapping || s_posHistory.empty()) return false;
+  // the lag is a property of a *charged* defensive DT: without charge the model sits exactly on the body
+  if (v.rage.doubletapMode != 1 || !g.doubletapping || !g.dtReady || s_posHistory.empty()) return false;
   const float trail = FakeTrailSeconds();
   if (ServerTime() - s_timeHistory.front() < trail * 0.95f) return false;
   const float want = ServerTime() - trail;
@@ -93,11 +94,13 @@ void CreateMove(CUserCmd& cmd) {
       lp->m_PlayerAnimState.m_flFootYaw = s_angHistory[idx].y;
     }
   }
-  // a released (or re-charged) double tap starts from a clean buffer: no leftover positions from the last peek
+  // a released, not yet charged or re-charged double tap starts from a clean buffer: no leftover positions from the
+  // last peek. Without the dtReady check the ghost jumps 200 ms back the moment the DT is being charged again
   static bool s_dtWasOn = false;
-  if (!g.doubletapping || v.rage.doubletapMode != 1) { if (s_dtWasOn) ClearHistory(); s_dtWasOn = false; }
+  const bool dtTrailOn = g.doubletapping && v.rage.doubletapMode == 1 && g.dtReady;
+  if (!dtTrailOn) { if (s_dtWasOn) ClearHistory(); s_dtWasOn = false; ClearHistory(); }
   else s_dtWasOn = true;
-  if (g.doubletapping) RecordHistory(lp->m_vecOrigin, QAngle(0, lp->m_PlayerAnimState.m_flFootYaw, 0));
+  if (dtTrailOn) RecordHistory(lp->m_vecOrigin, QAngle(0, lp->m_PlayerAnimState.m_flFootYaw, 0));
   if (g.shots.size() != shotsBefore && g.targetValid && g.target && v.vis.hitboxOnShot) {
     // remember the hitboxes we aimed at
     if (!g.target->m_LagRecords.empty()) {
