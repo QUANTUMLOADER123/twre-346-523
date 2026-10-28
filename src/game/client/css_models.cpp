@@ -897,38 +897,61 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   // like a CS:S view model (barrel along +x, top along +z), so it is simply hung in front of the eye - a bit right of
   // and below the crosshair, like every CS:S view model.
   matrix3x4_t gunXf = xf;
+  // the R8 revolver has no CS:S view model and its CS:GO view model is a cam_driver rig that falls apart in our
+  // decoder; what is used is the CS:GO *world* model - a clean gun with a single bone. The gloved hands and the
+  // sleeves come from the CS:S pistol view model, and the revolver is hung on the animated gun bone of those hands,
+  // so it always sits in the palm and never drifts away from the fingers.
+  const CSrcModel* handModel = nullptr; int handsPart = -1; SrcSeqRef handSeq;
+  thread_local std::vector<Vector> hpos; thread_local std::vector<Quat> hq; thread_local std::vector<matrix3x4_t> hb;
+  matrix3x4_t handBone; bool haveHand = false;
   if (r8) {
-    // the world model of the revolver is authored in the CS:S view model layout (barrel along +x, top along +z), so it
-    // is hung in front of the eye a bit right of and below the crosshair, exactly where a CS:S view model would be
-    Vector f, r, u; AngleVectors(ang, &f, &r, &u);
-    const Vector side(f.y * u.z - f.z * u.y, f.z * u.x - f.x * u.z, f.x * u.y - f.y * u.x);
-    const float kS = 0.8f;
-    // the gun sits in the gloved hands drawn right after it: a bit left of the eye, below it and out in front
-    const Vector pos = view.origin - r * 2.2f - u * 7.0f + f * 12.0f;
-    // the barrel is not aimed straight at the screen but turned a bit to the left, so the gun reads as a gun
-    const float yaw = -1.2f;
-    f = f * std::cos(yaw) + side * std::sin(yaw);
-    for (int i = 0; i < 3; i++) for (int c = 0; c < 3; c++) gunXf[i][c] = 0.f;
-    // model axes: +x is the barrel, +z the top of the frame -> barrel into the screen, frame upright
-    Vector c1 = u.Cross(f);
-    {   // roll around the barrel so the gun stands level in the hand instead of leaning down to the right
-      const float rl = 0.35f, cs = std::cos(rl), sn = std::sin(rl);   // view-space roll: level in the hand
-      const Vector c1r = c1 * cs + u * sn;
-      const Vector ur = u * cs - c1 * sn;
-      c1 = c1r; u = ur;
+    handModel = LoadedOrNull(SrcMdl_Get("models/weapons/v_pist_deagle.mdl"));
+    if (handModel) {
+      for (size_t i = 0; i < handModel->bodyPartNames.size(); i++) if (handModel->bodyPartNames[i] == "hands") handsPart = (int)i;
+      handSeq = PickVm(*handModel, { "ACT_VM_IDLE" }, false, 0);
+      if (!handSeq) handSeq = { handModel, 0, -1 };
+      handModel->SampleSeq(handSeq, std::fmod(elapsed / std::max(0.01f, handModel->SeqDuration(handSeq)), 1.f), SrcPoseValues(), hpos, hq);
+      handModel->BuildBones(hpos, hq, hb);
+      if (handsPart < 0 || hb.empty()) handModel = nullptr;
+      else { ConcatTransforms(xf, hb[0], handBone); haveHand = true; }
     }
-    gunXf[0][0] = f.x * kS; gunXf[0][1] = c1.x * kS; gunXf[0][2] = u.x * kS;
-    gunXf[1][0] = f.y * kS; gunXf[1][1] = c1.y * kS; gunXf[1][2] = u.y * kS;
-    gunXf[2][0] = f.z * kS; gunXf[2][1] = c1.z * kS; gunXf[2][2] = u.z * kS;
-    gunXf[0][3] = pos.x; gunXf[1][3] = pos.y; gunXf[2][3] = pos.z;
-    // the mesh is skinned to the single bone of the model, which carries its own rotation: undo it, otherwise the gun
-    // ends up lying on its side
-    matrix3x4_t binv; MatrixInvert(bones[0], binv);
-    matrix3x4_t t; ConcatTransforms(gunXf, binv, t); gunXf = t;
-    // the grip goes down into the glove, the barrel out to the front
-    matrix3x4_t spin; AngleMatrix(QAngle(0, -90, 195), spin);
-    matrix3x4_t t2; ConcatTransforms(gunXf, spin, t2); gunXf = t2;
-
+  }
+  if (r8) {
+    if (haveHand) {
+      // the gun bone of the CS:S pistol carries the gun exactly like the pistol that belongs to those hands: the
+      // revolver only needs the small offset that puts its grip into the glove and the turn that points the barrel
+      // where the pistol barrel points
+      const float ox = 0.f, oy = 0.f, oz = 0.f, rp = 0.f, ry = 0.f, rr = 90.f, gs = 0.8f;
+      matrix3x4_t local; QAngle la(rp, ry, rr); Vector lo(ox, oy, oz);
+      AngleMatrix(la, local);
+      for (int i = 0; i < 3; i++) for (int c = 0; c < 3; c++) local[i][c] *= gs;
+      matrix3x4_t placed; ConcatTransforms(handBone, local, placed);
+      {   // a nudge in view space so the grip sits in the fist instead of beside it
+        Vector f2, r2, u2; AngleVectors(ang, &f2, &r2, &u2);
+        const Vector d = r2 * 4.f - u2 * 3.f + f2 * 1.f;
+        placed[0][3] += d.x; placed[1][3] += d.y; placed[2][3] += d.z;
+      }
+      matrix3x4_t binv; MatrixInvert(bones[0], binv);
+      ConcatTransforms(placed, binv, gunXf);
+    } else {
+      // no CS:S hands on disk: hang the revolver in front of the eye, a bit right of and below the crosshair
+      Vector f, r, u; AngleVectors(ang, &f, &r, &u);
+      const Vector side = u.Cross(f);
+      const float kS = 0.8f;
+      const Vector pos = view.origin - r * 2.2f - u * 7.0f + f * 12.0f;
+      const float yaw = -1.2f;
+      f = f * std::cos(yaw) + side * std::sin(yaw);
+      for (int i = 0; i < 3; i++) for (int c = 0; c < 3; c++) gunXf[i][c] = 0.f;
+      Vector c1 = u.Cross(f);
+      gunXf[0][0] = f.x * kS; gunXf[0][1] = c1.x * kS; gunXf[0][2] = u.x * kS;
+      gunXf[1][0] = f.y * kS; gunXf[1][1] = c1.y * kS; gunXf[1][2] = u.y * kS;
+      gunXf[2][0] = f.z * kS; gunXf[2][1] = c1.z * kS; gunXf[2][2] = u.z * kS;
+      gunXf[0][3] = pos.x; gunXf[1][3] = pos.y; gunXf[2][3] = pos.z;
+      matrix3x4_t binv; MatrixInvert(bones[0], binv);
+      matrix3x4_t t; ConcatTransforms(gunXf, binv, t); gunXf = t;
+      matrix3x4_t spin; AngleMatrix(QAngle(0, -90, 195), spin);
+      matrix3x4_t t2; ConcatTransforms(gunXf, spin, t2); gunXf = t2;
+    }
   }
   StudioLight L;
   if (g_WorldRender.built) { LightSample s = g_WorldRender.SampleLight(view.origin); L.ambient = s.ambient * 1.15f; L.direct = s.direct * 0.8f; L.dir = s.dir; }
@@ -963,30 +986,9 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   }
   // the R8 view model is the CS:GO world model of the revolver, which already is a clean gun: nothing is cut out of it
   // and the agent's arms are not hung on it either (the hands come from the CS:S pistol, see below)
-  // the R8 revolver has no hands of its own: the gloved hands and the sleeves of the CS:S pistol view model are drawn
-  // in the plain view model frame, and the gun hangs on their animated gun bone so the two never drift apart
-  Vector r8Grip; bool haveGrip = false;
-  if (r8) {
-    if (const CSrcModel* hm = LoadedOrNull(SrcMdl_Get("models/weapons/v_pist_deagle.mdl"))) {
-      int handsPart = -1;
-      for (size_t i = 0; i < hm->bodyPartNames.size(); i++) if (hm->bodyPartNames[i] == "hands") handsPart = (int)i;
-      if (handsPart >= 0) {
-        SrcSeqRef hseq = PickVm(*hm, { "ACT_VM_IDLE" }, false, 0);
-        if (!hseq) hseq = { hm, 0, -1 };
-        thread_local std::vector<Vector> hpos; thread_local std::vector<Quat> hq; thread_local std::vector<matrix3x4_t> hb;
-        hm->SampleSeq(hseq, std::fmod(elapsed / std::max(0.01f, hm->SeqDuration(hseq)), 1.f), SrcPoseValues(), hpos, hq);
-        hm->BuildBones(hpos, hq, hb);
-        if (!hb.empty()) {   // the gun bone of the pistol: that is where the grip of the revolver belongs
-          matrix3x4_t g; ConcatTransforms(xf, hb[0], g);
-          r8Grip = Vector(g[0][3], g[1][3], g[2][3]); haveGrip = true;
-        }
-        SrcMdl_Draw(*hm, hb, xf, dp, 0, nullptr, false, nullptr, handsPart);
-      }
-    }
-  }
-
   SrcMdl_Draw(*m, bones, gunXf, dp, 0, nullptr, false, bindHands.empty() ? nullptr : &bindHands);
 
+  if (handModel && handsPart >= 0) SrcMdl_Draw(*handModel, hb, xf, dp, 0, nullptr, false, nullptr, handsPart);
   if (csgo) DrawCsgoScope(*m, bones, xf, dp);
   // CS:GO view models ship without hands: the agent's own arms are attached to the gun's hand bone. The CS:S view
   // models already carry their hands, so nothing is glued on them.

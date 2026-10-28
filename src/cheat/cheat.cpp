@@ -45,37 +45,18 @@ static bool IsShooting(const CUserCmd& cmd, CCSPlayer* lp) {
   return (cmd.buttons & IN_ATTACK) && now >= w->m_flNextPrimaryAttack && now >= lp->m_flNextAttack && w->m_iClip1 > 0 && !w->IsReloading();
 }
 
-// Defensive DT: position history buffer, stamped with the server time it was recorded at. The ghost stands where the
-// server still sees us, so the trail is as long as the server keeps the commands (sv_maxunlag) - never longer, or the
-// fake model would sit at a position that is already out of the lag compensation window.
-static constexpr float kFakeTrailSeconds = 0.2f;
-static std::vector<Vector> s_posHistory;
-static std::vector<QAngle> s_angHistory;
-static std::vector<float> s_timeHistory;
-static float FakeTrailSeconds() {
-  const float unlag = sv_maxunlag.GetFloat() > 0.f ? sv_maxunlag.GetFloat() : 0.2f;
-  return std::max(gpGlobals->interval_per_tick * 2.f, std::min(kFakeTrailSeconds, unlag));
-}
-static void ClearHistory() { s_posHistory.clear(); s_angHistory.clear(); s_timeHistory.clear(); }
-static void RecordHistory(const Vector& pos, const QAngle& ang) {
-  const float trail = FakeTrailSeconds();
-  s_posHistory.push_back(pos); s_angHistory.push_back(ang); s_timeHistory.push_back(ServerTime());
-  while (!s_timeHistory.empty() && ServerTime() - s_timeHistory.front() > trail + 0.1f) {
-    s_posHistory.erase(s_posHistory.begin()); s_angHistory.erase(s_angHistory.begin()); s_timeHistory.erase(s_timeHistory.begin());
-  }
-}
-
-// the position the server still sees us at: FakeTrailSeconds() ago, in defensive DT. Nothing is returned until the
-// buffer really covers the whole window, so a freshly (re)charged DT never shows a ghost at a stale position.
+// Defensive DT: the ghost is drawn exactly where the server last sent us - lp->m_net, the snapshot the other clients
+// (and the bots) get. There is no separate position buffer any more: whatever lag the ghost shows is the lag the
+// enemies really have, so a bot aiming at the ghost aims at the spot it can actually hit.
+static void ClearHistory() {}
 bool DefensiveFakeOrigin(Vector& out) {
-  // the lag is a property of a *charged* defensive DT: without charge the model sits exactly on the body
-  if (v.rage.doubletapMode != 1 || !g.doubletapping || !g.dtReady || s_posHistory.empty()) return false;
-  const float trail = FakeTrailSeconds();
-  if (ServerTime() - s_timeHistory.front() < trail * 0.95f) return false;
-  const float want = ServerTime() - trail;
-  for (size_t i = s_posHistory.size(); i-- > 0;)
-    if (s_timeHistory[i] <= want) { out = s_posHistory[i]; return true; }
-  return false;
+  CCSPlayer* lp = g_pLocalPlayer;
+  if (!lp || !lp->IsAlive()) return false;
+  if (v.rage.doubletapMode != 1 || !g.doubletapping || !g.dtReady) return false;
+  const float lag = ServerTime() - lp->m_net.simTime;
+  if (lag < 3.f * gpGlobals->interval_per_tick) return false;   // nothing worth drawing, the body is the ghost
+  out = lp->m_net.origin;
+  return true;
 }
 
 void CreateMove(CUserCmd& cmd) {
@@ -86,33 +67,6 @@ void CreateMove(CUserCmd& cmd) {
   size_t shotsBefore = g.shots.size();
   Rage_CreateMove(cmd, lp, view);
   
-  // Defensive DT: when choking packets, use old position/angles (fake trail 0.5s behind)
-  if (v.rage.doubletapMode == 1 && g.doubletapping && !cmd.bSendPacket && s_posHistory.size() > 5) {
-    int idx = (int)s_posHistory.size() - 6;
-    if (idx >= 0) {
-      lp->m_vecOrigin = s_posHistory[idx];
-      lp->m_PlayerAnimState.m_flFootYaw = s_angHistory[idx].y;
-    }
-  }
-  // a released, not yet charged or re-charged double tap starts from a clean buffer: no leftover positions from the
-  // last peek. Without the dtReady check the ghost jumps 200 ms back the moment the DT is being charged again
-  static bool s_dtWasOn = false;
-  const bool dtTrailOn = g.doubletapping && v.rage.doubletapMode == 1 && g.dtReady;
-  if (!dtTrailOn) { if (s_dtWasOn) ClearHistory(); s_dtWasOn = false; ClearHistory(); }
-  else s_dtWasOn = true;
-  if (dtTrailOn) RecordHistory(lp->m_vecOrigin, QAngle(0, lp->m_PlayerAnimState.m_flFootYaw, 0));
-  if (g.shots.size() != shotsBefore && g.targetValid && g.target && v.vis.hitboxOnShot) {
-    // remember the hitboxes we aimed at
-    if (!g.target->m_LagRecords.empty()) {
-      const ShotRecord& s = g.shots.back();
-      const CNetPlayerState* rec = &g.target->m_LagRecords.front();
-      for (const CNetPlayerState& r : g.target->m_LagRecords) if (r.tick == cmd.tick_count) { rec = &r; break; }
-      PlayerPoseInput in; in.origin = rec->origin; in.footYaw = s.resolvedYaw; in.eyeAngles = rec->eyeAngles; in.duckAmount = rec->duckAmount;
-      in.moveCycle = rec->moveCycle; in.moveSpeed = rec->moveSpeed; in.moveYaw = rec->moveYaw; in.onGround = rec->onGround; in.weaponId = rec->weaponId;
-      PlayerPoseOutput po; BuildPlayerPose(g.target, in, po, true);
-      Visuals_AddShotHitboxes(po.hitboxes, s.hitbox);
-    }
-  }
   bool shooting = IsShooting(cmd, lp);
   AA_FakeLag(cmd, lp, shooting);
   AA_CreateMove(cmd, lp, view, shooting);

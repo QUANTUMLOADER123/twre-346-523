@@ -81,7 +81,9 @@ void AA_FakeLag(CUserCmd& cmd, CCSPlayer* lp, bool shooting) {
     if (a.fakelagMode != 2 && a.fakelagVariance > 0) limit = std::max(1, limit - RandomInt(0, (int)(limit * a.fakelagVariance / 100.f)));
     if (lp->m_vecVelocity.Length2D() < 5 && a.fakelagMode == 0) limit = std::max(desync ? 1 : 0, std::min(limit, 2));
   }
-  if (g.doubletapping) limit = std::min(limit, 1);      // dt can't fakelag
+  // defensive DT: the whole point is that the server (and so the enemies and the bots) keep the old snapshot while
+  // we already moved on. Choking one tick only would leave the lag compensation ahead of us and the ghost a lie.
+  if (g.doubletapping) limit = (v.rage.doubletapMode == 1 && g.dtReady) ? maxChoke : std::min(limit, 1);
   if (g.fakeducking) limit = maxChoke;
   limit = std::min(limit, maxChoke);
   bool send = g.choked >= limit;
