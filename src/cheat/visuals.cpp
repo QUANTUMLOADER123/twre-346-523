@@ -86,23 +86,8 @@ bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& l
   auto& s = v.vis;
   StudioDrawParams base; base.light = light; base.eye = view.origin;
   if (p->IsLocalPlayer()) {
-    // fake model (what other players see: client side feet yaw). It trails the real body by ~0.2 s, so a fast peek
-    // (out - shot - back) never shows the ghost outside of the cover we are standing behind.
-    static constexpr float kGhostLag = 0.2f;
-    static std::vector<std::pair<float, Vector>> s_ghostHist;
-    {
-      const float nowT = (float)gpGlobals->realtime;
-      s_ghostHist.push_back({ nowT, p->m_vecRenderOrigin });
-      while (!s_ghostHist.empty() && nowT - s_ghostHist.front().first > kGhostLag + 0.25f) s_ghostHist.erase(s_ghostHist.begin());
-    }
-    auto laggedOrigin = [&](Vector& out) -> bool {
-      const float nowT = (float)gpGlobals->realtime;
-      if (s_ghostHist.empty() || nowT - s_ghostHist.front().first < kGhostLag * 0.9f) return false;
-      const float want = nowT - kGhostLag;
-      for (size_t i = s_ghostHist.size(); i-- > 0;)
-        if (s_ghostHist[i].first <= want) { out = s_ghostHist[i].second; return true; }
-      return false;
-    };
+    // the lag of the fake model belongs to defensive DT and only to it: the ghost stands at the position the server
+    // still has us at (DefensiveFakeOrigin, see cheat.cpp). As soon as DT is off the ghost goes back onto the body.
     bool fakeDrawn = false;
     if (s.chamsFake && v.aa.enabled && v.aa.bodyYaw) {
       float delta = AngleDiff(p->m_PlayerAnimState.m_flFootYaw, p->m_flFakeFootYaw); // main model = sent yaw, ghost = desynced server body
@@ -112,7 +97,7 @@ bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& l
       matrix3x4_t t1, t2; ConcatTransforms(rot, toOrigin, t1); ConcatTransforms(back, t1, t2);
       PlayerPoseOutput fake = pose; ConcatTransforms(t2, pose.modelToWorld, fake.modelToWorld); ConcatTransforms(t2, pose.weaponToWorld, fake.weaponToWorld); ConcatTransforms(t2, pose.cssToWorld, fake.cssToWorld);
       Vector trailPos;
-      if (laggedOrigin(trailPos)) {
+      if (DefensiveFakeOrigin(trailPos)) {
         Vector back = trailPos - p->m_vecRenderOrigin;
         if (back.LengthSqr() < 250000.f) {
           matrix3x4_t shift; shift.SetOrigin(back);

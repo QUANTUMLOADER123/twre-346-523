@@ -129,12 +129,7 @@ void CreateMove(CUserCmd& cmd) {
   else if (g.doubletapping && !shooting && cmd.tickbaseShift == 0 && charge < maxShift && ServerTime() - g.lastShotTime > 0.25f &&
            !(cmd.buttons & (IN_ATTACK | IN_ATTACK2)))
     cmd.tickbaseShift = -1;   // recharge: the whole cmd is held back -> clean hang in place (see host.cpp)
-  // defensive dt: one shift when an enemy first becomes hittable while we peek (not periodically -> no stop&go)
-  static bool s_defUsed = false;
-  if (!g.targetValid) s_defUsed = false;
-  if (g.doubletapping && v.rage.doubletapMode == 1 && !shooting && g.dtReady && g.targetValid && !s_defUsed && lp->m_vecVelocity.Length2D() > 100.f) {
-    cmd.tickbaseShift = maxShift; s_defUsed = true;
-  }
+  // Defensive DT is just the offensive one with the fake model left behind: no extra shifts, no reaction to enemies.
   
   // Quick Peek Assist: hold the key and a flat circle is dropped at that spot; you peek out, shoot, and the moment you
   // release the key (or fire) you are walked back to the circle - the same "return to the marked spot" idea as DT, but

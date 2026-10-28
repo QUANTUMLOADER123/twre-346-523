@@ -889,7 +889,8 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     Vector f, r, u; AngleVectors(ang, &f, &r, &u);
     const Vector side(f.y * u.z - f.z * u.y, f.z * u.x - f.x * u.z, f.x * u.y - f.y * u.x);
     const float kS = 0.8f;
-    const Vector pos = view.origin + r * 5.6f - u * 5.4f + f * 14.f;
+    // the gun sits in the gloved hands drawn right after it: a bit left of the eye, below it and out in front
+    const Vector pos = view.origin - r * 2.2f - u * 7.0f + f * 12.0f;
     // the barrel is not aimed straight at the screen but turned a bit to the left, so the gun reads as a gun
     const float yaw = -0.42f;
     f = f * std::cos(yaw) + side * std::sin(yaw);
@@ -901,9 +902,12 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     gunXf[2][0] = f.z * kS; gunXf[2][1] = c1.z * kS; gunXf[2][2] = u.z * kS;
     gunXf[0][3] = pos.x; gunXf[1][3] = pos.y; gunXf[2][3] = pos.z;
     // the mesh is skinned to the single bone of the model, which carries its own rotation: undo it, otherwise the gun
-    // ends up lying on its side. The small yaw/pitch is what makes it read as a gun, the way a CS:S view model does.
+    // ends up lying on its side
     matrix3x4_t binv; MatrixInvert(bones[0], binv);
     matrix3x4_t t; ConcatTransforms(gunXf, binv, t); gunXf = t;
+    // grip down into the glove, barrel out to the front left - the same hold the CS:S pistol view model has
+    matrix3x4_t spin; AngleMatrix(QAngle(0, -90, 195), spin);
+    matrix3x4_t t2; ConcatTransforms(gunXf, spin, t2); gunXf = t2;
   }
   StudioLight L;
   if (g_WorldRender.built) { LightSample s = g_WorldRender.SampleLight(view.origin); L.ambient = s.ambient * 1.15f; L.direct = s.direct * 0.8f; L.dir = s.dir; }
@@ -939,6 +943,22 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   // the R8 view model is the CS:GO world model of the revolver, which already is a clean gun: nothing is cut out of it
   // and the agent's arms are not hung on it either (the hands come from the CS:S pistol, see below)
   SrcMdl_Draw(*m, bones, gunXf, dp, 0, nullptr, false, bindHands.empty() ? nullptr : &bindHands);
+  // the R8 revolver has no hands of its own: the gloved hands and the sleeves of the CS:S pistol view model are drawn
+  // in the plain view model frame, which is exactly where the gun hangs
+  if (r8) {
+    if (const CSrcModel* hm = LoadedOrNull(SrcMdl_Get("models/weapons/v_pist_deagle.mdl"))) {
+      int handsPart = -1;
+      for (size_t i = 0; i < hm->bodyPartNames.size(); i++) if (hm->bodyPartNames[i] == "hands") handsPart = (int)i;
+      if (handsPart >= 0) {
+        SrcSeqRef hseq = PickVm(*hm, { "ACT_VM_IDLE" }, false, 0);
+        if (!hseq) hseq = { hm, 0, -1 };
+        thread_local std::vector<Vector> hpos; thread_local std::vector<Quat> hq; thread_local std::vector<matrix3x4_t> hb;
+        hm->SampleSeq(hseq, std::fmod(elapsed / std::max(0.01f, hm->SeqDuration(hseq)), 1.f), SrcPoseValues(), hpos, hq);
+        hm->BuildBones(hpos, hq, hb);
+        SrcMdl_Draw(*hm, hb, xf, dp, 0, nullptr, false, nullptr, handsPart);
+      }
+    }
+  }
   if (csgo) DrawCsgoScope(*m, bones, xf, dp);
   // CS:GO view models ship without hands: the agent's own arms are attached to the gun's hand bone. The CS:S view
   // models already carry their hands, so nothing is glued on them.
