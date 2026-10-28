@@ -9,6 +9,19 @@
 #include "../shared/soundemitter.hpp"
 #include "../shared/mapinfo.hpp"
 #include "../shared/cs_loadout.hpp"
+// TEMP debug: how the loadout convars round-trip
+static ConCommand cmd_lotest("lotest", [](const CCommand&) {
+  for (int team : { 2, 3 }) {
+    ConVar* cv = FindConVar(team == 3 ? "loadout2_ct_r2" : "loadout2_t_r2");
+    Msg("team %d cvar %s value '%s'\n", team, cv ? "ok" : "MISSING", cv ? cv->GetString() : "");
+    Loadout_SetWeapon2(team, 2, 1, WEAPON_M4A1_SILENCER);
+    Msg("  after set: '%s'\n", cv ? cv->GetString() : "-");
+    for (auto& sl : Loadout_GetSlots2(team)) Msg("  slot cat %d idx %d weapon %d\n", sl.category, sl.slotIndex, sl.weaponId);
+  }
+  for (int id = 1; id < 70; id++) { const char* a = WeaponIdToAlias(id); int back = a ? AliasToWeaponID(a) : 0; if (back != id) Msg("roundtrip mismatch id=%d alias=%s back=%d\n", id, a ? a : "(null)", back); }
+  Msg("lotest done\n");
+});
+
 #include "../../vgui/csgo_style.hpp"
 #include "../../vgui/vgui_images.hpp"
 #include "raylib.h"

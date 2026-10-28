@@ -792,6 +792,8 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     // guns. The v_ model of the addon is a cam_driver rig whose poses fall apart in our decoder - that was the slab.
     m = LoadedOrNull(SrcMdl_Get(kR8World)); r8 = m && !m->seqs.empty(); if (!r8) m = LoadedOrNull(SrcMdl_Get(kR8View)), r8 = m && !m->seqs.empty(); if (!r8) m = nullptr;
   }
+  // the SCAR-20 and the Tec-9 keep their CS:GO view models: their CS:S counterparts are different weapons
+  if (!m && (wid == WEAPON_SCAR20 || wid == WEAPON_TEC9)) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
   if (!m && cl_real_viewmodels.GetBool()) m = cssView(nullptr);
   if (!m) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
   if (!m) m = cssView(nullptr);
@@ -910,7 +912,13 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     f = f * std::cos(yaw) + side * std::sin(yaw);
     for (int i = 0; i < 3; i++) for (int c = 0; c < 3; c++) gunXf[i][c] = 0.f;
     // model axes: +x is the barrel, +z the top of the frame -> barrel into the screen, frame upright
-    const Vector c1 = u.Cross(f);
+    Vector c1 = u.Cross(f);
+    {   // roll around the barrel so the gun stands level in the hand instead of leaning down to the right
+      const float rl = 0.35f, cs = std::cos(rl), sn = std::sin(rl);
+      const Vector c1r = c1 * cs + u * sn;
+      const Vector ur = u * cs - c1 * sn;
+      c1 = c1r; u = ur;
+    }
     gunXf[0][0] = f.x * kS; gunXf[0][1] = c1.x * kS; gunXf[0][2] = u.x * kS;
     gunXf[1][0] = f.y * kS; gunXf[1][1] = c1.y * kS; gunXf[1][2] = u.y * kS;
     gunXf[2][0] = f.z * kS; gunXf[2][1] = c1.z * kS; gunXf[2][2] = u.z * kS;

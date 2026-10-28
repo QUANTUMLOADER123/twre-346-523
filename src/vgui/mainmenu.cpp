@@ -637,6 +637,7 @@ static float s_dragStartX = 0, s_dragStartY = 0;
 
 void PaintLoadout() {
   const float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
+  static int s_pickWeapon = 0, s_pickCategory = -1;   // click-to-equip selection
   float pw = W * 0.45f, px = 10.f, py = TB, ph = H - TB;  // loadout panel: 45% width, left-aligned
   float agentW = W - pw - 20.f;
   float agentX = px + pw + 10.f;
@@ -697,6 +698,13 @@ void PaintLoadout() {
         PlayClick();
         Loadout_SetWeapon2(team, c, i, s_dragWeapon);
         s_dragWeapon = 0;
+        s_pickWeapon = 0;
+      }
+      // click-to-equip (the drag gesture is fiddly on some setups): pick a weapon below, then click the slot
+      if (!isLocked && s_pickWeapon != 0 && s_pickCategory == c && Clicked(x, y, colW, slotH)) {
+        PlayClick();
+        Loadout_SetWeapon2(team, c, i, s_pickWeapon);
+        s_pickWeapon = 0;
       }
       
       // Cancel drag if released anywhere
@@ -730,6 +738,8 @@ void PaintLoadout() {
   
   for (int idx = startIdx; idx < (int)allWeapons.size() && idx < startIdx + maxRows * 5; idx++) {
     int w = allWeapons[idx];
+    int wcat = 2;
+    for (int c = 0; c < 3; c++) { std::vector<int> cw = Loadout_CategoryWeapons2(c, team); if (std::find(cw.begin(), cw.end(), w) != cw.end()) { wcat = c; break; } }
     const CCSWeaponInfo* wi = GetWeaponInfo(w);
     if (!wi) continue;
     
@@ -740,7 +750,8 @@ void PaintLoadout() {
     std::string hid = "avail_" + std::to_string(w);
     HoverSound(hid.c_str(), hv);
     bool dragging = s_dragWeapon == w;
-    DrawRectangleRec({ ax, ay, aW, aRowH }, dragging ? csgo::Alpha(csgo::Accent, 0.3f) : hv ? csgo::PanelHover : csgo::Alpha(csgo::Panel, 0.6f));
+    const bool picked = s_pickWeapon == w;
+    DrawRectangleRec({ ax, ay, aW, aRowH }, picked ? csgo::Alpha(csgo::Accent, 0.55f) : dragging ? csgo::Alpha(csgo::Accent, 0.3f) : hv ? csgo::PanelHover : csgo::Alpha(csgo::Panel, 0.6f));
     if (const Texture2D* img = VGUI_WeaponImage(w))
       VGUI_DrawImageFit(*img, ax + 4.f, ay + 4.f, 42.f, aRowH - 8.f, dragging ? csgo::Alpha(WHITE, 0.5f) : WHITE);
     S()->DrawText(FONT_GO, wi->printName, ax + 48.f, ay + aRowH * 0.5f - 8.f, dragging ? csgo::TextDim : csgo::Text);
@@ -750,6 +761,8 @@ void PaintLoadout() {
       s_dragWeapon = w;
       PlayClick();
     }
+    // click-to-equip: mark this weapon, the next click on a slot of the same category puts it there
+    if (Clicked(ax, ay, aW, aRowH)) { s_pickWeapon = w; s_pickCategory = wcat; }
     ax += aW + 4.f;
   }
   
