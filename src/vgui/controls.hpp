@@ -60,6 +60,7 @@ bool CheckButton(const char* label, bool* value, float x, float y, bool enabled 
 bool Slider(const char* label, float* value, float mn, float mx, float x, float y, float w, const char* fmt = "%.2f");
 bool ComboBox(int id, const std::vector<std::string>& items, int* sel, float x, float y, float w);
 bool TextEntry(int id, std::string& text, float x, float y, float w, float h = 22, bool password = false, int maxLen = 255);
+void TextEntryCursorToEnd();      // move the caret of the focused entry to the end (console Tab / history recall)
 void Label(const char* text, float x, float y, Color c = scheme::Text, int font = FONT_UI);
 void Divider(float x, float y, float w);
 void GroupBox(const char* title, float x, float y, float w, float h);

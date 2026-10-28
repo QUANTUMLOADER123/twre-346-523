@@ -77,9 +77,12 @@ static void PaintConsole() {
   std::string before = s_conInput;
   // history / completion keys
   if (g_KeyboardFocus == 9001) {
-    if (Input().KeyPressed(KEY_UP)) { if (!s_completions.empty()) s_compSel = (s_compSel <= 0 ? (int)s_completions.size() : s_compSel) - 1; else if (!s_conHistory.empty()) { s_conHistPos = s_conHistPos < 0 ? (int)s_conHistory.size() - 1 : std::max(0, s_conHistPos - 1); s_conInput = s_conHistory[s_conHistPos]; } ConsumeKey(KEY_UP); }
-    if (Input().KeyPressed(KEY_DOWN)) { if (!s_completions.empty()) s_compSel = (s_compSel + 1) % (int)s_completions.size(); else if (s_conHistPos >= 0) { s_conHistPos++; if (s_conHistPos >= (int)s_conHistory.size()) { s_conHistPos = -1; s_conInput.clear(); } else s_conInput = s_conHistory[s_conHistPos]; } ConsumeKey(KEY_DOWN); }
-    if (Input().KeyPressed(KEY_TAB)) { if (!s_completions.empty()) { s_conInput = s_completions[s_compSel < 0 ? 0 : s_compSel] + " "; s_completions.clear(); } ConsumeKey(KEY_TAB); }
+    if (Input().KeyPressed(KEY_UP)) { if (!s_completions.empty()) s_compSel = (s_compSel <= 0 ? (int)s_completions.size() : s_compSel) - 1; else if (!s_conHistory.empty()) { s_conHistPos = s_conHistPos < 0 ? (int)s_conHistory.size() - 1 : std::max(0, s_conHistPos - 1); s_conInput = s_conHistory[s_conHistPos]; TextEntryCursorToEnd(); } ConsumeKey(KEY_UP); }
+    if (Input().KeyPressed(KEY_DOWN)) { if (!s_completions.empty()) s_compSel = (s_compSel + 1) % (int)s_completions.size(); else if (s_conHistPos >= 0) { s_conHistPos++; if (s_conHistPos >= (int)s_conHistory.size()) { s_conHistPos = -1; s_conInput.clear(); } else s_conInput = s_conHistory[s_conHistPos]; TextEntryCursorToEnd(); } ConsumeKey(KEY_DOWN); }
+    if (Input().KeyPressed(KEY_TAB)) {
+      if (!s_completions.empty()) { s_conInput = s_completions[s_compSel < 0 ? 0 : s_compSel] + " "; s_completions.clear(); TextEntryCursorToEnd(); }
+      ConsumeKey(KEY_TAB);
+    }
     if (Input().KeyPressed(KEY_GRAVE)) ConsumeKey(KEY_GRAVE);
     // swallow the backtick character
     auto& ch = Input().chars; ch.erase(std::remove_if(ch.begin(), ch.end(), [](int c) { return c == '`' || c == '~' || c == 0x451 || c == 0x401; }), ch.end());

@@ -217,32 +217,50 @@ void DrawPopups() {
 }
 
 static int s_cursor = 0; static int s_focusId = 0;
+static bool s_cursorToEnd = false; static bool s_selectAll = false;
+void TextEntryCursorToEnd() { s_cursorToEnd = true; }
 bool TextEntry(int id, std::string& text, float x, float y, float w, float h, bool password, int maxLen) {
   ISurface* s = surface();
   bool hv = Hover(x, y, w, h);
   if (s_input.mousePressed) { if (hv) { g_KeyboardFocus = id; s_cursor = (int)text.size(); } else if (g_KeyboardFocus == id && WM_MouseInCurrent()) g_KeyboardFocus = 0; }
   bool focused = g_KeyboardFocus == id;
-  if (focused && s_focusId != id) { s_focusId = id; s_cursor = (int)text.size(); }
+  if (focused && s_focusId != id) { s_focusId = id; s_cursor = (int)text.size(); s_selectAll = false; }
+  if (!focused) s_selectAll = false;
+  // the console moves the caret to the end after Tab completion / history recall
+  if (s_cursorToEnd) { s_cursor = (int)text.size(); s_selectAll = false; s_cursorToEnd = false; }
   s->DrawFilledRect(x, y, w, h, BgDark);
   s->DrawBevel(x, y, w, h, BorderLight, Border, true);
   bool enter = false;
   if (focused) {
     s_cursor = Clamp(s_cursor, 0, (int)text.size());
+    if (s_selectAll) { text.clear(); s_cursor = 0; s_selectAll = false; }
     for (int c : s_input.chars) { if (c < 32 || (int)text.size() >= maxLen) continue; int n = 0; const char* u = CodepointToUTF8(c, &n); text.insert(s_cursor, u, n); s_cursor += n; }
     s_input.chars.clear();
     for (int k : s_input.keys) {
-      if (k == KEY_BACKSPACE && s_cursor > 0) { int st = s_cursor - 1; while (st > 0 && (text[st] & 0xC0) == 0x80) st--; text.erase(st, s_cursor - st); s_cursor = st; }
+      if (k == KEY_BACKSPACE && s_selectAll) { text.clear(); s_cursor = 0; s_selectAll = false; }
+      else if (k == KEY_BACKSPACE && s_cursor > 0) {
+        // holding backspace erases faster and faster, so a long command is gone in a moment
+        static float held = 0.f;
+        int steps = 1;
+        if (IsKeyDown(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) {
+          held = std::min(held + GetFrameTime(), 2.f);
+          if (held > 0.9f) steps = 6; else if (held > 0.6f) steps = 3; else if (held > 0.35f) steps = 2;
+        } else held = 0.f;
+        for (int rep = 0; rep < steps && s_cursor > 0; rep++) { int st = s_cursor - 1; while (st > 0 && (text[st] & 0xC0) == 0x80) st--; text.erase(st, s_cursor - st); s_cursor = st; }
+      }
       else if (k == KEY_DELETE && s_cursor < (int)text.size()) { int e = s_cursor + 1; while (e < (int)text.size() && (text[e] & 0xC0) == 0x80) e++; text.erase(s_cursor, e - s_cursor); }
       else if (k == KEY_LEFT && s_cursor > 0) { s_cursor--; while (s_cursor > 0 && (text[s_cursor] & 0xC0) == 0x80) s_cursor--; }
       else if (k == KEY_RIGHT && s_cursor < (int)text.size()) { s_cursor++; while (s_cursor < (int)text.size() && (text[s_cursor] & 0xC0) == 0x80) s_cursor++; }
       else if (k == KEY_HOME) s_cursor = 0;
       else if (k == KEY_END) s_cursor = (int)text.size();
       else if (k == KEY_ENTER || k == KEY_KP_ENTER) enter = true;
+      else if (k == KEY_A && (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))) { s_selectAll = true; ConsumeKey(KEY_A); }
       else if (k == KEY_V && (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))) { const char* cb = GetClipboardText(); if (cb) { std::string t = cb; t.erase(std::remove(t.begin(), t.end(), '\n'), t.end()); text.insert(s_cursor, t); s_cursor += (int)t.size(); } }
     }
     // consume editing keys
     for (int k : { KEY_BACKSPACE, KEY_DELETE, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_END, KEY_ENTER, KEY_KP_ENTER }) ConsumeKey(k);
   }
+  if (focused && s_selectAll) s->DrawFilledRect(x + 3, y + 3, w - 6, h - 6, Selection);   // selection highlight
   std::string shown = password ? std::string(text.size(), '*') : text;
   s->PushClip((int)x + 2, (int)y, (int)w - 4, (int)h);
   float tw = s->GetTextSize(FONT_UI, shown.substr(0, std::min((size_t)s_cursor, shown.size())).c_str()).x;

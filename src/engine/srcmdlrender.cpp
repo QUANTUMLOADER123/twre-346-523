@@ -6,7 +6,7 @@
 #include <cmath>
 #include <algorithm>
 
-void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin, const std::vector<uint8_t>* boneMask, bool strictMask, const std::vector<uint8_t>* skipBones) {
+void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin, const std::vector<uint8_t>* boneMask, bool strictMask, const std::vector<uint8_t>* skipBones, int onlyBodyPart) {
   if (!m.loaded || m.meshes.empty()) return;
   thread_local std::vector<matrix3x4_t> sk;
   m.SkinMatrices(bones, modelToWorld, sk);
@@ -28,6 +28,7 @@ void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, cons
   for (int pass = 0; pass < 2; pass++) {
     for (const SrcMdlMesh& me : m.meshes) {
       if (m.MeshHidden(me, skin)) continue;
+      if (onlyBodyPart >= 0 && me.bodyPart != onlyBodyPart) continue;
       bool translucent = false, alphatest = false;
       Texture2D tex = m.MeshTexture(me, skin, &translucent, &alphatest);
       if ((pass == 1) != translucent) continue;

@@ -144,6 +144,7 @@ bool CSrcModel::Load(const std::string& path) {
   int numBp = Rd<int>(d, 232), bpIdx = Rd<int>(d, 236);
   for (int bp = 0; bp < numBp && bp < vtxBodyParts; bp++) {
     size_t mbp = (size_t)bpIdx + bp * 16; int nModels = Rd<int>(d, mbp + 4); size_t mModels = mbp + Rd<int>(d, mbp + 12);
+    { size_t nmOff = mbp + (size_t)Rd<int>(d, mbp); bodyPartNames.push_back(nmOff < d.size() ? Str(d, nmOff) : std::string()); }
     size_t vbp = (size_t)vtxBpOff + bp * 8; size_t vModels = vbp + Rd<int>(vtx, vbp + 4);
     if (nModels <= 0) continue;
     int mi = bp < (int)bodygroups.size() ? std::min(bodygroups[bp], nModels - 1) : 0;
@@ -154,7 +155,7 @@ bool CSrcModel::Load(const std::string& path) {
     for (int me = 0; me < nMeshes && me < vNumMeshes; me++) {
       size_t mmesh = mMeshes + (size_t)me * 116; int material = Rd<int>(d, mmesh); int meshVertOff = Rd<int>(d, mmesh + 12);
       size_t vmesh = vMeshes + (size_t)me * 9; int nSg = Rd<int>(vtx, vmesh); size_t sgOff = vmesh + Rd<int>(vtx, vmesh + 4);
-      SrcMdlMesh out; out.skinRef = material;
+      SrcMdlMesh out; out.skinRef = material; out.bodyPart = bp;
       std::unordered_map<int, uint16_t> remap;
       for (int sg = 0; sg < nSg; sg++) {
         size_t g = sgOff + (size_t)sg * (version >= 49 ? 33 : 25);

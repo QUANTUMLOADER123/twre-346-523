@@ -86,7 +86,23 @@ bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& l
   auto& s = v.vis;
   StudioDrawParams base; base.light = light; base.eye = view.origin;
   if (p->IsLocalPlayer()) {
-    // fake model (what other players see: client side feet yaw)
+    // fake model (what other players see: client side feet yaw). It trails the real body by ~0.2 s, so a fast peek
+    // (out - shot - back) never shows the ghost outside of the cover we are standing behind.
+    static constexpr float kGhostLag = 0.2f;
+    static std::vector<std::pair<float, Vector>> s_ghostHist;
+    {
+      const float nowT = (float)gpGlobals->realtime;
+      s_ghostHist.push_back({ nowT, p->m_vecRenderOrigin });
+      while (!s_ghostHist.empty() && nowT - s_ghostHist.front().first > kGhostLag + 0.25f) s_ghostHist.erase(s_ghostHist.begin());
+    }
+    auto laggedOrigin = [&](Vector& out) -> bool {
+      const float nowT = (float)gpGlobals->realtime;
+      if (s_ghostHist.empty() || nowT - s_ghostHist.front().first < kGhostLag * 0.9f) return false;
+      const float want = nowT - kGhostLag;
+      for (size_t i = s_ghostHist.size(); i-- > 0;)
+        if (s_ghostHist[i].first <= want) { out = s_ghostHist[i].second; return true; }
+      return false;
+    };
     bool fakeDrawn = false;
     if (s.chamsFake && v.aa.enabled && v.aa.bodyYaw) {
       float delta = AngleDiff(p->m_PlayerAnimState.m_flFootYaw, p->m_flFakeFootYaw); // main model = sent yaw, ghost = desynced server body
@@ -95,6 +111,16 @@ bool DrawPlayer(CCSPlayer* p, const PlayerPoseOutput& pose, const StudioLight& l
       matrix3x4_t toOrigin, back; toOrigin.SetOrigin(o * -1.f); back.SetOrigin(o);
       matrix3x4_t t1, t2; ConcatTransforms(rot, toOrigin, t1); ConcatTransforms(back, t1, t2);
       PlayerPoseOutput fake = pose; ConcatTransforms(t2, pose.modelToWorld, fake.modelToWorld); ConcatTransforms(t2, pose.weaponToWorld, fake.weaponToWorld); ConcatTransforms(t2, pose.cssToWorld, fake.cssToWorld);
+      Vector trailPos;
+      if (laggedOrigin(trailPos)) {
+        Vector back = trailPos - p->m_vecRenderOrigin;
+        if (back.LengthSqr() < 250000.f) {
+          matrix3x4_t shift; shift.SetOrigin(back);
+          ConcatTransforms(shift, fake.modelToWorld, fake.modelToWorld);
+          ConcatTransforms(shift, fake.weaponToWorld, fake.weaponToWorld);
+          ConcatTransforms(shift, fake.cssToWorld, fake.cssToWorld);
+        }
+      }
       StudioDrawParams fp = base; fp.flags = STUDIO_FLAT_COLOR; fp.colorOverride = s.chamsFakeCol;
       DrawModelWithWeapon(fake, false, fp);
       fakeDrawn = true;
@@ -225,6 +251,19 @@ void Visuals_DrawWorld3D(const CViewSetup& view) {
       for (int i = 0; i < 19; i++) DrawCapsuleLines(sh.hb[i], i == sh.hitbox ? (Color)MkCol(255, 60, 60, c.a) : (Color)c);
       rlDrawRenderBatchActive(); rlEnableDepthTest();
     }
+  }
+  // quick peek anchor: the flat circle dropped where the key was pressed (that is the spot you are pulled back to)
+  if (g.quickPeekActive) {
+    const Vector a = g.quickPeekAnchor;
+    const Col c = Col(v.misc.menuCol);
+    for (int i = 0; i < 40; i++) {
+      float a0 = i * 2.f * M_PI_F / 40, a1 = (i + 1) * 2.f * M_PI_F / 40;
+      const float r = 13.f, z = a.z + 1.2f;
+      DrawLine3D({ a.x + std::cos(a0) * r, a.y + std::sin(a0) * r, z }, { a.x + std::cos(a1) * r, a.y + std::sin(a1) * r, z }, c);
+    }
+    // a small cross in the middle so the exact spot is readable
+    DrawLine3D({ a.x - 5, a.y, a.z + 1.2f }, { a.x + 5, a.y, a.z + 1.2f }, c.Alpha(200));
+    DrawLine3D({ a.x, a.y - 5, a.z + 1.2f }, { a.x, a.y + 5, a.z + 1.2f }, c.Alpha(200));
   }
   // grenade trajectory
   CCSPlayer* lp = g_pLocalPlayer;
@@ -491,17 +530,35 @@ static void DrawWatermark(CCSPlayer* lp) {
   surface()->DrawText(FONT_CHEAT, info, x + logoW + 8, y + 4, { 255, 235, 235, 255 });
 }
 
-static void DrawListBox(const char* title, float x, float y, const std::vector<std::pair<std::string, std::string>>& rows) {
+// list boxes are windows too: the title bar can be dragged around (the position is remembered per title)
+static void ListBoxPos(const char* title, float& x, float& y) {
+  static std::vector<std::pair<std::string, Vector2>> pos;
+  for (auto& p : pos) if (p.first == title) { x = p.second.x; y = p.second.y; break; }
+}
+static void ListBoxDrag(const char* title, float& x, float& y, float w) {
+  static std::string dragTitle; static Vector2 off;
+  static std::vector<std::pair<std::string, Vector2>> pos;
+  auto store = [&](Vector2 v) { for (auto& p : pos) if (p.first == title) { p.second = v; return; } pos.push_back({ title, v }); };
+  ListBoxPos(title, x, y);
+  const Vector2 m = GetMousePosition();
+  const bool down = IsMouseButtonDown(MOUSE_BUTTON_LEFT), pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+  if (pressed && g.menuOpen && m.x >= x && m.x < x + w && m.y >= y && m.y < y + 18) { dragTitle = title; off = { m.x - x, m.y - y }; }
+  if (!down && !dragTitle.empty() && dragTitle == title) { store({ x, y }); dragTitle.clear(); }
+  if (dragTitle == title) { x = m.x - off.x; y = m.y - off.y; store({ x, y }); }
+}
+static void DrawListBox(const char* title, float& bx, float& by, const std::vector<std::pair<std::string, std::string>>& rows) {
   float w = 190, th = 18, rh = 16, h = rows.size() * rh + (rows.empty() ? 0 : 6);
+  ListBoxDrag(title, bx, by, w);
+  float x = bx, y = by;
   AwTitleBar(x, y, w, th);
   surface()->DrawTextCentered(FONT_CHEAT_BOLD, title, x + w / 2, y + 3, { 255, 255, 255, 255 });
   if (rows.empty()) return;
   Col red = v.misc.menuCol;
-  float by = y + th;
-  surface()->DrawFilledRect(x, by, w, h, { 236, 236, 236, 235 });
-  surface()->DrawFilledRect(x, by, 1, h, AwShade(red, 0.7f)); surface()->DrawFilledRect(x + w - 1, by, 1, h, AwShade(red, 0.7f));
-  surface()->DrawFilledRect(x, by + h - 1, w, 1, AwShade(red, 0.5f));
-  float ry = by + 4;
+  float bodyY = y + th;
+  surface()->DrawFilledRect(x, bodyY, w, h, { 236, 236, 236, 235 });
+  surface()->DrawFilledRect(x, bodyY, 1, h, AwShade(red, 0.7f)); surface()->DrawFilledRect(x + w - 1, bodyY, 1, h, AwShade(red, 0.7f));
+  surface()->DrawFilledRect(x, bodyY + h - 1, w, 1, AwShade(red, 0.5f));
+  float ry = bodyY + 4;
   for (auto& r : rows) {
     surface()->DrawText(FONT_CHEAT_BOLD, r.first.c_str(), x + 7, ry, { 28, 28, 28, 255 });
     surface()->DrawTextRight(FONT_CHEAT, r.second.c_str(), x + w - 7, ry, { 115, 115, 115, 255 });
@@ -572,12 +629,12 @@ void Visuals_Paint() {
         if (touch && nb.bind->key >= 3000) continue;   // K_TOUCHBIND (menu.cpp): on-screen circle
         rows.push_back({ nb.name, nb.bind->mode == KEYMODE_HOLD ? "[holding]" : nb.bind->mode == KEYMODE_TOGGLE ? "[toggled]" : "[off]" });
       }
-      if (!rows.empty() || g.menuOpen) { DrawListBox("Keybinds", lx, ly, rows); ly += 30 + rows.size() * 16; }
+      if (!rows.empty() || g.menuOpen) { float kx = lx, ky = ly; DrawListBox("Keybinds", kx, ky, rows); ly += 30 + rows.size() * 16; }
     }
     if (s.spectatorList) {
       std::vector<std::pair<std::string, std::string>> rows;
       for (CCSPlayer* p : UTIL_GetPlayers()) if (!p->IsAlive() && p != lp && p->m_hObserverTarget == lp) rows.push_back({ p->GetPlayerName(), p->m_iObserverMode == OBS_MODE_IN_EYE ? "1st" : "3rd" });
-      if (!rows.empty()) DrawListBox("Spectators", lx, ly, rows);
+      if (!rows.empty()) { float sx2 = lx, sy2 = ly; DrawListBox("Spectators", sx2, sy2, rows); }
     }
   }
   if (s.watermark) DrawWatermark(lp);

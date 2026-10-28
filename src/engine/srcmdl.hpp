@@ -13,7 +13,8 @@
 #include <cstdint>
 
 struct SrcMdlMesh {
-  int skinRef = 0;                       // index into the skin table (-> texture)
+  int skinRef = 0;
+  int bodyPart = 0;                     // which body part of the model the mesh belongs to (guns: "studio", hands: "hands")                       // index into the skin table (-> texture)
   std::vector<float> pos, normal, uv;    // reference pose, model space
   std::vector<uint8_t> bone;             // 3 per vertex
   std::vector<float> weight;             // 3 per vertex
@@ -73,6 +74,7 @@ public:
   std::vector<std::string> cdmaterials, textures;
   std::vector<std::vector<int16_t>> skins;   // [family][skinref] -> texture
   std::vector<SrcMdlMesh> meshes;
+  std::vector<std::string> bodyPartNames;   // as stored in the file ("studio", "hands", ...)
   std::vector<SrcMdlBone> bones;
   std::vector<SrcMdlAnim> anims;
   std::vector<SrcMdlSeq> seqs;
@@ -124,7 +126,7 @@ struct StudioDrawParams;
 // by another model's skeleton - would otherwise be stretched across the screen by its unmerged shoulder bone)
 // skipBones: meshes that hang only on those bones are not drawn (the CS:GO c_ view models carry a copy of the hands in
 // their bind pose; the real arms come from the agent model instead)
-void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin = 0, const std::vector<uint8_t>* boneMask = nullptr, bool strictMask = false, const std::vector<uint8_t>* skipBones = nullptr);
+void SrcMdl_Draw(const CSrcModel& m, const std::vector<matrix3x4_t>& bones, const matrix3x4_t& modelToWorld, const StudioDrawParams& p, int skin = 0, const std::vector<uint8_t>* boneMask = nullptr, bool strictMask = false, const std::vector<uint8_t>* skipBones = nullptr, int onlyBodyPart = -1);
 
 // cache (cleared on map change)
 CSrcModel* SrcMdl_Get(const std::string& path);

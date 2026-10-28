@@ -156,6 +156,8 @@ struct RuntimeState {
   std::deque<ShotRecord> shots;
   float lastShotTime = -100;
   int dtCharge = 0; bool dtReady = false;
+  bool quickPeekActive = false;   // the quick peek anchor is set and we are still out of cover
+  Vector quickPeekAnchor;
   bool menuOpen = false;
 };
 extern RuntimeState g;
