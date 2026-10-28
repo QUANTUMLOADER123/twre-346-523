@@ -506,8 +506,10 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
     bool sil = false;
     if (p && SilencerModel(in.weaponId)) { C_WeaponCSBase* w = p->GetActiveCSWeapon(); sil = w && w->GetCSWeaponID() == in.weaponId && w->m_bSilencerOn; }
     const CsgoModel* mi = nullptr;
-    const CSrcModel* mirror = MirrorWeapon(in.weaponId, &mi);
-    const CSrcModel* wm = WorldWeapon(in.weaponId, sil, false, mirror != nullptr);
+    // CS:GO c_ view models are not used in third person any more: the game shows the CS:S models in the hands,
+    // so the body has to carry the very same CS:S model (only the R8, which has no CS:S version, stays CS:GO)
+    const CSrcModel* mirror = nullptr;
+    const CSrcModel* wm = WorldWeapon(in.weaponId, sil, false, false);
     if (mirror) {
       // the CS:GO c_ model is the gun: it is hung on the player's weapon bone (its own root is moved into that frame),
       // so in third person the character holds the very gun the view model shows
@@ -954,9 +956,9 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
   }
   // the R8 view model is the CS:GO world model of the revolver, which already is a clean gun: nothing is cut out of it
   // and the agent's arms are not hung on it either (the hands come from the CS:S pistol, see below)
-  SrcMdl_Draw(*m, bones, gunXf, dp, 0, nullptr, false, bindHands.empty() ? nullptr : &bindHands);
   // the R8 revolver has no hands of its own: the gloved hands and the sleeves of the CS:S pistol view model are drawn
-  // in the plain view model frame, which is exactly where the gun hangs
+  // in the plain view model frame, and the gun hangs on their animated gun bone so the two never drift apart
+  Vector r8Grip; bool haveGrip = false;
   if (r8) {
     if (const CSrcModel* hm = LoadedOrNull(SrcMdl_Get("models/weapons/v_pist_deagle.mdl"))) {
       int handsPart = -1;
@@ -967,10 +969,19 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
         thread_local std::vector<Vector> hpos; thread_local std::vector<Quat> hq; thread_local std::vector<matrix3x4_t> hb;
         hm->SampleSeq(hseq, std::fmod(elapsed / std::max(0.01f, hm->SeqDuration(hseq)), 1.f), SrcPoseValues(), hpos, hq);
         hm->BuildBones(hpos, hq, hb);
+        if (!hb.empty()) {   // the gun bone of the pistol: that is where the grip of the revolver belongs
+          matrix3x4_t g; ConcatTransforms(xf, hb[0], g);
+          r8Grip = Vector(g[0][3], g[1][3], g[2][3]); haveGrip = true;
+        }
         SrcMdl_Draw(*hm, hb, xf, dp, 0, nullptr, false, nullptr, handsPart);
       }
     }
   }
+  if (haveGrip) {   // move the revolver onto the animated grip, keeping the orientation chosen above
+    for (int i = 0; i < 3; i++) gunXf[i][3] += r8Grip[i] - gunXf[i][3];
+  }
+  SrcMdl_Draw(*m, bones, gunXf, dp, 0, nullptr, false, bindHands.empty() ? nullptr : &bindHands);
+
   if (csgo) DrawCsgoScope(*m, bones, xf, dp);
   // CS:GO view models ship without hands: the agent's own arms are attached to the gun's hand bone. The CS:S view
   // models already carry their hands, so nothing is glued on them.

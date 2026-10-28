@@ -781,7 +781,8 @@ void PaintLoadout() {
   team = teamCv->GetInt() == TEAM_TERRORIST ? TEAM_TERRORIST : TEAM_CT;
   
   // Agent model preview
-  ConVar* agentCv = FindConVar("cl_menu_agent");
+  // the agent the game actually uses: cl_agent_ct / cl_agent_t (cl_menu_agent was a leftover nobody read)
+  ConVar* agentCv = FindConVar(team == TEAM_CT ? "cl_agent_ct" : "cl_agent_t");
   int agent = agentCv ? agentCv->GetInt() : 0;
   
   // Agent selector arrows (draw before preview so they're on top)
