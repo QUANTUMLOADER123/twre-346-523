@@ -3,6 +3,7 @@
 #include "weapon_csbase.hpp"
 #include "cs_gamerules.hpp"
 #include "cs_projectiles.hpp"
+#include "hostage.hpp"
 #include "lagcompensation.hpp"
 #include "gameevents.hpp"
 #include "soundemitter.hpp"
@@ -160,6 +161,18 @@ void CCSPlayer::FireBullet(const Vector& vecSrcIn, const QAngle& shootAngles, fl
       vecSrc = tr.endpos + vecDir * 2.f;
       penetrated++;
       continue;
+    }
+    if (CHostage* h = ToHostage(tr.m_pEnt)) {
+      if (h->IsAlive()) {
+        CTakeDamageInfo info;
+        info.m_hAttacker = this; info.m_hInflictor = weapon ? (C_BaseEntity*)weapon : this; info.m_iWeaponID = weaponId;
+        info.m_flDamage = fCurrentDamage;
+        info.m_bitsDamageType = DMG_BULLET;
+        info.m_iHitGroup = HITGROUP_GENERIC;
+        info.m_vecDamagePosition = tr.endpos; info.m_vecDamageForce = vecDir * fCurrentDamage * 10.f;
+        h->OnTakeDamage(info);
+      }
+      break;   // bullets do not pass through a hostage
     }
     bool hitGrate = false;
     if (sv_penetration_type.GetInt() == 0 && nPenetrationCount <= 0) break;

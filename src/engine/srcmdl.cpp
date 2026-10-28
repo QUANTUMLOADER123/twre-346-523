@@ -189,7 +189,17 @@ bool CSrcModel::Load(const std::string& path) {
         }
         if (ns == 0) for (int k = 0; k + 2 < ni; k += 3) tri(Rd<uint16_t>(vtx, g + iOff + k * 2), Rd<uint16_t>(vtx, g + iOff + (k + 1) * 2), Rd<uint16_t>(vtx, g + iOff + (k + 2) * 2));
       }
-      if (!out.idx.empty()) meshes.push_back(std::move(out));
+      if (!out.idx.empty()) {
+        if (!out.pos.empty()) {
+          out.mn = out.mx = Vector(out.pos[0], out.pos[1], out.pos[2]);
+          for (size_t q = 3; q + 2 < out.pos.size(); q += 3) {
+            Vector p(out.pos[q], out.pos[q + 1], out.pos[q + 2]);
+            out.mn = Vector(std::min(out.mn.x, p.x), std::min(out.mn.y, p.y), std::min(out.mn.z, p.z));
+            out.mx = Vector(std::max(out.mx.x, p.x), std::max(out.mx.y, p.y), std::max(out.mx.z, p.z));
+          }
+        }
+        meshes.push_back(std::move(out));
+      }
     }
   }
   // Y-up detection: a standing skeleton spans ~72 units along its up axis, so the axis with by far the
@@ -354,6 +364,44 @@ CSrcModel* SrcMdl_Get(const std::string& path) {
   return r;
 }
 void SrcMdl_Clear() { for (auto& [k, m] : s_models) if (m) m->Unload(); s_models.clear(); }
+
+// console: which bones each mesh is skinned to (debug for view model / hand placement)
+static ConCommand mdl_meshes("mdl_meshes", [](const CCommand& c) {
+  if (c.ArgC() < 2) { Msg("usage: mdl_meshes models/weapons/v_pist_deagle.mdl\n"); return; }
+  CSrcModel* m = SrcMdl_Get(c.Arg(1));
+  if (!m) { Msg("can't load %s\n", c.Arg(1)); return; }
+  for (size_t i = 0; i < m->meshes.size(); i++) {
+    const SrcMdlMesh& me = m->meshes[i];
+    std::vector<int> bones;
+    for (size_t v = 0; v < me.pos.size() / 3; v++) for (int k = 0; k < 3; k++) if (me.weight[v * 3 + k] > 0) bones.push_back(me.bone[v * 3 + k]);
+    std::sort(bones.begin(), bones.end()); bones.erase(std::unique(bones.begin(), bones.end()), bones.end());
+    Msg("mesh %d bp %d skin %d verts %d tris %d bones %d\n", (int)i, me.bodyPart, me.skinRef, (int)me.pos.size() / 3, (int)me.idx.size() / 3, (int)bones.size());
+    if (me.pos.empty()) continue;
+    Vector mn(me.pos[0], me.pos[1], me.pos[2]), mx = mn;
+    for (size_t v = 1; v < me.pos.size() / 3; v++) {
+      Vector p(me.pos[v * 3], me.pos[v * 3 + 1], me.pos[v * 3 + 2]);
+      mn = Vector(std::min(mn.x, p.x), std::min(mn.y, p.y), std::min(mn.z, p.z));
+      mx = Vector(std::max(mx.x, p.x), std::max(mx.y, p.y), std::max(mx.z, p.z));
+    }
+    Msg("     bounds %.2f %.2f %.2f .. %.2f %.2f %.2f  size %.2f %.2f %.2f\n", mn.x, mn.y, mn.z, mx.x, mx.y, mx.z, mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
+    for (int b : bones) Msg("   %3d %s\n", b, b >= 0 && b < (int)m->bones.size() ? m->bones[b].name.c_str() : "?");
+  }
+}, "Print the bone indices of every mesh of a Source model");
+
+// console: world positions of the bones of a model in the reference pose (debug)
+static ConCommand mdl_bones("mdl_bones", [](const CCommand& c) {
+  if (c.ArgC() < 2) { Msg("usage: mdl_bones models/weapons/v_pist_deagle.mdl\n"); return; }
+  CSrcModel* m = SrcMdl_Get(c.Arg(1));
+  if (!m) { Msg("can't load %s\n", c.Arg(1)); return; }
+  std::vector<Vector> pos; std::vector<Quat> q;
+  m->SampleAnim(-1, 0, pos, q);
+  std::vector<matrix3x4_t> bm; m->BuildBones(pos, q, bm);
+  Msg("%s: %d bones\n", m->name.c_str(), (int)m->bones.size());
+  for (size_t i = 0; i < bm.size(); i++)
+    Msg("  %3d %-38s origin %8.2f %8.2f %8.2f  col0 %6.2f %6.2f %6.2f col1 %6.2f %6.2f %6.2f col2 %6.2f %6.2f %6.2f\n",
+        (int)i, m->bones[i].name.c_str(), bm[i][0][3], bm[i][1][3], bm[i][2][3],
+        bm[i][0][0], bm[i][1][0], bm[i][2][0], bm[i][0][1], bm[i][1][1], bm[i][2][1], bm[i][0][2], bm[i][1][2], bm[i][2][2]);
+}, "Print the world origin of every bone of a Source model in the reference pose");
 
 // console: dump a model (sequences / activities / pose parameters / attachments)
 static ConCommand mdl_info("mdl_info", [](const CCommand& c) {

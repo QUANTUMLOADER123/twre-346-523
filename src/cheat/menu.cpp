@@ -111,7 +111,7 @@ static void RegisterVars() {
   R("vis.impacts", s.impacts); R("vis.nade_pred", s.grenadePrediction); R("vis.nade_flight", s.grenadeFlight); R("vis.nade_col", s.grenadeCol); R("vis.spread", s.spreadCircle); R("vis.fov", s.fov); R("vis.zoomfov", s.zoomFov);
   R("vis.vmfov", s.viewmodelFov); R("vis.hitmarker3d", s.hitmarker3d); R("vis.dmgmarker", s.damageMarker); R("vis.indicators", s.indicators); R("vis.arrows", s.aaArrows);
   R("vis.arrow_col", s.arrowCol); R("vis.watermark", s.watermark); R("vis.keybinds", s.keybindList); R("vis.spectators", s.spectatorList); R("vis.weapons", s.droppedWeapons);
-  R("vis.bomb", s.bombEsp); R("vis.nades", s.grenadeEsp);
+  R("vis.bomb", s.bombEsp); R("vis.nades", s.grenadeEsp); R("vis.hostage", s.hostageEsp); R("vis.hostage_col", s.hostageCol); R("vis.rescue", s.rescueZone); R("vis.soundesp", s.soundEsp); R("vis.soundesp_freq", s.soundEspFreq);
   R("misc.bhop", m.bhop); R("misc.autostrafe", m.autostrafe); R("misc.edgejump_key", m.edgeJumpKey); R("misc.faststop", m.fastStop); R("misc.buy_primary", m.buyPrimary);
   R("misc.buy_secondary", m.buySecondary); R("misc.buy_armor", m.buyArmor); R("misc.buy_nades", m.buyNades); R("misc.buy_kit", m.buyKit); R("misc.hitsound", m.hitsound);
   R("misc.hitsound_type", m.hitsoundType); R("misc.killsay", m.killsay); R("misc.log_hits", m.logHits); R("misc.log_hurt", m.logHurt); R("misc.log_buy", m.logPurchases);
@@ -682,6 +682,10 @@ static void PaintVisuals(float x, float y, float w, float h) {
   Checkbox("Dropped weapons", s.droppedWeapons);
   Checkbox("Grenades", s.grenadeEsp);
   Checkbox("Bomb", s.bombEsp);
+  Checkbox("Hostages", s.hostageEsp); ColorPickerW("hostage", s.hostageCol);
+  Checkbox("Rescue zone", s.rescueZone);
+  Checkbox("Sound ESP", s.soundEsp);
+  if (s.soundEsp) SliderF("Sound ESP freq", s.soundEspFreq, 200, 1200, "%.0f Hz", 1);
   EndGroup();
   BeginGroup("Colored models", x + 10 * S, y + h1 + 16 * S, cw, h - h1 - 16 * S);
   Checkbox("Player", s.chams); ColorPickerW("chams", s.chamsCol);

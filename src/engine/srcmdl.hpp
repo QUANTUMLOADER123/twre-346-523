@@ -19,6 +19,7 @@ struct SrcMdlMesh {
   std::vector<uint8_t> bone;             // 3 per vertex
   std::vector<float> weight;             // 3 per vertex
   std::vector<uint16_t> idx;             // triangle list (counter-clockwise seen from the front)
+  Vector mn{}, mx{};                      // bounds of `pos` (the reference pose the mesh is authored in)
   Mesh gpu{}; bool uploaded = false;
 };
 

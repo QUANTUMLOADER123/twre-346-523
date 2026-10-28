@@ -503,10 +503,74 @@ void CL_Frame(float dt) {
   cl.viewmodelFov = cheat::ViewmodelFov();
 }
 
+std::string g_VMShotPath;
+std::string g_HostageShotModel, g_HostageShotPath;
+#ifdef CS_HEADLESS
+extern "C" void swClear(uint32_t bitmask);
+#endif
+static ConCommand cmd_vm_shot("vm_shot", [](const CCommand& a) {
+  if (a.ArgC() >= 1) { g_VMShotPath = a.Arg(1); Msg("[vm_shot] %s\n", g_VMShotPath.c_str()); }
+  }, "Debug: render only the view model on a flat background into a png.");
+static void SaveImageFile(const std::string& path) {
+  Image img = LoadImageFromScreen();
+  ImageFlipVertical(&img);
+  ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8);
+  ExportImage(img, path.c_str());
+  UnloadImage(img);
+}
+// Debug aid: the view model alone on a flat background, from a fixed camera, so the gun can be measured from the png
+// (no way to look at pictures here - the numbers have to come out of the file).
+static void CL_RenderViewModelOnly(const CViewSetup& view, const std::string& path) {
+  Msg("[vm_shot] render start %s\n", path.c_str());
+  ClearBackground(Color{ 16, 84, 196, 255 });
+#ifdef CS_HEADLESS
+  swClear(0x00004000);
+#endif
+  Matrix proj = BuildProjection(view.VerticalFov(75.f), (float)view.width / std::max(1, view.height), 1.f, 600.f);
+  Render_Begin3D(view.view, proj);
+  CL_DrawViewModel(view);
+  Render_End3D();
+  SaveImageFile(path);
+  Msg("[vm_shot] render done\n");
+}
+
+// Debug: render a model alone on a flat background with a fixed camera,
+// so we can tell whether the model itself draws or the world-draw is dropping it.
+static void CL_RenderModelOnly(const std::string& path, const std::string& outPath) {
+  Msg("[hostage_shot] render start %s -> %s\n", path.c_str(), outPath.c_str());
+  ClearBackground(Color{ 16, 84, 196, 255 });
+#ifdef CS_HEADLESS
+  swClear(0x00004000);
+  Render_ClearDepth();
+#endif
+  CViewSetup v; v.width = GetScreenWidth(); v.height = GetScreenHeight(); v.fov = 75;
+  v.origin = Vector(0, 0, 0); v.angles = QAngle(0, 0, 0); v.Compute();
+  Matrix proj = BuildProjection(v.VerticalFov(75.f), (float)v.width / std::max(1, v.height), 1.f, 600.f);
+  Render_Begin3D(v.view, proj);
+  matrix3x4_t rot; AngleMatrix(QAngle(0, 0, 0), rot); rot.SetOrigin(Vector(200, 0, 0));
+  StudioDrawParams p; p.modelToWorld = rot; p.flags |= STUDIO_FLAT_COLOR; p.colorOverride = { 255, 0, 255, 255 };
+  bool ok = CSS_DrawModelFile(path.c_str(), rot, p);
+  Msg("[hostage_shot] css draw ok=%d\n", ok);
+  // reference triangle 100 units ahead (camera looks +x at angles 0,0,0)
+  rlSetTexture(rlGetTextureIdDefault());
+  rlBegin(RL_TRIANGLES);
+  rlColor4ub(255, 0, 255, 255); rlVertex3f(100, 0, 0); rlVertex3f(100, -30, 0); rlVertex3f(100, 0, 30);
+  rlEnd();
+  Render_End3D();
+  SaveImageFile(outPath);
+  Msg("[hostage_shot] render done\n");
+}
+static ConCommand cmd_hostage_shot("hostage_shot", [](const CCommand& a) {
+  if (a.ArgC() >= 2) { g_HostageShotModel = a.Arg(1); g_HostageShotPath = a.Arg(2); }
+  else if (a.ArgC() >= 1) { g_HostageShotModel = "models/characters/hostage_01.mdl"; g_HostageShotPath = a.Arg(1); }
+  }, "Debug: render a model on a flat background. usage: hostage_shot <model.mdl> <out.png>");
+
 void CL_RenderFrame() {
   CViewSetup& view = cl.view;
   CL_ComputeView(view);
   g_CurrentView = view;
+  if (!g_VMShotPath.empty()) { Msg("[vm_shot] path taken\n"); CL_RenderViewModelOnly(view, g_VMShotPath); g_VMShotPath.clear(); return; }
+  if (!g_HostageShotPath.empty()) { CL_RenderModelOnly(g_HostageShotModel, g_HostageShotPath); g_HostageShotPath.clear(); return; }
   S_Update(view.origin, view.angles);
   cheat::FrameStageNotify();
   ClearBackground(BLACK);

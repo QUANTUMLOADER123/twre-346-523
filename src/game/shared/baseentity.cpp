@@ -52,7 +52,7 @@ void CBaseEntityList::CleanupDeleted() {
 }
 void CBaseEntityList::RebuildTraceList() {
   traceList.clear();
-  for (auto* e : m_ents) if (e && !e->m_bMarkedForDeletion && (e->IsPlayer())) traceList.push_back(e);
+  for (auto* e : m_ents) if (e && !e->m_bMarkedForDeletion && (e->IsPlayer() || e->IsHostage())) traceList.push_back(e);
 }
 
 CCSPlayer* UTIL_PlayerByIndex(int idx) { return g_EntityList.GetPlayer(idx); }

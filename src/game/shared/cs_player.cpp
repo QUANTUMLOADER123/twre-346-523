@@ -6,6 +6,7 @@
 #include "gamemovement.hpp"
 #include "cs_gamerules.hpp"
 #include "cs_projectiles.hpp"
+#include "hostage.hpp"
 #include "lagcompensation.hpp"
 #include "gameevents.hpp"
 #include "soundemitter.hpp"
@@ -133,6 +134,8 @@ void CCSPlayer::PreThink() {
   // zones
   m_bInBuyZone = mp_buy_anywhere.GetBool() || g_MapInfo.InZone(m_vecOrigin, m_iTeamNum == TEAM_CT ? ZONE_BUY_CT : ZONE_BUY_T);
   m_bInBombZone = g_MapInfo.InZone(m_vecOrigin, ZONE_BOMBSITE_A) || g_MapInfo.InZone(m_vecOrigin, ZONE_BOMBSITE_B);
+  // the CT buy zone doubles as the hostage rescue zone
+  m_bInHostageRescueZone = m_iTeamNum == TEAM_CT && g_MapInfo.InZone(m_vecOrigin, ZONE_BUY_CT);
   if (CSGameRules()->IsFreezePeriod() && !m_bCanMoveDuringFreezePeriod) m_fFlags |= FL_FROZEN; else m_fFlags &= ~FL_FROZEN;
 }
 
@@ -224,7 +227,40 @@ void CCSPlayer::PostThink(const CUserCmd& cmd, float ft) {
     if (wantUse && !m_bIsDefusing && !g_pPlantedC4->m_hBombDefuser) g_pPlantedC4->StartDefuse(this);
     else if (!wantUse && m_bIsDefusing && g_pPlantedC4->m_hBombDefuser == this) g_pPlantedC4->AbortDefuse();
   } else m_bIsDefusing = false;
-  
+
+  // hostage rescue: the use key picks up / drops a hostage, carrying it to the rescue zone completes it
+  if (m_iTeamNum == TEAM_CT && IsAlive() && (m_fFlags & FL_ONGROUND)) {
+    if (m_hCarriedHostage) {
+      if (m_bInHostageRescueZone) {
+        CHostage* h = m_hCarriedHostage;
+        h->m_bRescued = true;
+        m_iAccount = std::min(mp_maxmoney.GetInt(), m_iAccount + 1000);
+        m_iScore += 2;
+        g_GameRules.m_iHostagesRescued++;
+        ConColorMsg({ 120, 230, 150, 255 }, "Hostage rescued! (%d/%d)\n", g_GameRules.m_iHostagesRescued, g_GameRules.m_iHostagesTotal);
+        EmitSound2D("Radio.HostageRescued");
+        IGameEvent ev("hostage_rescued"); ev.SetInt("userid", entindex()); gameeventmanager->FireEvent(ev);
+        h->Remove();
+        m_hCarriedHostage = nullptr;
+        m_bIsGrabbingHostage = false;
+      } else if (m_afButtonPressed & IN_USE) {
+        m_hCarriedHostage->m_bCarried = false;
+        m_hCarriedHostage->m_hCarrier = nullptr;
+        m_hCarriedHostage = nullptr;
+        m_bIsGrabbingHostage = false;
+      }
+    } else if (m_afButtonPressed & IN_USE) {
+      CHostage* h = CHostage::FindNearest(this, 72.f);
+      if (h) {
+        h->m_bCarried = true; h->m_hCarrier = this;
+        m_hCarriedHostage = h;
+        m_bIsGrabbingHostage = true;
+        ConColorMsg({ 120, 200, 255, 255 }, "Picked up a hostage - carry it to the rescue zone.\n");
+        EmitSound2D("Radio.HostagePickup");
+      }
+    }
+  }
+
   // doors: use key opens func_door_rotating nearby (placeholder - full implementation needs server-side door logic)
   if (cmd.buttons & IN_USE) {
     Vector eye = EyePosition();
@@ -404,6 +440,8 @@ void CCSPlayer::Event_Killed(const CTakeDamageInfo& info) {
   m_iDeaths++;
   m_bIsDefusing = false; m_bIsPlanting = false; m_bIsScoped = false;
   if (g_pPlantedC4 && g_pPlantedC4->m_hBombDefuser == this) g_pPlantedC4->AbortDefuse();
+  if (m_hCarriedHostage) CHostage::OnCarrierKilled(this);   // the hostage is dropped where the carrier fell
+  m_hCarriedHostage = nullptr; m_bIsGrabbingHostage = false;
   // drop weapons: best gun + C4 (+ one grenade)
   C_WeaponCSBase* drop = Weapon_GetSlot(WEAPON_SLOT_RIFLE); if (!drop) drop = Weapon_GetSlot(WEAPON_SLOT_PISTOL);
   if (drop) Weapon_Drop(drop, false);

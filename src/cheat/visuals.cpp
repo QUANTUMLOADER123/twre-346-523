@@ -7,6 +7,8 @@
 #include "../engine/host.hpp"
 #include "../game/client/cl_main.hpp"
 #include "../game/shared/cs_player.hpp"
+#include "../game/shared/hostage.hpp"
+#include "../game/shared/soundemitter.hpp"
 #include "../game/shared/weapon_csbase.hpp"
 #include "../game/shared/cs_projectiles.hpp"
 #include "../game/shared/cs_gamerules.hpp"
@@ -38,6 +40,7 @@ static std::deque<Impact> s_impacts;
 static std::deque<DamageMarker> s_dmg;
 static std::deque<ShotCapsules> s_shotHb;
 static Vector s_lastHitPos; static float s_lastHitTime = -100;
+static float s_lastSoundEspBeep = -100.f;
 
 void Visuals_AddShotHitboxes(const HitboxSet& hb, int hitbox) {
   s_shotHb.push_back({ hb, (float)gpGlobals->realtime, hitbox });
@@ -429,8 +432,28 @@ static void DrawWorldESP() {
       if (!c4->m_bBombTicking || !W2S(e->m_vecOrigin + Vector(0, 0, 8), sp)) continue;
       float left = std::max(0.f, c4->m_flC4Blow - ServerTime());
       TxtC(FONT_CHEAT_BOLD, TextFormat("BOMB %c  %.1fs", c4->m_nBombSite == 1 ? 'B' : 'A', left), sp.x, sp.y, left < 10 ? MkCol(255, 60, 60) : MkCol(255, 255, 255));
+    } else if (e->IsHostage() && s.hostageEsp) {
+      CHostage* h = ToHostage(e);
+      if (!h || !W2S(h->m_vecOrigin + Vector(0, 0, 45), sp)) continue;
+      Col c = s.hostageCol;
+      surface()->DrawOutlinedRect(sp.x - 1, sp.y - 1, 28 + 2, 40 + 2, { 0, 0, 0, 180 });
+      surface()->DrawOutlinedRect(sp.x + 1, sp.y + 1, 26, 38, { 0, 0, 0, 180 });
+      surface()->DrawOutlinedRect(sp.x, sp.y, 28, 40, c);
+      TxtC(FONT_CHEAT_BOLD, h->m_bRescued ? "RESCUED" : (h->m_bCarried ? "CARRY" : "HOSTAGE"), sp.x, sp.y - 12, c);
     }
   }
+  // rescue zone: mark the CT spawn area (where hostages must be delivered)
+  if (s.rescueZone) {
+    for (auto& ms : g_MapInfo.spawns) {
+      if (ms.team != TEAM_CT) continue;
+      Vector2D sp;
+      if (!W2S(ms.origin + Vector(0, 0, 30), sp)) continue;
+      Col c = MkCol(80, 160, 255);
+      TxtC(FONT_CHEAT_BOLD, "RESCUE ZONE", sp.x, sp.y - 18, c);
+      surface()->DrawOutlinedRect(sp.x - 24, sp.y - 14, 48, 28, c);
+    }
+  }
+
   // fire timers + outline
   if (s.grenadeEsp) for (CInferno* f : GetActiveInfernos()) {
     if (!f || f->m_bMarkedForDeletion) continue;
@@ -552,10 +575,17 @@ void Visuals_Paint() {
   CCSPlayer* lp = g_pLocalPlayer;
   auto& s = v.vis;
   if (lp && CL_IsInGame()) {
+    bool enemyVisible = false;
     for (CCSPlayer* p : UTIL_GetPlayers(true)) {
       if (p == lp || p->m_iTeamNum < TEAM_TERRORIST) continue;
       if (!s.teammates && !p->IsEnemy(lp)) continue;
+      if (s.soundEsp && !enemyVisible && p->IsEnemy(lp) && !p->IsDormant()) enemyVisible = true;
       DrawPlayerESP(lp, p);
+    }
+    if (s.soundEsp && enemyVisible) {
+      float t = (float)gpGlobals->realtime;
+      if (s_lastSoundEspBeep < 0.f) s_lastSoundEspBeep = t;
+      if (t - s_lastSoundEspBeep >= 1.0f) { EmitSound2D("Cheat.SoundEsp", 0.6f); s_lastSoundEspBeep = t; }
     }
     DrawWorldESP();
     float now = (float)gpGlobals->realtime;

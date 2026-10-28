@@ -117,6 +117,7 @@ public:
   bool m_bHasDefuser = false;
   bool m_bIsDefusing = false;
   bool m_bIsGrabbingHostage = false;
+  class CHostage* m_hCarriedHostage = nullptr;   // the hostage this player is carrying (use key)
   bool m_bIsScoped = false;
   bool m_bIsWalking = false;
   bool m_bResumeZoom = false;

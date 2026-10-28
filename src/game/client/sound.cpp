@@ -185,7 +185,7 @@ std::vector<std::string> CssNames(const std::string& name) {
     { "UI.Click", { "file:ui/buttonclick.wav" } }, { "UI.Rollover", { "file:ui/buttonrollover.wav" } },
     { "Hud.Hint", { "Hud.Hint", "file:ui/hint.wav" } },
     // aimwhere hit sounds: real samples instead of beeps
-    { "Cheat.Hitsound", { "file:buttons/bell1.wav" } }, { "Cheat.Hitsound2", { "file:player/kevlar1.wav" } },
+    { "Cheat.Hitsound", { "file:buttons/bell1.wav" } }, { "Cheat.Hitsound2", { "file:player/kevlar1.wav" } }, { "Cheat.SoundEsp", { "file:ui/buttonclick.wav" } },
   };
   auto it = alias.find(name);
   if (it != alias.end()) return it->second;

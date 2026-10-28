@@ -3,6 +3,7 @@
 #include "cs_player.hpp"
 #include "weapon_csbase.hpp"
 #include "cs_projectiles.hpp"
+#include "hostage.hpp"
 #include "gameevents.hpp"
 #include "soundemitter.hpp"
 #include "mapinfo.hpp"
@@ -177,6 +178,7 @@ void CCSGameRules::RestartRound() {
     p->Spawn();
   }
   GiveC4();
+  CHostage::ResetRound();
   IGameEvent ev("round_start"); ev.SetInt("timelimit", m_iRoundTime).SetInt("fraglimit", 0); gameeventmanager->FireEvent(ev);
   if (!m_bFreezePeriod) { IGameEvent fe("round_freeze_end"); gameeventmanager->FireEvent(fe); }
   ConColorMsg({ 180, 220, 255, 255 }, "--- Round %d ---\n", m_iTotalRoundsPlayed + 1);
@@ -190,6 +192,8 @@ const char* CCSGameRules::GetRoundEndMessage(int reason) const {
     case Terrorists_Win: return "Terrorists Win!";
     case Round_Draw: return "Round Draw!";
     case Target_Saved: return "Target has been saved!";
+    case All_Hostages_Rescued: return "All Hostages Rescued!";
+    case Hostages_Not_Rescued: return "Time's up - the hostages were not rescued!";
     case Game_Commencing: return "Game Commencing!";
     default: return "";
   }
@@ -199,8 +203,8 @@ void CCSGameRules::TerminateRound(float delay, int reason) {
   if (IsRoundOver()) return;
   int winner = WINNER_DRAW;
   switch (reason) {
-    case Target_Bombed: case Terrorists_Win: winner = WINNER_TER; break;
-    case Bomb_Defused: case CTs_Win: case Target_Saved: winner = WINNER_CT; break;
+    case Target_Bombed: case Terrorists_Win: case Hostages_Not_Rescued: winner = WINNER_TER; break;
+    case Bomb_Defused: case CTs_Win: case Target_Saved: case All_Hostages_Rescued: winner = WINNER_CT; break;
     default: winner = WINNER_DRAW; break;
   }
   m_iRoundWinStatus = winner; m_eRoundWinReason = reason;
@@ -254,10 +258,18 @@ void CCSGameRules::CheckFreezePeriodExpired() {
 void CCSGameRules::CheckRoundTimeExpired() {
   if (IsDeathmatch() || IsRoundOver() || m_bFreezePeriod || m_bBombPlanted) return;
   if (GetRoundRemainingTime() > 0) return;
-  TerminateRound(mp_round_restart_delay.GetFloat(), m_bMapHasBombTarget ? Target_Saved : Round_Draw);
+  // with hostages in play, running out of time means the Ts win by holding them back
+  int reason = m_bMapHasBombTarget ? Target_Saved : Round_Draw;
+  if (m_iHostagesTotal > 0 && m_iHostagesRescued < m_iHostagesTotal) reason = Hostages_Not_Rescued;
+  TerminateRound(mp_round_restart_delay.GetFloat(), reason);
 }
 void CCSGameRules::CheckWinConditions() {
   if (IsRoundOver() || IsDeathmatch() || mp_ignore_round_win_conditions.GetBool()) return;
+  // rescuing every hostage wins the round for the CTs
+  if (m_iHostagesTotal > 0 && m_iHostagesRescued >= m_iHostagesTotal) {
+    TerminateRound(mp_round_restart_delay.GetFloat(), All_Hostages_Rescued);
+    return;
+  }
   int tAlive = 0, ctAlive = 0, tTotal = 0, ctTotal = 0;
   for (CCSPlayer* p : UTIL_GetPlayers()) {
     if (p->m_iTeamNum == TEAM_TERRORIST) { tTotal++; if (p->IsAlive()) tAlive++; }

@@ -75,6 +75,7 @@ void CL_Shutdown();
 void CL_WriteConfig();
 void CL_Frame(float dt);             // per render frame client logic (after Host_Frame)
 void CL_RenderFrame();               // 3D + 2D
+extern std::string g_VMShotPath;      // set by `vm_shot <file.png>`: render only the view model onto a plain background
 void CL_RenderMenuBackground(float time);
 void CL_ComputeView(CViewSetup& view);
 void CL_DrawEntities(const CViewSetup& view);

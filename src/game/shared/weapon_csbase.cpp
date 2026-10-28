@@ -3,6 +3,7 @@
 #include "cs_player.hpp"
 #include "cs_gamerules.hpp"
 #include "cs_projectiles.hpp"
+#include "hostage.hpp"
 #include "gameevents.hpp"
 #include "soundemitter.hpp"
 #include "mapinfo.hpp"
@@ -450,6 +451,14 @@ bool CKnife::SwingOrStab(bool stab) {
     info.m_bitsDamageType = DMG_SLASH; info.m_iHitGroup = tr.hitgroup ? tr.hitgroup : HITGROUP_CHEST; info.m_iHitbox = tr.hitbox; info.m_vecDamagePosition = tr.endpos; info.m_vecDamageForce = fwd * 300.f;
     victim->OnTakeDamage(info);
     EmitSound(stab ? "Weapon_Knife.Stab" : "Weapon_Knife.Hit", tr.endpos, o->entindex());
+  } else if (CHostage* h = ToHostage(tr.m_pEnt)) {
+    if (h->IsAlive()) {
+      CTakeDamageInfo info; info.m_hAttacker = o; info.m_hInflictor = this; info.m_iWeaponID = WEAPON_KNIFE;
+      info.m_flDamage = stab ? 130.f : 55.f;
+      info.m_bitsDamageType = DMG_SLASH; info.m_iHitGroup = HITGROUP_CHEST; info.m_vecDamagePosition = tr.endpos; info.m_vecDamageForce = fwd * 300.f;
+      h->OnTakeDamage(info);
+      EmitSound(stab ? "Weapon_Knife.Stab" : "Weapon_Knife.Hit", tr.endpos, o->entindex());
+    }
   } else {
     EmitSound("Weapon_Knife.HitWall", tr.endpos, o->entindex(), 0.7f);
     IGameEvent im("bullet_impact"); im.SetInt("userid", o->entindex()).SetFloat("x", tr.endpos.x).SetFloat("y", tr.endpos.y).SetFloat("z", tr.endpos.z).SetInt("surf", tr.surface.surfaceProps)

@@ -34,7 +34,7 @@ public:
   bool m_bAttackerBlind = false;
 };
 
-enum EntityClassType { ENTCLASS_BASE = 0, ENTCLASS_PLAYER, ENTCLASS_WEAPON, ENTCLASS_GRENADE_PROJECTILE, ENTCLASS_PLANTED_C4, ENTCLASS_RAGDOLL };
+enum EntityClassType { ENTCLASS_BASE = 0, ENTCLASS_PLAYER, ENTCLASS_WEAPON, ENTCLASS_GRENADE_PROJECTILE, ENTCLASS_PLANTED_C4, ENTCLASS_RAGDOLL, ENTCLASS_HOSTAGE };
 enum CollisionGroup_t { COLLISION_GROUP_NONE = 0, COLLISION_GROUP_DEBRIS, COLLISION_GROUP_WEAPON, COLLISION_GROUP_PLAYER, COLLISION_GROUP_PROJECTILE };
 
 class C_BaseEntity : public IHandleEntity {
@@ -92,6 +92,7 @@ public:
   virtual void Event_Killed(const CTakeDamageInfo&) {}
   virtual bool IsPlayer() const { return false; }
   virtual bool IsWeapon() const { return false; }
+  virtual bool IsHostage() const { return false; }
   virtual bool IsAlive() const { return m_lifeState == LIFE_ALIVE; }
   virtual Vector EyePosition() const { return m_vecOrigin; }
   virtual Vector WorldSpaceCenter() const { return m_vecOrigin + (m_vecMins + m_vecMaxs) * 0.5f; }

@@ -2,6 +2,7 @@
 // Same lighting / flags (chams, glow, wireframe, no-depth) as StudioRender_DrawModel so the cheat visuals work on them.
 #include "srcmdl.hpp"
 #include "studio.hpp"
+#include "convar.hpp"
 #include "rlgl.h"
 #include <cmath>
 #include <algorithm>

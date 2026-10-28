@@ -113,6 +113,9 @@ struct Vars {
     bool indicators = true; bool aaArrows = true; Col arrowCol = MkCol(150, 200, 60);
     bool watermark = true; bool keybindList = true; bool spectatorList = true;
     bool droppedWeapons = false; bool bombEsp = true; bool grenadeEsp = true;
+    bool hostageEsp = true; Col hostageCol = MkCol(80, 255, 80);
+    bool rescueZone = true;
+    bool soundEsp = false; float soundEspFreq = 600;
   } vis;
   struct {
     bool bhop = true; int autostrafe = 2; // off legit directional rage

@@ -36,6 +36,7 @@ public:
   bool m_bGameRestart = false;
   int m_iSpawnPointCount_Terrorist = 0, m_iSpawnPointCount_CT = 0;
   int m_iMatchStats_PlayersAlive_T = 0, m_iMatchStats_PlayersAlive_CT = 0;
+  int m_iHostagesTotal = 0, m_iHostagesRescued = 0, m_iHostagesKilled = 0;   // hostage rescue objective
   std::string m_szWinMessage;
   float m_flWinMessageTime = -100;
   int m_iFirstKillThisRound = 0;
