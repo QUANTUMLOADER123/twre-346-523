@@ -506,10 +506,8 @@ static void BuildPoseForModel(const CSrcModel* m, CCSPlayer* p, const PlayerPose
     bool sil = false;
     if (p && SilencerModel(in.weaponId)) { C_WeaponCSBase* w = p->GetActiveCSWeapon(); sil = w && w->GetCSWeaponID() == in.weaponId && w->m_bSilencerOn; }
     const CsgoModel* mi = nullptr;
-    // CS:GO c_ view models are not used in third person any more: the game shows the CS:S models in the hands,
-    // so the body has to carry the very same CS:S model (only the R8, which has no CS:S version, stays CS:GO)
-    const CSrcModel* mirror = nullptr;
-    const CSrcModel* wm = WorldWeapon(in.weaponId, sil, false, false);
+    const CSrcModel* mirror = MirrorWeapon(in.weaponId, &mi);
+    const CSrcModel* wm = WorldWeapon(in.weaponId, sil, false, mirror != nullptr);
     if (mirror) {
       // the CS:GO c_ model is the gun: it is hung on the player's weapon bone (its own root is moved into that frame),
       // so in third person the character holds the very gun the view model shows
@@ -793,7 +791,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     m = LoadedOrNull(SrcMdl_Get(kR8World)); r8 = m && !m->seqs.empty(); if (!r8) m = LoadedOrNull(SrcMdl_Get(kR8View)), r8 = m && !m->seqs.empty(); if (!r8) m = nullptr;
   }
   // the SCAR-20 and the Tec-9 keep their CS:GO view models: their CS:S counterparts are different weapons
-  if (!m && (wid == WEAPON_SCAR20 || wid == WEAPON_TEC9)) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
+  if (!m && (wid == WEAPON_SCAR20 || wid == WEAPON_TEC9 || wid == WEAPON_MOLOTOV)) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
   if (!m && cl_real_viewmodels.GetBool()) m = cssView(nullptr);
   if (!m) if (const CsgoModel* c = CsgoModelFor(wid)) { m = LoadedOrNull(SrcMdl_Get(c->view)); csgo = m && !m->seqs.empty(); if (!csgo) m = nullptr; }
   if (!m) m = cssView(nullptr);
@@ -914,7 +912,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     // model axes: +x is the barrel, +z the top of the frame -> barrel into the screen, frame upright
     Vector c1 = u.Cross(f);
     {   // roll around the barrel so the gun stands level in the hand instead of leaning down to the right
-      const float rl = 0.35f, cs = std::cos(rl), sn = std::sin(rl);
+      const float rl = 0.35f, cs = std::cos(rl), sn = std::sin(rl);   // view-space roll: level in the hand
       const Vector c1r = c1 * cs + u * sn;
       const Vector ur = u * cs - c1 * sn;
       c1 = c1r; u = ur;
@@ -927,9 +925,10 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
     // ends up lying on its side
     matrix3x4_t binv; MatrixInvert(bones[0], binv);
     matrix3x4_t t; ConcatTransforms(gunXf, binv, t); gunXf = t;
-    // grip down into the glove, barrel out to the front left - the same hold the CS:S pistol view model has
+    // the grip goes down into the glove, the barrel out to the front
     matrix3x4_t spin; AngleMatrix(QAngle(0, -90, 195), spin);
     matrix3x4_t t2; ConcatTransforms(gunXf, spin, t2); gunXf = t2;
+
   }
   StudioLight L;
   if (g_WorldRender.built) { LightSample s = g_WorldRender.SampleLight(view.origin); L.ambient = s.ambient * 1.15f; L.direct = s.direct * 0.8f; L.dir = s.dir; }
@@ -985,9 +984,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
       }
     }
   }
-  if (haveGrip) {   // move the revolver onto the animated grip, keeping the orientation chosen above
-    for (int i = 0; i < 3; i++) gunXf[i][3] += r8Grip[i] - gunXf[i][3];
-  }
+
   SrcMdl_Draw(*m, bones, gunXf, dp, 0, nullptr, false, bindHands.empty() ? nullptr : &bindHands);
 
   if (csgo) DrawCsgoScope(*m, bones, xf, dp);
