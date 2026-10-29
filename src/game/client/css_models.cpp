@@ -921,7 +921,7 @@ bool CSS_DrawViewModel(const CViewSetup& view, CCSPlayer* p, C_WeaponCSBase* w, 
       // the gun bone of the CS:S pistol carries the gun exactly like the pistol that belongs to those hands: the
       // revolver only needs the small offset that puts its grip into the glove and the turn that points the barrel
       // where the pistol barrel points
-      const float ox = 0.f, oy = 0.f, oz = 0.f, rp = 0.f, ry = 0.f, rr = 90.f, gs = 0.8f;
+      const float ox = 0.f, oy = 0.f, oz = 0.f, rp = 0.f, ry = 0.f, rr = 0.f, gs = 0.8f;
       matrix3x4_t local; QAngle la(rp, ry, rr); Vector lo(ox, oy, oz);
       AngleMatrix(la, local);
       for (int i = 0; i < 3; i++) for (int c = 0; c < 3; c++) local[i][c] *= gs;
